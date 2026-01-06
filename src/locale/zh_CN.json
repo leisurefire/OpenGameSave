@@ -182,8 +182,10 @@
         "steam_user_id64": "Steam 用户 ID64",
         "steam_user_id3": "Steam 用户 ID3",
         "ubisoft_user_id": "Ubisoft 用户 ID",
+        "epic_user_id": "Epic Games 用户 ID",
         "xbox_user_id": "Xbox 用户 ID",
         "rockstar_user_id": "Rockstar 用户 ID",
-        "confirm": "确认"
+        "confirm": "确认",
+        "note": "注意："
     }
 }

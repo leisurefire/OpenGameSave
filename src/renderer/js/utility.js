@@ -400,6 +400,7 @@ function showAccountModal() {
                         steamId64: 'alert.steam_user_id64',
                         steamId3: 'alert.steam_user_id3',
                         ubisoftId: 'alert.ubisoft_user_id',
+                        epicId: 'alert.epic_user_id',
                         xboxId: 'alert.xbox_user_id',
                         rockStarId: 'alert.rockstar_user_id'
                     };
@@ -444,7 +445,7 @@ function showAccountModal() {
 
                 <div class="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
                     <p class="text-sm text-blue-800 dark:text-blue-200">
-                        <strong>Note:</strong> <span class="text-content" data-i18n="alert.account_backup_note"></span>
+                        <strong data-i18n="alert.note" class="text-content">Note: </strong><span class="text-content" data-i18n="alert.account_backup_note"></span>
                     </p>
                 </div>
             </div>

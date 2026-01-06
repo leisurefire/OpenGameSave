@@ -21,7 +21,7 @@ let aboutWin;
 let settings;
 let writeQueue = Promise.resolve();
 
-const appVersion = "2.1.0";
+const appVersion = "2.2.0";
 let status = {
     backuping: false,
     scanning_full: false,

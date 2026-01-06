@@ -1,5 +1,6 @@
 const fs = require('fs');
 const fsOriginal = require('original-fs');
+const os = require('os');
 const path = require('path');
 
 const glob = require('glob');
@@ -20,6 +21,7 @@ class GameData {
         this.currentSteamAccountName = null;
         this.currentSteamUserName = null;
         this.currentUbisoftUserId = null;
+        this.currentEpicUserId = null;
         this.currentXboxUserId = null;
         this.currentRockStarUserId = null;
         this.currentGogUserId = null;
@@ -88,6 +90,7 @@ class GameData {
             'Steam id3: ' + this.currentSteamUserId3 + '\n' +
             'Ubisoft user id: ' + this.currentUbisoftUserId + '\n' +
             'Xbox user id: ' + this.currentXboxUserId + '\n' +
+            'Epic user id: ' + this.currentEpicUserId + '\n' +
             'Rockstar user id: ' + this.currentRockStarUserId + '\n' +
             'GOG user id: ' + this.currentGogUserId + '\n' +
             'EA user id: ' + this.currentEAUserId
@@ -184,6 +187,41 @@ class GameData {
             console.log(`No Ubisoft users found at: ${saveGamesPath}`);
         }
 
+        // Get current Epic user id
+        const epicDataPath = path.join(
+            process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
+            'EpicGamesLauncher', 'Saved', 'Data'
+        );
+        if (fs.existsSync(epicDataPath)) {
+            try {
+                const files = fs.readdirSync(epicDataPath, { withFileTypes: true })
+                    .filter(dirent => dirent.isFile())
+                    .map(dirent => dirent.name);
+
+                let latestUserId = null;
+                let latestTime = 0;
+
+                for (const fileName of files) {
+                    const filePath = path.join(epicDataPath, fileName);
+                    const fileModTime = getLatestModificationTime(filePath);
+
+                    if (fileModTime > latestTime) {
+                        latestTime = fileModTime;
+                        // remove 'OC_' prefix if present and remove .dat extension
+                        const idMatch = fileName.match(/^(?:OC_)?([a-f0-9]+)\.dat$/i);
+                        if (idMatch) {
+                            latestUserId = idMatch[1];
+                        }
+                    }
+                }
+                this.currentEpicUserId = latestUserId;
+            } catch (e) {
+                console.log('Error reading or parsing Epic user data directory:', e);
+            }
+        } else {
+            console.log(`No Epic user data found at: ${epicDataPath}`);
+        }
+
         // Get current Xbox user id
         this.currentXboxUserId = await this.getRegistryValue(
             WinReg.HKCU,
@@ -215,6 +253,8 @@ class GameData {
             } catch (e) {
                 console.log('Error reading or parsing Rockstar savegames directory:', e);
             }
+        } else {
+            console.log(`No Rockstar users found at: ${rStarProfilePath}`);
         }
 
         // --- Normally unused ids ---
@@ -228,9 +268,7 @@ class GameData {
         // EA user id
         const eaSettingsPattern = path.join(
             process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
-            'Electronic Arts',
-            'EA Desktop',
-            'user_*.ini'
+            'Electronic Arts', 'EA Desktop', 'user_*.ini'
         );
         const eaFiles = glob.sync(eaSettingsPattern.replace(/\\/g, '/'));
         if (eaFiles.length > 0) {
@@ -247,6 +285,7 @@ class GameData {
             steamId64: this.currentSteamUserId64,
             steamId3: this.currentSteamUserId3,
             ubisoftId: this.currentUbisoftUserId,
+            epicId: this.currentEpicUserId,
             xboxId: this.currentXboxUserId,
             rockStarId: this.currentRockStarUserId,
         };
@@ -294,8 +333,7 @@ class GameData {
             // Detect Ubisoft game installation folders
             const ubisoftSettingsPath = path.join(
                 process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
-                'Ubisoft Game Launcher',
-                'settings.yaml'
+                'Ubisoft Game Launcher', 'settings.yaml'
             );
             if (fs.existsSync(ubisoftSettingsPath)) {
                 try {
@@ -313,12 +351,47 @@ class GameData {
                 console.log(`Ubisoft settings.yaml file not found at ${ubisoftSettingsPath}`);
             }
 
+            // Detect Epic game installation folders
+            const epicManifestsPath = path.join(
+                process.env.PROGRAMDATA || 'C:\\ProgramData',
+                'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat'
+            );
+            if (fs.existsSync(epicManifestsPath)) {
+                try {
+                    const manifestFile = fs.readFileSync(epicManifestsPath, 'utf-8');
+                    const manifest = JSON.parse(manifestFile);
+
+                    if (manifest.InstallationList && Array.isArray(manifest.InstallationList)) {
+                        const epicBasePaths = new Set();
+
+                        for (const installation of manifest.InstallationList) {
+                            if (installation.InstallLocation) {
+                                // Get parent directory
+                                const basePath = path.dirname(installation.InstallLocation);
+                                if (basePath) {
+                                    epicBasePaths.add(path.normalize(basePath));
+                                }
+                            }
+                        }
+
+                        // Add all unique base paths
+                        for (const basePath of epicBasePaths) {
+                            if (fs.existsSync(basePath)) {
+                                this.detectedGamePaths.push(basePath);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log('Error reading or parsing Epic LauncherInstalled.dat file:', e);
+                }
+            } else {
+                console.log(`Epic LauncherInstalled.dat file not found at ${epicManifestsPath}`);
+            }
+
             // Detect EA game installation folders
             const eaSettingsPattern = path.join(
                 process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
-                'Electronic Arts',
-                'EA Desktop',
-                'user_*.ini'
+                'Electronic Arts', 'EA Desktop', 'user_*.ini'
             );
             const files = glob.sync(eaSettingsPattern.replace(/\\/g, '/'));
             if (files.length > 0) {
@@ -342,11 +415,30 @@ class GameData {
                 console.log(`EA user_*.ini file not found at ${eaSettingsPattern}`);
             }
 
+            // Detect GOG game installation folders
+            const gogConfigPath = path.join(
+                process.env.PROGRAMDATA || 'C:\\ProgramData',
+                'GOG.com', 'Galaxy', 'config.json'
+            );
+            if (fs.existsSync(gogConfigPath)) {
+                try {
+                    const configFile = fs.readFileSync(gogConfigPath, 'utf-8');
+                    const config = JSON.parse(configFile);
+                    const libraryPath = config.libraryPath;
+                    if (libraryPath && fs.existsSync(libraryPath)) {
+                        this.detectedGamePaths.push(path.normalize(libraryPath));
+                    }
+                } catch (e) {
+                    console.log('Error reading or parsing GOG config.json file:', e);
+                }
+            } else {
+                console.log(`GOG config.json file not found at ${gogConfigPath}`);
+            }
+
             // Detect Battle.net game installation folders
             const battleNetConfigPath = path.join(
                 process.env.APPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Roaming'),
-                'Battle.net',
-                'Battle.net.config'
+                'Battle.net', 'Battle.net.config'
             );
             if (fs.existsSync(battleNetConfigPath)) {
                 try {

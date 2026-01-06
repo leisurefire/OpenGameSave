@@ -45,13 +45,13 @@ const execPromise = util.promisify(exec);
 //     resolved_paths: [
 //         {
 //             template: '{{P|steam}}\\userdata\\{{P|uid}}\\327030',
+//             finalTemplate: '{{P|steam}}\\userdata\\477235894\\327030',
 //             resolved: 'D:\\Program Files\\Steam\\userdata\\477235894\\327030',
-//             uid: '477235894'
 //         },
 //         {
 //             template: '{{P|game}}\\CommonData\\local.cfg',
+//             finalTemplate: '{{P|game}}\\CommonData\\local.cfg',
 //             resolved: 'F:\\SteamLibrary\\steamapps\\common\\WormsWMD\\CommonData\\local.cfg',
-//             uid: undefined
 //         }
 //     ],
 //     backup_size: 414799
@@ -508,10 +508,12 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         return result || [];
     }
 
-    const steamPath = getGameData().steamPath;
-    const ubisoftPath = getGameData().ubisoftPath;
-    const steamUid = getGameData().currentSteamUserId3;
-    const ubisoftUid = getGameData().currentUbisoftUserId;
+    // For all accounts backup, skip context-aware and known UID matching, go directly to wildcards
+    if (getSettings().backupAllAccounts) {
+        const wildcardPath = basePath.replace(/\{\{p\|uid\}\}/gi, '*');
+        const result = tryGlobAndReturnPaths(wildcardPath);
+        return result || [];
+    }
 
     // Helper to apply context-aware UID replacement using regex
     const applyContextReplacement = (pathStr, fullPattern, uidValue) => {
@@ -527,12 +529,15 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         return normalizedPath.replace(regex, replacement);
     };
 
+    const steamPath = getGameData().steamPath;
+    const ubisoftPath = getGameData().ubisoftPath;
+    const steamUid = getGameData().currentSteamUserId3;
+    const ubisoftUid = getGameData().currentUbisoftUserId;
+
     // 2. Apply context-aware replacements
     let contextAwarePath = basePath;
-    if (!getSettings().backupAllAccounts) {
-        contextAwarePath = applyContextReplacement(contextAwarePath, `${steamPath}/userdata/{{p|uid}}`, steamUid);
-        contextAwarePath = applyContextReplacement(contextAwarePath, `${ubisoftPath}/savegames/{{p|uid}}`, ubisoftUid);
-    }
+    contextAwarePath = applyContextReplacement(contextAwarePath, `${steamPath}/userdata/{{p|uid}}`, steamUid);
+    contextAwarePath = applyContextReplacement(contextAwarePath, `${ubisoftPath}/savegames/{{p|uid}}`, ubisoftUid);
 
     // If both placeholders are context-aware, try glob directly
     if (!contextAwarePath.includes('{{p|uid}}')) {
@@ -545,7 +550,6 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const uidCount = uidMatches ? uidMatches.length : 0;
 
     if (uidCount === 0) {
-        // All UIDs were context-aware, handled above
         return [];
     }
 

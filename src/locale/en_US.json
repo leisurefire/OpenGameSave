@@ -182,8 +182,10 @@
         "steam_user_id64": "Steam User ID64",
         "steam_user_id3": "Steam User ID3",
         "ubisoft_user_id": "Ubisoft User ID",
+        "epic_user_id": "Epic Games User ID",
         "xbox_user_id": "Xbox User ID",
         "rockstar_user_id": "Rockstar User ID",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "note": "Note: "
     }
 }
