@@ -15,7 +15,11 @@ const moment = require('moment');
 const sqlite3 = require('sqlite3');
 const WinReg = require('winreg');
 
-const { getMainWin, getStatus, updateStatus, getSignedDownloadUrl, getGameDisplayName, calculateDirectorySize, ensureWritable, getNewestBackup, fsOriginalCopyFolder, placeholder_mapping, osKeyMap, getSettings, saveSettings } = require('./global');
+const {
+    getMainWin, getStatus, updateStatus, getSignedDownloadUrl, getGameDisplayName,
+    calculateDirectorySize,ensureWritable, getNewestBackup, fsOriginalCopyFolder,
+    placeholder_mapping, osKeyMap, getSettings, saveSettings
+} = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
 
 const execPromise = util.promisify(exec);

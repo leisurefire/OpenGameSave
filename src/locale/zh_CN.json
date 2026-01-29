@@ -38,6 +38,9 @@
         "delete": "删除",
         "make_permanent": "设为永久",
         "remove_permanent": "移除永久",
+        "open_backup_folder": "打开备份文件夹",
+        "browse_local_save": "浏览本地存档数据",
+        "delete_local_save": "删除本地存档数据",
         "custom": "自定义游戏",
         "game_name": "游戏名",
         "supported_plats": "支持的平台",
@@ -53,7 +56,6 @@
         "restore_complete": "还原完成",
         "no_backups": "暂无备份",
         "view_wiki": "在 PCGamingWiki 上查看",
-        "open_backup_folder": "打开备份文件夹",
         "pin_on_top": "置顶",
         "unpin": "取消置顶",
         "search_for_games": "搜索游戏",
@@ -186,6 +188,15 @@
         "xbox_user_id": "Xbox 用户 ID",
         "rockstar_user_id": "Rockstar 用户 ID",
         "confirm": "确认",
-        "note": "注意："
+        "note": "注意：",
+        "no_local_save_found": "未找到本地存档数据",
+        "confirm_open_folders_and_reg": "将打开 {{count}} 个文件夹和注册表编辑器。是否继续？",
+        "confirm_open_reg": "将打开注册表编辑器。是否继续？",
+        "confirm_open_folders": "将打开 {{count}} 个文件夹。是否继续？",
+        "confirm_delete_local_save_message": "确定要删除该游戏的所有本地存档数据吗？此操作无法撤销。",
+        "delete_partial_failure": "部分项目无法删除",
+        "delete_failed": "删除数据失败",
+        "local_save_deleted": "已成功删除本地存档",
+        "wait_for_backup_loading": "请等待备份列表加载完成"
     }
 }

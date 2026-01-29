@@ -38,6 +38,9 @@
         "delete": "Delete",
         "make_permanent": "Make Permanent",
         "remove_permanent": "Remove Permanent",
+        "open_backup_folder": "Open backup folder",
+        "browse_local_save": "Browse Local Save Data",
+        "delete_local_save": "Delete Local Save Data",
         "custom": "Custom Games",
         "game_name": "Game Name",
         "supported_plats": "Supported Platforms",
@@ -53,7 +56,6 @@
         "restore_complete": "Restore Complete",
         "no_backups": "No backups",
         "view_wiki": "View on PCGamingWiki",
-        "open_backup_folder": "Open backup folder",
         "pin_on_top": "Pin on top",
         "unpin": "Unpin",
         "search_for_games": "Search for games",
@@ -186,6 +188,15 @@
         "xbox_user_id": "Xbox User ID",
         "rockstar_user_id": "Rockstar User ID",
         "confirm": "Confirm",
-        "note": "Note: "
+        "note": "Note: ",
+        "no_local_save_found": "No local save data found",
+        "confirm_open_folders_and_reg": "This will open {{count}} folder(s) and the Registry Editor. Continue?",
+        "confirm_open_reg": "This will open the Registry Editor. Continue?",
+        "confirm_open_folders": "This will open {{count}} folder(s). Continue?",
+        "confirm_delete_local_save_message": "Are you sure you want to delete all local save data for this game? This cannot be undone.",
+        "delete_partial_failure": "Some items could not be deleted",
+        "delete_failed": "Failed to delete data",
+        "local_save_deleted": "Local save data deleted successfully",
+        "wait_for_backup_loading": "Please wait for the backup tab to finish loading"
     }
 }

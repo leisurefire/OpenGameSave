@@ -16,7 +16,7 @@
     "icon": "./src/assets/logo.ico",
     "appId": "com.yyc.game-save-manager",
     "productName": "Game Save Manager",
-    "copyright": "Copyright © 2024-2025 Yongcan Yang",
+    "copyright": "Copyright © 2024-2026 Yongcan Yang",
     "files": [
       "dist/out/**/*"
     ],

@@ -10,7 +10,10 @@ const i18next = require('i18next');
 const moment = require('moment');
 
 const { getGameData, getLatestModificationTime } = require('./gameData');
-const { getGameDisplayName, calculateDirectorySize, ensureWritable, fsOriginalCopyFolder, placeholder_mapping, getSettings } = require('./global');
+const {
+    getGameDisplayName, calculateDirectorySize, ensureWritable, fsOriginalCopyFolder,
+    placeholder_mapping, getSettings
+} = require('./global');
 
 const execPromise = util.promisify(exec);
 

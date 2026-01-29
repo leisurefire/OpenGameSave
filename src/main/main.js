@@ -12,7 +12,11 @@ const Backend = require('i18next-fs-backend');
 const moment = require('moment');
 const { pinyin } = require('pinyin');
 
-const { createMainWindow, getMainWin, getNewestBackup, getStatus, updateStatus, checkAppUpdate, exportBackups, importBackups, osKeyMap, loadSettings, saveSettings, getSettings, moveFilesWithProgress, getCurrentVersion, getLatestVersion, updateApp } = require('./global');
+const {
+    createMainWindow, getMainWin, getNewestBackup, getStatus, updateStatus, checkAppUpdate, exportBackups,
+    importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
+    moveFilesWithProgress, getCurrentVersion, getLatestVersion, updateApp
+} = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
 const { getGameDataForRestore, restoreGame } = require("./restore");
@@ -125,15 +129,6 @@ ipcMain.handle("get-detected-game-paths", async () => {
 
 ipcMain.handle('open-url', async (event, url) => {
     await shell.openExternal(url);
-});
-
-ipcMain.handle('open-backup-folder', async (event, wikiId) => {
-    const backupPath = path.join(getSettings().backupPath, wikiId.toString());
-    if (fsOriginal.existsSync(backupPath) && fsOriginal.readdirSync(backupPath).length > 0) {
-        await shell.openPath(backupPath);
-    } else {
-        getMainWin().webContents.send('show-alert', 'warning', i18next.t('alert.no_backups_found'));
-    }
 });
 
 ipcMain.handle('open-backup-dialog', async () => {
@@ -376,6 +371,23 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
         getMainWin().webContents.send('show-alert', 'error', i18next.t('alert.backup_update_failed'));
         return false;
     }
+});
+
+ipcMain.on('open-backup-folder', async (event, wikiId) => {
+    const backupPath = path.join(getSettings().backupPath, wikiId.toString());
+    if (fsOriginal.existsSync(backupPath) && fsOriginal.readdirSync(backupPath).length > 0) {
+        await shell.openPath(backupPath);
+    } else {
+        getMainWin().webContents.send('show-alert', 'warning', i18next.t('alert.no_backups_found'));
+    }
+});
+
+ipcMain.on('browse-local-save', async (event, resolvedPaths) => {
+    browseLocalSave(resolvedPaths);
+});
+
+ipcMain.handle('confirm-delete-local-save', async (event, resolvedPaths) => {
+    return await deleteLocalSave(resolvedPaths);
 });
 
 ipcMain.on('migrate-backups', (event, newBackupPath) => {
