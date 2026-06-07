@@ -1,4 +1,4 @@
-const { BrowserWindow, Menu, Notification, app, dialog, ipcMain, shell } = require('electron');
+const { BrowserWindow, Menu, Notification, app, dialog, ipcMain, shell, nativeTheme } = require('electron');
 
 const fs = require('fs');
 const fsOriginal = require('original-fs');
@@ -23,6 +23,8 @@ let writeQueue = Promise.resolve();
 
 const appVersion = "2.2.0-beta.3";
 const isWindows = process.platform === 'win32';
+
+nativeTheme.themeSource = 'dark';
 
 const windowVisualEffect = isWindows ? {
     backgroundMaterial: 'mica',
@@ -913,7 +915,6 @@ const loadSettings = () => {
     try {
         const data = fs.readFileSync(settingsPath, 'utf8');
         const loadedSettings = JSON.parse(data);
-        delete loadedSettings.theme;
         settings = { ...defaultSettings, ...loadedSettings };
 
     } catch (err) {
@@ -926,10 +927,6 @@ const loadSettings = () => {
 function saveSettings(key, value) {
     const userDataPath = app.getPath('userData');
     const settingsPath = path.join(userDataPath, 'GSM Settings', 'settings.json');
-
-    if (key === 'theme') {
-        return;
-    }
 
     settings[key] = value;
 

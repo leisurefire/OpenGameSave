@@ -1,9 +1,6 @@
 import { updateTranslations } from './utility.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.documentElement.classList.add('dark');
-    document.body.classList.add('mica-dark');
-
     const latestVersionSpan = document.getElementById('latest-version');
     const currentVersionSpan = document.getElementById('current-version');
     const websiteLink = document.getElementById('website-link');

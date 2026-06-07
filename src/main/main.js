@@ -65,23 +65,36 @@ if (!gotTheLock) {
 }
 
 let menuWindow = null;
+let menuParentWindow = null;
 let isMenuOpen = false;
 
 const MENU_WIDTH = 180;
 const MENU_POSITION_OFFSET_X = 6;
 const MENU_POSITION_OFFSET_Y = 6;
+const MENU_HIDDEN_BOUNDS = { x: -10000, y: -10000, width: 1, height: 1 };
+
+function detachMenuParentListeners() {
+    if (!menuParentWindow || menuParentWindow.isDestroyed()) {
+        menuParentWindow = null;
+        return;
+    }
+
+    menuParentWindow.removeListener('blur', hideMenuWindowAfterBlur);
+    menuParentWindow.removeListener('move', hideMenuWindow);
+    menuParentWindow = null;
+}
 
 function hideMenuWindow() {
+    const wasMenuOpen = isMenuOpen;
     isMenuOpen = false;
+    detachMenuParentListeners();
 
-    if (menuWindow && !menuWindow.isDestroyed()) {
-        // Keep normal dismissal free of Windows' visible hide/show scaling animation:
-        // first move the live popup off-screen, then recreate it off-screen so the
-        // next visible open starts from a fresh clickable BrowserWindow instance.
-        menuWindow.setIgnoreMouseEvents(true);
-        menuWindow.setPosition(-10000, -10000);
-        destroyMenuWindow();
-        createMenuWindow();
+    if (wasMenuOpen && menuWindow && !menuWindow.isDestroyed()) {
+        // Keep the popup BrowserWindow alive and visible off-screen. Do not use
+        // hide()/show() or destroy()/create() here: both can trigger Windows'
+        // native window animations. Shrinking to 1x1 off-screen prevents the
+        // invisible always-on-top popup from stealing hit-tests after closing.
+        menuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
     }
 
     const mainWin = getMainWin();
@@ -102,6 +115,8 @@ ipcMain.on('hide-popup-menu', () => {
 });
 
 function destroyMenuWindow() {
+    detachMenuParentListeners();
+
     if (menuWindow && !menuWindow.isDestroyed()) {
         menuWindow.destroy();
     }
@@ -115,10 +130,10 @@ function createMenuWindow() {
     }
 
     const newMenuWindow = new BrowserWindow({
-        width: MENU_WIDTH,
-        height: 10,
-        x: -10000,
-        y: -10000,
+        width: MENU_HIDDEN_BOUNDS.width,
+        height: MENU_HIDDEN_BOUNDS.height,
+        x: MENU_HIDDEN_BOUNDS.x,
+        y: MENU_HIDDEN_BOUNDS.y,
         frame: false,
         transparent: true,
         show: false, // Initially false, shown right after creation
@@ -143,7 +158,9 @@ function createMenuWindow() {
         if (newMenuWindow.isDestroyed()) {
             return;
         }
-        newMenuWindow.setIgnoreMouseEvents(true);
+        // Show once while off-screen so later opens only move/resize the warm
+        // native window and never trigger the Windows show animation.
+        newMenuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
         newMenuWindow.showInactive();
     });
 
@@ -159,14 +176,19 @@ ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
     if (!menuWindow || menuWindow.isDestroyed()) createMenuWindow();
 
     const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!parentWindow || parentWindow.isDestroyed()) {
+        return;
+    }
+
     const [winX, winY] = parentWindow.getPosition();
 
-    // Ensure we hide menu if main window loses focus to another app
-    // Safely remove existing listeners to prevent duplicates, then add them
-    parentWindow.removeListener('blur', hideMenuWindowAfterBlur);
-    parentWindow.removeListener('move', hideMenuWindow);
-    parentWindow.on('blur', hideMenuWindowAfterBlur);
-    parentWindow.on('move', hideMenuWindow);
+    // Ensure we hide menu if main window loses focus or starts moving. Remove
+    // these listeners on hide so later window dragging does not repeatedly run
+    // popup cleanup work.
+    detachMenuParentListeners();
+    menuParentWindow = parentWindow;
+    menuParentWindow.on('blur', hideMenuWindowAfterBlur);
+    menuParentWindow.on('move', hideMenuWindow);
 
     // Store target coordinates in a property so the resize event can use them
     menuWindow.targetScreenX = Math.round(winX + x + MENU_POSITION_OFFSET_X);
@@ -187,12 +209,14 @@ ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
 ipcMain.on('resize-and-show-menu', (event, height) => {
     if (menuWindow && !menuWindow.isDestroyed()) {
         isMenuOpen = true;
-        menuWindow.setIgnoreMouseEvents(false);
-        menuWindow.setSize(MENU_WIDTH, height);
-        menuWindow.setPosition(menuWindow.targetScreenX, menuWindow.targetScreenY);
+        menuWindow.setBounds({
+            x: menuWindow.targetScreenX,
+            y: menuWindow.targetScreenY,
+            width: MENU_WIDTH,
+            height
+        }, false);
         menuWindow.setOpacity(1);
 
-        // Normal path: the window is already shown off-screen, so this does not run and no animation occurs.
         if (!menuWindow.isVisible()) {
             menuWindow.showInactive();
         }

@@ -1,5 +1,3 @@
-document.documentElement.classList.add('dark');
-
 window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
 });
@@ -25,7 +23,6 @@ window.api.receive('menu-hidden', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.documentElement.classList.add('dark');
     setupHomeActions();
 });
 
@@ -562,6 +559,7 @@ export async function operationStartCheck(operation) {
 document.addEventListener('click', (event) => {
     const isMenuTrigger = event.target.closest('.dropdown-menu-button') || event.target.closest('#home-options-button');
     if (!isMenuTrigger) {
+        window.activeMenuTrigger = null;
         window.api.send('hide-popup-menu');
     }
 });
