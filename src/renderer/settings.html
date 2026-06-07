@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -7,123 +7,67 @@
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'">
     <title class="text-content" data-i18n="settings.title">Settings</title>
-    <!-- <link href="../../node_modules/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
-    <link href="output.css" rel="stylesheet">
-    <script defer type="module" src="js/utility.js"></script>
-    <script defer type="module" src="js/settingsPage.js"></script> -->
 </head>
 
-<body
-    class="bg-white dark:bg-gray-900 p-8 pt-5 flex flex-col items-center min-h-screen scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
+<body class="mica-effect p-8 h-screen overflow-y-auto scrollbar-thin flex flex-col items-center">
     <div id="alert-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
-    <form class="max-w-sm mx-auto w-full mb-20">
-        <!-- Theme selection -->
-        <label for="theme" data-i18n="settings.theme"
-            class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-            <span class="text-content select-none">Theme</span>
-        </label>
-        <select id="theme"
-            class="select-none mb-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
-            <option class="text-content" data-i18n="settings.dark" value="dark">Dark</option>
-            <option class="text-content" data-i18n="settings.light" value="light">Light</option>
-        </select>
-
+    <form class="max-w-md w-full mb-24 space-y-6">
         <!-- Language selection -->
-        <label for="language" data-i18n="settings.language"
-            class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-            <span class="text-content select-none">Language</span>
-        </label>
-        <select id="language"
-            class="select-none mb-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
-            <option value="en_US">English (US)</option>
-            <option value="zh_CN">简体中文</option>
-            <option value="zh_TW">繁體中文</option>
-        </select>
+        <div>
+            <label for="language" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.language">Language</label>
+            <select id="language" class="w-full">
+                <option value="en_US">English (US)</option>
+                <option value="zh_CN">简体中文</option>
+                <option value="zh_TW">繁體中文</option>
+            </select>
+        </div>
 
         <!-- Backup save path selection -->
-        <label for="backup-path" data-i18n="settings.backupPath"
-            class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-            <span class="text-content select-none">Backup Save Path</span>
-        </label>
-        <div class="flex mb-4">
-            <input type="text" id="backup-path" readonly
-                class="grow bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-l-lg p-2.5 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" />
-            <button type="button" id="select-path"
-                class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-r-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                <i class="fa-solid fa-ellipsis"></i>
-            </button>
+        <div>
+            <label for="backup-path" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.backupPath">Backup Save Path</label>
+            <div class="flex gap-2">
+                <input type="text" id="backup-path" readonly class="flex-1">
+                <button type="button" id="select-path" class="home-action-button px-4 py-2"><i class="fa-solid fa-ellipsis"></i></button>
+            </div>
         </div>
 
         <!-- Max number of backups per game -->
-        <label for="max-backups" data-i18n="settings.maxBackups"
-            class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-            <span class="text-content select-none">Maximum Backups Per Game</span>
-        </label>
-        <input type="number" id="max-backups" aria-describedby="helper-text-explanation"
-            class="mb-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-hidden block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-            min="1" max="1000" />
-
-        <!-- Auto app update -->
-        <div class="flex items-center mb-4" data-i18n="settings.auto_app_update">
-            <input id="auto-app-update" type="checkbox" value="" class="w-4 h-4 text-blue-600 bg-gray-100 rounded-sm dark:ring-offset-gray-800 dark:bg-gray-700">
-            <label for="auto-app-update" class="select-none ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 text-content">Check software update automatically</label>
+        <div>
+            <label for="max-backups" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.maxBackups">Maximum Backups Per Game</label>
+            <input type="number" id="max-backups" class="w-full" min="1" max="1000">
         </div>
 
-        <!-- Auto database update -->
-        <div class="flex items-center mb-4" data-i18n="settings.auto_db_update">
-            <input id="auto-db-update" type="checkbox" value="" class="w-4 h-4 text-blue-600 bg-gray-100 rounded-sm dark:ring-offset-gray-800 dark:bg-gray-700">
-            <label for="auto-db-update" class="select-none ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 text-content">Update database automatically</label>
-        </div>
-
-        <!-- Save uninstalled game ids after full database scan -->
-        <div class="flex items-center mb-4" data-i18n="settings.save_uninstalled_games">
-            <input id="save-uninstalled-games" type="checkbox" value="" class="w-4 h-4 text-blue-600 bg-gray-100 rounded-sm dark:ring-offset-gray-800 dark:bg-gray-700">
-            <label for="save-uninstalled-games" class="select-none ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 text-content">Save and display uninstalled games after full database scan</label>
-        </div>
-
-        <!-- Backup scope hint -->
-        <div class="flex items-center mb-4">
-            <i class="fa-solid fa-users text-gray-400 dark:text-gray-500 w-4 h-4 text-center"></i>
-            <span data-i18n="settings.backup_scope_hint" class="ms-2 text-sm text-gray-500 dark:text-gray-400">
-                <span class="text-content select-none">To configure backup scope (current account / all accounts), go to Options → View Account IDs</span>
-            </span>
+        <!-- Toggles -->
+        <div class="space-y-4 pt-2">
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input id="auto-app-update" type="checkbox" class="accent-xbox-green w-5 h-5">
+                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_app_update">Check software update automatically</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input id="auto-db-update" type="checkbox" class="accent-xbox-green w-5 h-5">
+                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_db_update">Update database automatically</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input id="save-uninstalled-games" type="checkbox" class="accent-xbox-green w-5 h-5">
+                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.save_uninstalled_games">Save and display uninstalled games</span>
+            </label>
         </div>
 
         <!-- Game Install Locations -->
-        <fieldset class="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-            <legend data-i18n="settings.installLocs" class="text-sm font-medium text-gray-900 dark:text-white">
-                <span class="text-content select-none">Game Install Locations</span>
-            </legend>
-
-            <button type="button" id="auto-detect-paths" data-i18n="settings.autoDetect"
-                class="select-none text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-5 dark:bg-blue-600 dark:hover:bg-blue-700">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                <span class="text-content">Auto Detect</span>
+        <fieldset class="surface-effect p-5 border border-white/10">
+            <legend class="px-2 text-xs font-bold uppercase tracking-widest text-xbox-green" data-i18n="settings.installLocs">Install Locations</legend>
+            
+            <button type="button" id="auto-detect-paths" class="primary-button px-6 py-2 mb-4 text-xs w-full">
+                <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> <span data-i18n="settings.autoDetect">AUTO DETECT</span>
             </button>
 
-            <div id="game-paths-container"></div>
+            <div id="game-paths-container" class="space-y-2"></div>
 
-            <div class="flex justify-end mt-3">
-                <button type="button" id="add-new-path" data-i18n="settings.addPath"
-                    class="select-none text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-green-500 dark:hover:bg-green-600">
-                    <i class="fa-solid fa-plus"></i>
-                    <span class="text-content">Add Another Path</span>
-                </button>
-            </div>
+            <button type="button" id="add-new-path" class="w-full mt-4 py-2 border border-dashed border-white/20 rounded-lg hover:border-xbox-green hover:text-xbox-green transition-all text-sm">
+                <i class="fa-solid fa-plus mr-2"></i> <span data-i18n="settings.addPath">Add Path</span>
+            </button>
         </fieldset>
     </form>
-
-    <!-- Save settings button -->
-    <div
-        class="select-none fixed inset-x-0 bottom-0 bg-gray-200 dark:bg-gray-800 border-t border-gray-300 dark:border-gray-600 py-4 text-center">
-        <button id="save-settings" data-i18n="settings.save_settings"
-            class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700">
-            <i class="fas fa-save mr-1"></i>
-            <span class="text-content">Save Settings</span>
-        </button>
-    </div>
-
 </body>
-
 </html>

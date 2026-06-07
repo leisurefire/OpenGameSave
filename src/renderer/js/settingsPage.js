@@ -5,7 +5,6 @@ window.api.receive('apply-language', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-    const themeSelect = document.getElementById('theme');
     const languageSelect = document.getElementById('language');
     const backupPathInput = document.getElementById('backup-path');
     const backupPathButton = document.getElementById('select-path');
@@ -16,13 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoDetectButton = document.getElementById('auto-detect-paths');
     const gamePathsContainer = document.getElementById('game-paths-container');
     const addNewPathButton = document.getElementById('add-new-path');
-    const saveSettingsButton = document.getElementById('save-settings');
 
     wrapNumberInput(maxBackupsInput);
 
+    // Initial load
     window.api.invoke('get-settings').then((settings) => {
         if (settings) {
-            themeSelect.value = settings.theme;
             languageSelect.value = settings.language;
             backupPathInput.value = settings.backupPath;
             maxBackupsInput.value = settings.maxBackups;
@@ -32,18 +30,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
                 settings.gameInstalls.forEach((installPath) => {
-                    addGameInstallPath(installPath);
+                    addGameInstallPath(installPath, false); // Don't trigger save on initial load
                 });
             }
         }
         updateTranslations(document);
     });
 
-    // Event listeners for changes
-    themeSelect.addEventListener('change', (event) => {
-        window.api.send('save-settings', 'theme', event.target.value);
-    });
+    // Auto-save function
+    async function autoSave() {
+        const previousSettings = await window.api.invoke('get-settings');
+        
+        // Collect current paths
+        const newGameInstallPaths = [];
+        document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
+            const path = input.value.trim();
+            if (path) newGameInstallPaths.push(path);
+        });
 
+        const areArraysEqual = (arr1, arr2) => {
+            if (arr1.length !== arr2.length) return false;
+            return [...arr1].sort().every((v, i) => v === [...arr2].sort()[i]);
+        };
+
+        // Save individual fields if changed
+        if (!areArraysEqual(previousSettings.gameInstalls, newGameInstallPaths)) {
+            window.api.send('save-settings', 'gameInstalls', newGameInstallPaths);
+        }
+
+        if (previousSettings.saveUninstalledGames !== saveUninstalledCheckbox.checked) {
+            window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
+        }
+
+        const newBackupPath = backupPathInput.value.trim();
+        if (previousSettings.backupPath.trim() !== newBackupPath) {
+            // Migration is a heavy operation, check start check
+            const start = await operationStartCheck('change-settings');
+            if (start) {
+                window.api.send('migrate-backups', newBackupPath);
+            } else {
+                // Revert UI if migration blocked
+                backupPathInput.value = previousSettings.backupPath;
+            }
+        }
+
+        window.api.send('save-settings', 'maxBackups', maxBackupsInput.value);
+        window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
+        window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
+    }
+
+    // Event listeners for auto-save
     languageSelect.addEventListener('change', (event) => {
         window.api.send('save-settings', 'language', event.target.value);
     });
@@ -52,71 +88,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await window.api.invoke('open-backup-dialog');
         if (result) {
             backupPathInput.value = result;
+            autoSave();
         }
+    });
+
+    [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox].forEach(el => {
+        el.addEventListener('change', autoSave);
     });
 
     maxBackupsInput.addEventListener('input', function () {
         const value = parseInt(this.value, 10);
-        if (isNaN(value) || value < 1) {
-            this.value = 1;
-        } else if (value > 1000) {
-            this.value = 1000;
-        }
-    });
-
-    saveSettingsButton.addEventListener('click', async () => {
-        const start = await operationStartCheck('change-settings');
-        if (start) {
-            const previousSettings = await window.api.invoke('get-settings');
-
-            // Check if game install paths changed
-            const newGameInstallPaths = [];
-            document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
-                const path = input.value.trim();
-                if (path) {
-                    newGameInstallPaths.push(path);
-                }
-            });
-
-            const areArraysEqual = (arr1, arr2) => {
-                if (arr1.length !== arr2.length) {
-                    return false;
-                }
-                const sortedArr1 = [...arr1].sort();
-                const sortedArr2 = [...arr2].sort();
-
-                return sortedArr1.every((value, index) => value === sortedArr2[index]);
-            };
-
-            if (!areArraysEqual(previousSettings.gameInstalls, newGameInstallPaths)) {
-                window.api.send('save-settings', 'gameInstalls', newGameInstallPaths);
-            }
-
-            if (previousSettings.saveUninstalledGames !== saveUninstalledCheckbox.checked) {
-                window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
-            }
-
-            // Check if backup path changed
-            const newBackupPath = backupPathInput.value.trim();
-            if (previousSettings.backupPath.trim() !== newBackupPath) {
-                window.api.send('migrate-backups', newBackupPath);
-            }
-
-            window.api.send('save-settings', 'maxBackups', maxBackupsInput.value);
-            window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
-            window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
-            showAlert('success', await window.i18n.translate('settings.save-settings-success'));
-        }
+        if (isNaN(value) || value < 1) this.value = 1;
+        else if (value > 1000) this.value = 1000;
+        autoSave();
     });
 
     autoDetectButton.addEventListener('click', () => {
         window.api.invoke('get-detected-game-paths').then(async (value) => {
             if (value && value.length > 0) {
+                let added = false;
                 value.forEach(path => {
                     if (!duplicatePathCheck(path)) {
-                        addGameInstallPath(path);
+                        addGameInstallPath(path, false);
+                        added = true;
                     }
                 });
+                if (added) autoSave();
             } else {
                 showAlert('warning', await window.i18n.translate('settings.noPathsDetected'));
             }
@@ -124,20 +121,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     addNewPathButton.addEventListener('click', () => {
-        addGameInstallPath('');
+        addGameInstallPath('', false);
     });
 
-    function addGameInstallPath(installPath = '') {
+    function addGameInstallPath(installPath = '', triggerSave = true) {
         const newPath = document.createElement('div');
-        newPath.className = 'flex mb-2 game-path-item';
+        newPath.className = 'flex gap-2 game-path-item';
         newPath.innerHTML = `
             <input type="text" readonly value="${installPath}"
-                class="display-path grow bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-l-lg p-2.5 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" />
-            <button type="button" class="select-path text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-r-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700">
+                class="display-path grow text-xs font-mono" />
+            <button type="button" class="select-path home-action-button px-4 py-2">
                 <i class="fa-solid fa-ellipsis"></i>
             </button>
-            <button type="button" class="remove-path rounded-lg text-white bg-red-600 hover:bg-red-700 focus:outline-hidden font-medium text-sm px-4 py-2 ms-2 dark:bg-red-500 dark:hover:bg-red-600">
-                <i class="fa-solid fa-trash"></i>
+            <button type="button" class="remove-path px-4 py-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                <i class="fa-solid fa-trash-can"></i>
             </button>
         `;
         gamePathsContainer.appendChild(newPath);
@@ -151,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.filePaths && result.filePaths.length > 0) {
                 if (!duplicatePathCheck(result.filePaths[0], pathInput)) {
                     pathInput.value = result.filePaths[0];
+                    autoSave();
                 } else {
                     showAlert('warning', await window.i18n.translate('settings.gameInstallExists'));
                 }
@@ -159,23 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         removePathButton.addEventListener('click', () => {
             newPath.remove();
+            autoSave();
         });
-    }
 
-    // Attach event listeners to any existing path selection buttons
-    document.querySelectorAll('.game-path-item .select-path').forEach((button) => {
-        button.addEventListener('click', async (event) => {
-            const pathInput = event.currentTarget.parentElement.querySelector('.display-path');
-            const result = await window.api.invoke('open-dialog');
-            if (result.filePaths && result.filePaths.length > 0) {
-                if (!duplicatePathCheck(result.filePaths[0], pathInput)) {
-                    pathInput.value = result.filePaths[0];
-                } else {
-                    showAlert('warning', await window.i18n.translate('settings.gameInstallExists'));
-                }
-            }
-        });
-    });
+        if (triggerSave) autoSave();
+    }
 
     function duplicatePathCheck(newPath, currentInput) {
         let isDuplicate = false;

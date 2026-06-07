@@ -13,7 +13,7 @@ const moment = require('moment');
 const Seven = require('node-7z');
 const sevenBin = require('7zip-bin');
 
-const { SIGNED_URL_DOWNLOAD_ENDPOINT, VERSION_CHECKER_ENDPOINT, CLIENT_API_KEY } = require('./secret_config')
+
 
 let win;
 let settingsWin;
@@ -22,6 +22,25 @@ let settings;
 let writeQueue = Promise.resolve();
 
 const appVersion = "2.2.0-beta.3";
+const isWindows = process.platform === 'win32';
+
+const windowVisualEffect = isWindows ? {
+    backgroundMaterial: 'mica',
+    backgroundColor: '#00000000'
+} : {};
+
+const applyWindowsMicaEffect = (browserWindow) => {
+    if (!isWindows || !browserWindow) {
+        return;
+    }
+
+    if (typeof browserWindow.setBackgroundMaterial === 'function') {
+        browserWindow.setBackgroundMaterial('mica');
+    }
+
+    browserWindow.setBackgroundColor('#00000000');
+};
+
 let status = {
     backuping: false,
     scanning_full: false,
@@ -33,6 +52,73 @@ let status = {
     updating_backup: false,
     updating_restore: false
 }
+
+const openSettingsWindow = () => {
+    let settings_window_size = [650, 700];
+    if (!settingsWin || settingsWin.isDestroyed()) {
+        settingsWin = new BrowserWindow({
+            width: settings_window_size[0],
+            height: settings_window_size[1],
+            minWidth: settings_window_size[0],
+            minHeight: settings_window_size[1],
+            icon: path.join(__dirname, "../assets/setting.ico"),
+            parent: win,
+            modal: true,
+            ...windowVisualEffect,
+            webPreferences: {
+                preload: path.join(__dirname, "../preload/preload.js"),
+                sandbox: false,
+            },
+        });
+
+        applyWindowsMicaEffect(settingsWin);
+
+        if (!app.isPackaged) {
+            settingsWin.webContents.openDevTools({ mode: "detach" });
+        }
+        settingsWin.setMenuBarVisibility(false);
+        settingsWin.loadFile(path.join(__dirname, "../renderer/settings.html"));
+
+        settingsWin.on("closed", () => {
+            settingsWin = null;
+        });
+    } else {
+        settingsWin.focus();
+    }
+};
+
+const openAboutWindow = () => {
+    let about_window_size = [480, 290];
+    if (!aboutWin || aboutWin.isDestroyed()) {
+        aboutWin = new BrowserWindow({
+            width: about_window_size[0],
+            height: about_window_size[1],
+            resizable: false,
+            icon: path.join(__dirname, "../assets/logo.ico"),
+            parent: win,
+            modal: true,
+            ...windowVisualEffect,
+            webPreferences: {
+                preload: path.join(__dirname, "../preload/preload.js"),
+                sandbox: false,
+            },
+        });
+
+        applyWindowsMicaEffect(aboutWin);
+
+        if (!app.isPackaged) {
+            aboutWin.webContents.openDevTools({ mode: "detach" });
+        }
+        aboutWin.setMenuBarVisibility(false);
+        aboutWin.loadFile(path.join(__dirname, "../renderer/about.html"));
+
+        aboutWin.on("closed", () => {
+            aboutWin = null;
+        });
+    } else {
+        aboutWin.focus();
+    }
+};
 
 // Menu settings
 const initializeMenu = () => {
@@ -54,11 +140,14 @@ const initializeMenu = () => {
                                 icon: path.join(__dirname, "../assets/setting.ico"),
                                 parent: win,
                                 modal: true,
+                                ...windowVisualEffect,
                                 webPreferences: {
                                     preload: path.join(__dirname, "../preload/preload.js"),
                                     sandbox: false,
                                 },
                             });
+
+                            applyWindowsMicaEffect(settingsWin);
 
                             if (!app.isPackaged) {
                                 settingsWin.webContents.openDevTools({ mode: "detach" });
@@ -98,11 +187,14 @@ const initializeMenu = () => {
                                 icon: path.join(__dirname, "../assets/logo.ico"),
                                 parent: win,
                                 modal: true,
+                                ...windowVisualEffect,
                                 webPreferences: {
                                     preload: path.join(__dirname, "../preload/preload.js"),
                                     sandbox: false,
                                 },
                             });
+
+                            applyWindowsMicaEffect(aboutWin);
 
                             if (!app.isPackaged) {
                                 aboutWin.webContents.openDevTools({ mode: "detach" });
@@ -144,18 +236,21 @@ const createMainWindow = async () => {
         minWidth: main_window_size[0],
         minHeight: main_window_size[1],
         icon: path.join(__dirname, "../assets/logo.ico"),
+        ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, "../preload/preload.js"),
             sandbox: false,
         },
     });
 
+    applyWindowsMicaEffect(win);
+
     if (!app.isPackaged) {
         win.webContents.openDevTools({ mode: "detach" });
     }
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
-    const menu = Menu.buildFromTemplate(initializeMenu());
-    Menu.setApplicationMenu(menu);
+    win.setMenuBarVisibility(false);
+    Menu.setApplicationMenu(null);
 
     win.on("closed", () => {
         BrowserWindow.getAllWindows().forEach((window) => {
@@ -178,73 +273,29 @@ function resource_path(resource_name) {
     }
 }
 
-async function getSignedDownloadUrl(filePathOnS3) {
-    if (!SIGNED_URL_DOWNLOAD_ENDPOINT || !CLIENT_API_KEY) {
-        console.error("Error: API Gateway endpoint or Client API Key is not configured.");
-        return null;
-    }
-
-    const headers = {
-        'x-api-key': CLIENT_API_KEY
-    };
-    const params = {
-        'filePath': filePathOnS3
-    };
-
-    try {
-        const response = await axios.get(SIGNED_URL_DOWNLOAD_ENDPOINT, {
-            headers: headers,
-            params: params,
-            timeout: 15000 // 15 seconds
-        });
-
-        const data = response.data;
-        const signedUrl = data.signedUrl;
-        if (signedUrl) {
-            return signedUrl;
-        } else {
-            console.error(`Error: 'signedUrl' not found in response. Response: ${JSON.stringify(data)}`);
-            return null;
-        }
-    } catch (error) {
-        console.error(`Error retrieving signed URL: ${error.message}`);
-        return null;
-    }
-}
-
 async function getLatestVersion(appName) {
-    if (!VERSION_CHECKER_ENDPOINT || !CLIENT_API_KEY) {
-        console.error("Error: API Gateway endpoint or Client API Key is not configured.");
-        return null;
-    }
-
-    const headers = {
-        'x-api-key': CLIENT_API_KEY
-    };
-    const params = {
-        'appName': appName
-    };
-
     try {
-        const response = await axios.get(VERSION_CHECKER_ENDPOINT, {
-            headers: headers,
-            params: params,
+        const response = await axios.get('https://api.github.com/repos/dyang886/Game-Save-Manager/releases/latest', {
+            headers: {
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'Game-Save-Manager'
+            },
             timeout: 15000 // 15 seconds
         });
 
-        const data = response.data;
-        const latestVersion = data.latest_version;
+        const latestVersion = response.data?.tag_name || response.data?.name;
         if (latestVersion) {
-            return latestVersion;
+            return latestVersion.replace(/^v/i, '');
         } else {
-            console.error(`Error: 'latest_version' not found in response. Response: ${JSON.stringify(data)}`);
+            console.error(`Error: release version not found in GitHub response. Response: ${JSON.stringify(response.data)}`);
             return null;
         }
     } catch (error) {
-        console.error(`Error retrieving latest version: ${error.message}`);
+        console.error(`Error retrieving latest version from GitHub for ${appName}: ${error.message}`);
         return null;
     }
 }
+
 
 async function checkAppUpdate() {
     try {
@@ -322,7 +373,7 @@ function showNotification(type, title, body, latest_version = 0) {
 function updateApp(latest_version) {
     const updaterPath = './Updater.exe';
     const s3Path = `GSM/Game Save Manager Setup ${latest_version}.exe`;
-    const args = ['--pid', process.pid, '--s3-path', s3Path, '--theme', settings['theme'], '--language', settings['language']];
+    const args = ['--pid', process.pid, '--s3-path', s3Path, '--language', settings['language']];
 
     try {
         const updaterProcess = spawn(updaterPath, args, {
@@ -465,11 +516,6 @@ async function exportBackups(count, exportPath, wikiIds = null) {
             // Build the list of relative paths to archive
             let itemsToArchive = [];
 
-            const customEntriesPath = path.join(sourcePath, 'custom_entries.json');
-            if (fsOriginal.existsSync(customEntriesPath)) {
-                itemsToArchive.push('custom_entries.json');
-            }
-
             const items = fsOriginal.readdirSync(sourcePath);
             let gameFolders = items.filter(item => {
                 const fullPath = path.join(sourcePath, item);
@@ -590,37 +636,7 @@ async function importBackups(gsmPath) {
 
             const extractedItems = fsOriginal.readdirSync(tempExtractPath);
 
-            // 2. Process the custom_entries.json file if present
-            if (extractedItems.includes('custom_entries.json')) {
-                const importedJsonPath = path.join(tempExtractPath, 'custom_entries.json');
-                let importedEntries = [];
-                try {
-                    importedEntries = JSON.parse(fsOriginal.readFileSync(importedJsonPath, 'utf8'));
-                } catch (e) {
-                    console.error("Error parsing imported custom_entries.json:", e);
-                }
-
-                const destinationJsonPath = path.join(destinationPath, 'custom_entries.json');
-                let destinationEntries = [];
-                if (fsOriginal.existsSync(destinationJsonPath)) {
-                    try {
-                        destinationEntries = JSON.parse(fsOriginal.readFileSync(destinationJsonPath, 'utf8'));
-                    } catch (e) {
-                        console.error("Error parsing destination custom_entries.json:", e);
-                    }
-                }
-
-                // Append only those entries that do not already exist (by wiki_page_id)
-                importedEntries.forEach(imported => {
-                    const exists = destinationEntries.some(dest => dest.wiki_page_id === imported.wiki_page_id);
-                    if (!exists) {
-                        destinationEntries.push(imported);
-                    }
-                });
-                fsOriginal.writeFileSync(destinationJsonPath, JSON.stringify(destinationEntries, null, 2), 'utf8');
-            }
-
-            // 3. Process game backup folders
+            // 2. Process game backup folders
             let totalBackups = extractedItems.length;
             let processedBackups = 0;
 
@@ -878,7 +894,6 @@ const loadSettings = () => {
 
     // Default settings
     const defaultSettings = {
-        theme: 'dark',
         language: detectedLanguage,
         backupPath: path.join(appDataPath, "GSM Backups"),
         exportPath: "",
@@ -897,7 +912,9 @@ const loadSettings = () => {
 
     try {
         const data = fs.readFileSync(settingsPath, 'utf8');
-        settings = { ...defaultSettings, ...JSON.parse(data) };
+        const loadedSettings = JSON.parse(data);
+        delete loadedSettings.theme;
+        settings = { ...defaultSettings, ...loadedSettings };
 
     } catch (err) {
         console.error("Error loading settings, using defaults:", err);
@@ -909,6 +926,10 @@ const loadSettings = () => {
 function saveSettings(key, value) {
     const userDataPath = app.getPath('userData');
     const settingsPath = path.join(userDataPath, 'GSM Settings', 'settings.json');
+
+    if (key === 'theme') {
+        return;
+    }
 
     settings[key] = value;
 
@@ -922,11 +943,6 @@ function saveSettings(key, value) {
                 } else {
                     console.log(`Settings updated successfully: ${key}: ${value}`);
 
-                    if (key === 'theme') {
-                        BrowserWindow.getAllWindows().forEach((window) => {
-                            window.webContents.send('apply-theme', value);
-                        });
-                    }
 
                     if (key === 'gameInstalls' || key === 'saveUninstalledGames') {
                         win.webContents.send('update-backup-table');
@@ -937,8 +953,7 @@ function saveSettings(key, value) {
                             BrowserWindow.getAllWindows().forEach((window) => {
                                 window.webContents.send('apply-language');
                             });
-                            const menu = Menu.buildFromTemplate(initializeMenu());
-                            Menu.setApplicationMenu(menu);
+                            Menu.setApplicationMenu(null);
                             resolve();
                         }).catch(reject);
                     } else {
@@ -1021,13 +1036,29 @@ async function moveFilesWithProgress(sourceDir, destinationDir) {
     status.migrating = false;
 }
 
+ipcMain.on('open-settings-window', () => {
+    openSettingsWindow();
+});
+
+ipcMain.on('open-about-window', () => {
+    openAboutWindow();
+});
+
+ipcMain.on('view-account-ids', () => {
+    win.webContents.send("view_account_ids");
+});
+
+ipcMain.on('scan-full', () => {
+    win.webContents.send("scan-full");
+});
+
 module.exports = {
     createMainWindow,
     getMainWin: () => win,
     getSettingsWin: () => settingsWin,
     getStatus: () => status,
     updateStatus,
-    getSignedDownloadUrl,
+
     getCurrentVersion: () => appVersion,
     getLatestVersion,
     checkAppUpdate,

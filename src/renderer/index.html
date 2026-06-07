@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -7,760 +7,256 @@
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'">
     <title class="text-content" data-i18n="main.title">Game Save Manager</title>
-    <!-- <link href="../../node_modules/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
-    <link href="output.css" rel="stylesheet">
-    <script defer type="module" src="js/utility.js"></script>
-    <script type="module" src="js/commonTabs.js"></script>
-    <script type="module" src="js/backupTab.js"></script>
-    <script type="module" src="js/restoreTab.js"></script>
-    <script type="module" src="js/customTab.js"></script> -->
 </head>
 
-<body class="bg-white dark:bg-gray-900 p-8 pt-2 overflow-hidden">
+<body class="mica-effect p-6 pt-2 h-screen overflow-hidden">
     <!-- Top right alerts and progresses -->
-    <div class="fixed top-3 right-5 z-60">
+    <div class="fixed top-4 right-5 z-60 space-y-2">
         <div id="progress-container"></div>
         <div id="alert-container"></div>
     </div>
 
-    <!-- Modals -->
-    <div id="modal-overlay" class="hidden fixed inset-0 bg-black opacity-80 z-40"></div>
+    <!-- Modal Overlay -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-fadeIn"></div>
+
+    <!-- Modals (Simplified and Styled) -->
     <div id="modal-info" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 max-h-[calc(100%-1rem)]">
-        <div class="relative p-4 w-full max-w-2xl max-h-full">
-            <div class="relative bg-white rounded-lg shadow-sm dark:bg-gray-700">
-                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                    <h3 id="modal-info-title" class="text-xl font-semibold text-gray-900 dark:text-white"></h3>
-                    <button type="button" id="modal-info-close"
-                        class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                        <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                        </svg>
-                        <span class="sr-only">Close modal</span>
-                    </button>
-                </div>
-
-                <div
-                    class="break-all max-h-[calc(100vh-250px)] p-4 md:p-5 space-y-4 overflow-y-auto scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-                    <p id="modal-info-content" class="text-base leading-relaxed text-gray-500 dark:text-gray-400"></p>
-                </div>
-
-                <div
-                    class="flex items-center justify-end gap-3 p-4 md:p-5 border-t border-gray-200 rounded-b dark:border-gray-600">
-                    <button type="button" id="modal-info-no"
-                        class="text-white bg-gray-500 hover:bg-gray-600 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-gray-500 dark:hover:bg-gray-600"
-                        style="display: none;">No</button>
-                    <button type="button" id="modal-info-confirm"
-                        class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700">Ok/Yes</button>
-                </div>
+        class="hidden animate-fadeInShift overflow-x-hidden fixed inset-0 z-50 flex justify-center items-center p-4">
+        <div class="modal-container w-full max-w-2xl max-h-full flex flex-col">
+            <div class="flex items-center justify-between p-5 border-b border-white/10">
+                <h3 id="modal-info-title" class="text-xl font-bold text-xbox-green"></h3>
+                <button type="button" id="modal-info-close" class="text-white/60 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="p-6 modal-body-scroll space-y-4">
+                <p id="modal-info-content" class="text-white/80 leading-relaxed"></p>
+            </div>
+            <div class="p-5 border-t border-white/10 flex justify-end gap-3">
+                <button type="button" id="modal-info-no" class="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors" style="display: none;">No</button>
+                <button type="button" id="modal-info-confirm" class="primary-button px-8 py-2">Ok</button>
             </div>
         </div>
     </div>
 
-    <div id="modal-export" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 max-h-[calc(100%-1rem)]">
-        <div class="relative p-4 w-full max-w-2xl max-h-full">
-            <div class="relative bg-white rounded-lg shadow-sm dark:bg-gray-700">
-                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                    <h3 class="text-xl font-semibold text-gray-900 dark:text-white" data-i18n="alert.export_backups">
-                        <i class="fa-solid fa-file-export mr-2"></i>
-                        <span class="text-content">Export Backups</span>
-                    </h3>
-                    <button type="button" id="modal-export-close"
-                        class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                        <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                        </svg>
-                        <span class="sr-only">Close modal</span>
-                    </button>
-                </div>
-
-                <div class="p-4 md:p-5">
-                    <label data-i18n="alert.export_scope"
-                        class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        <span class="text-content">Export scope</span>
-                    </label>
-                    <div class="flex flex-col gap-2 mb-4">
-                        <label class="flex items-center cursor-pointer">
-                            <input type="radio" name="export-scope" value="all" checked
-                                class="w-4 h-4 text-blue-600 dark:text-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
-                            <span data-i18n="alert.export_all_games"
-                                class="ms-2 text-sm text-gray-900 dark:text-gray-300">
-                                <span class="text-content">All games</span>
-                            </span>
+    <!-- Other modals (Export, Import, Manage, AutoBackup) follow similar styling in JS or keep IDs -->
+    <!-- I will keep the IDs consistent so JS doesn't break -->
+    <div id="modal-export" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
+        <div class="modal-container w-full max-w-2xl p-6">
+            <h3 class="text-xl font-bold text-xbox-green mb-6" data-i18n="alert.export_backups">Export Backups</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_scope">Export scope</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <input type="radio" name="export-scope" value="all" checked class="accent-xbox-green">
+                            <span class="group-hover:text-xbox-green transition-colors" data-i18n="alert.export_all_games">All games</span>
                         </label>
-                        <label class="flex items-center cursor-pointer">
-                            <input type="radio" name="export-scope" value="backup"
-                                class="w-4 h-4 text-blue-600 dark:text-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
-                            <span data-i18n="alert.export_selected_backup"
-                                class="ms-2 text-sm text-gray-900 dark:text-gray-300">
-                                <span class="text-content">Selected games from backup table</span>
-                            </span>
-                        </label>
-                        <label class="flex items-center cursor-pointer">
-                            <input type="radio" name="export-scope" value="restore"
-                                class="w-4 h-4 text-blue-600 dark:text-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
-                            <span data-i18n="alert.export_selected_restore"
-                                class="ms-2 text-sm text-gray-900 dark:text-gray-300">
-                                <span class="text-content">Selected games from restore table</span>
-                            </span>
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <input type="radio" name="export-scope" value="backup" class="accent-xbox-green">
+                            <span class="group-hover:text-xbox-green transition-colors" data-i18n="alert.export_selected_backup">Selected games from backup</span>
                         </label>
                     </div>
-
-                    <label for="modal-export-count" data-i18n="alert.export_count"
-                        class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        <span class="text-content">Number of exports per game (ordered from newest to oldest)</span>
-                    </label>
-                    <input type="number" id="modal-export-count" aria-describedby="helper-text-explanation"
-                        class="mb-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-hidden block w-full p-2.5 dark:bg-gray-600 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-                        value="1" min="1" />
-
-                    <label for="modal-export-path" data-i18n="alert.export_path"
-                        class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        <span class="text-content">Export path</span>
-                    </label>
-                    <div class="flex mb-4">
-                        <input type="text" id="modal-export-path" readonly
-                            class="grow bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-l-lg p-2.5 focus:outline-hidden dark:bg-gray-600 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" />
-                        <button type="button" id="modal-export-select-path"
-                            class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-r-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                            <i class="fa-solid fa-ellipsis"></i>
-                        </button>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_count">Number of exports per game</label>
+                    <input type="number" id="modal-export-count" value="1" min="1" class="w-full">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_path">Export path</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="modal-export-path" readonly class="flex-1">
+                        <button id="modal-export-select-path" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">...</button>
                     </div>
                 </div>
-
-                <div
-                    class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b dark:border-gray-600">
-                    <button type="button" id="modal-export-confirm"
-                        class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700">Ok</button>
-                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button id="modal-export-close" class="px-6 py-2">Cancel</button>
+                <button id="modal-export-confirm" class="primary-button px-8 py-2" data-i18n="main.export">Export</button>
             </div>
         </div>
     </div>
 
-    <div id="modal-import" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 max-h-[calc(100%-1rem)]">
-        <div class="relative p-4 w-full max-w-2xl max-h-full">
-            <div class="relative bg-white rounded-lg shadow-sm dark:bg-gray-700">
-                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                    <h3 class="text-xl font-semibold text-gray-900 dark:text-white" data-i18n="alert.import_backups">
-                        <i class="fa-solid fa-file-import mr-2"></i>
-                        <span class="text-content">Import Backups</span>
-                    </h3>
-                    <button type="button" id="modal-import-close"
-                        class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                        <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                        </svg>
-                        <span class="sr-only">Close modal</span>
-                    </button>
+    <!-- Import Modal -->
+    <div id="modal-import" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
+        <div class="modal-container w-full max-w-2xl p-6">
+            <h3 class="text-xl font-bold text-xbox-green mb-6" data-i18n="alert.import_backups">Import Backups</h3>
+            <div class="space-y-4">
+                <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.gsmr_path">GSM file path</label>
+                <div class="flex gap-2">
+                    <input type="text" id="modal-import-path" readonly class="flex-1">
+                    <button id="modal-import-select-path" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">...</button>
                 </div>
-
-                <div class="p-4 md:p-5">
-                    <label for="modal-import-path" data-i18n="alert.gsmr_path"
-                        class="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        <span class="text-content">GSM file path</span>
-                    </label>
-                    <div class="flex mb-4">
-                        <input type="text" id="modal-import-path" readonly
-                            class="grow bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-l-lg p-2.5 focus:outline-hidden dark:bg-gray-600 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" />
-                        <button type="button" id="modal-import-select-path"
-                            class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-r-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                            <i class="fa-solid fa-ellipsis"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div
-                    class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b dark:border-gray-600">
-                    <button type="button" id="modal-import-confirm"
-                        class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700">Ok</button>
-                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button id="modal-import-close" class="px-6 py-2">Cancel</button>
+                <button id="modal-import-confirm" class="primary-button px-8 py-2" data-i18n="main.import">Import</button>
             </div>
         </div>
     </div>
 
-    <div id="modal-manage-backups" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 max-h-[calc(100%-1rem)]">
-        <div class="relative p-4 w-full max-w-4xl max-h-full">
-            <div class="relative bg-white rounded-lg shadow-sm dark:bg-gray-700">
-                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                    <div>
-                        <h3 id="modal-manage-backups-title"
-                            class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                        </h3>
-                        <div id="modal-manage-backups-header-info"
-                            class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                        </div>
-                    </div>
-                    <button type="button" id="modal-manage-backups-close"
-                        class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                        <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                        </svg>
-                        <span class="sr-only">Close modal</span>
-                    </button>
+    <!-- Manage Backups Modal -->
+    <div id="modal-manage-backups" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
+        <div class="modal-container w-full max-w-4xl max-h-[85vh] flex flex-col p-6">
+            <div class="flex justify-between items-start mb-6">
+                <div>
+                    <h3 id="modal-manage-backups-title" class="text-2xl font-bold text-xbox-green"></h3>
+                    <div id="modal-manage-backups-header-info" class="text-sm opacity-60 mt-1"></div>
                 </div>
+                <button id="modal-manage-backups-close" class="p-2 opacity-60 hover:opacity-100"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div id="modal-manage-backups-content" class="flex-1 overflow-y-auto"></div>
+        </div>
+    </div>
 
-                <div
-                    class="break-all max-h-[calc(100vh-250px)] p-4 md:p-5 space-y-4 overflow-y-auto scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-                    <div id="modal-manage-backups-content"></div>
-                </div>
+    <!-- Auto Backup Modal -->
+    <div id="modal-auto-backup" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
+        <div class="modal-container w-full max-w-lg p-6">
+            <h3 id="modal-auto-backup-title" class="text-xl font-bold text-xbox-green mb-6 flex items-center gap-2"></h3>
+            <div id="modal-auto-backup-content" class="space-y-4"></div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button id="modal-auto-backup-close" class="px-6 py-2">Cancel</button>
+                <button id="modal-auto-backup-confirm" class="primary-button px-8 py-2">Confirm</button>
             </div>
         </div>
     </div>
 
-    <div id="modal-auto-backup" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 max-h-[calc(100%-1rem)]">
-        <div class="relative p-4 w-full max-w-lg max-h-full">
-            <div class="relative bg-white rounded-lg shadow-sm dark:bg-gray-700">
-                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                    <h3 id="modal-auto-backup-title" class="text-xl font-semibold text-gray-900 dark:text-white">
-                        <i class="fa-solid fa-clock-rotate-left mr-2"></i>
-                        <span class="text-content">Auto Backup</span>
-                    </h3>
-                    <button type="button" id="modal-auto-backup-close"
-                        class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                        <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                        </svg>
-                        <span class="sr-only">Close modal</span>
-                    </button>
-                </div>
+    <!-- Navigation Header -->
+    <header class="flex items-center justify-between mb-6 border-b border-white/10 pb-2">
+        <nav class="flex gap-1" id="main-tab" role="tablist">
+            <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100" data-i18n="main.backup">Backup</button>
+            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100" data-i18n="main.restore">Restore</button>
+        </nav>
 
-                <div class="p-4 md:p-5">
-                    <div id="modal-auto-backup-content"></div>
-                </div>
-
-                <div
-                    class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b dark:border-gray-600">
-                    <button type="button" id="modal-auto-backup-confirm"
-                        class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-hidden font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700">
-                        <span class="text-content">Ok</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tab selections -->
-    <div class="mb-4 border-b border-gray-200 dark:border-gray-700 flex flex-row">
-        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="main-tab"
-            data-tabs-toggle="#main-tab-content" role="tablist">
-            <li class="me-2" role="presentation">
-                <button
-                    class="select-none inline-block p-4 border-b-2 rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
-                    id="backup-tab" data-tabs-target="#backup" type="button" role="tab" aria-controls="backup"
-                    aria-selected="false" data-i18n="main.backup">
-                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i>
-                    <span class="text-content">Backup</span>
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <button id="home-options-button" class="home-action-button px-4 py-2 flex items-center gap-2 text-sm font-semibold">
+                    <i class="fa-solid fa-gear"></i> <span data-i18n="main.options">Options</span> <i class="fa-solid fa-chevron-down text-[10px]"></i>
                 </button>
-            </li>
-            <li class="me-2" role="presentation">
-                <button
-                    class="select-none inline-block p-4 border-b-2 rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
-                    id="restore-tab" data-tabs-target="#restore" type="button" role="tab" aria-controls="restore"
-                    aria-selected="false" data-i18n="main.restore">
-                    <i class="fa-solid fa-cloud-arrow-down mr-2"></i>
-                    <span class="text-content">Restore</span>
-                </button>
-            </li>
-            <li role="presentation">
-                <button
-                    class="select-none inline-block p-4 border-b-2 rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
-                    id="custom-tab" data-tabs-target="#custom" type="button" role="tab" aria-controls="custom"
-                    aria-selected="false" data-i18n="main.custom">
-                    <i class="fa-solid fa-file-circle-plus mr-2"></i>
-                    <span class="text-content">Custom Games</span>
-                </button>
-            </li>
-        </ul>
-    </div>
+                <div id="home-options-menu" class="hidden absolute right-0 top-full mt-2 w-52 floating-surface overflow-hidden z-30">
+                    <a href="#" data-home-action="settings" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="settings.title">Settings</a>
+                    <a href="#" data-home-action="view-account-ids" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="main.view_account_ids">View Account IDs</a>
+                    <a href="#" data-home-action="scan-full" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="main.scan_full">Scan Full Database</a>
+                    <a href="#" data-home-action="about" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="about.title">About</a>
+                </div>
+            </div>
+            <button id="home-import-button" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-file-import"></i>
+                <span data-i18n="main.import">Import</span>
+            </button>
+            <button id="home-export-button" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-file-export"></i>
+                <span data-i18n="main.export">Export</span>
+            </button>
+            <button id="update-database" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2 text-xbox-green">
+                <i id="update-database-icon" class="fa-solid fa-rotate"></i>
+                <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
+            </button>
+        </div>
+    </header>
 
-    <div id="default-tab-content">
+    <!-- Main Content -->
+    <main id="main-tab-content">
         <!-- Tab 1: Backup -->
-        <div class="hidden" id="backup" role="tabpanel" aria-labelledby="backup-tab">
-            <div id="backup-loading" role="status" class="flex justify-center" data-i18n="main.loading"></div>
-
-            <!-- Backup summary -->
-            <div id="backup-summary" class="w-full p-8 text-center hidden animate-fadeInShift">
-                <h5 data-i18n="main.backup_complete" class="mb-8 text-5xl font-bold text-gray-900 dark:text-white">
-                    <span class="text-content">Backup Complete</span>
-                </h5>
-
-                <div class="flex justify-center items-center mb-8">
-                    <i class="fa-solid fa-circle-check text-green-500 fa-5x"></i>
+        <section id="backup" role="tabpanel" class="hidden">
+            <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
+            
+            <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
+                <h2 class="text-4xl font-black mb-6" data-i18n="main.backup_complete">BACKUP COMPLETE</h2>
+                <i class="fa-solid fa-circle-check text-xbox-green text-7xl mb-8"></i>
+                <div class="space-y-2 text-lg opacity-80">
+                    <p id="backup-summary-total-games"></p>
+                    <p id="backup-summary-total-size"></p>
+                    <p id="backup-summary-save-path" class="text-sm opacity-50"></p>
                 </div>
-
-                <div class="text-lg text-gray-700 dark:text-gray-300 mb-6">
-                    <p class="mb-4" data-i18n="summary.total_games_backed_up">
-                        <span class="text-content">Total games backed up:</span>
-                        <span id="backup-summary-total-games"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                    <p id="backup-summary-total-failed-container" class="hidden mb-4"
-                        data-i18n="summary.total_backup_failed">
-                        <i class="fa-solid fa-xmark mr-1 text-red-700"></i>
-                        <span id="backup-summary-total-failed" class="text-content">Failed to backup x games</span>
-                        <button id="backup-failed-learn-more" type="button"
-                            class="ms-2 text-blue-500 text-lg font-medium underline" data-i18n="alert.learn_more">
-                            <span class="text-content">Learn More</span>
-                        </button>
-                    </p>
-                    <p class="mb-4" data-i18n="summary.total_backup_size">
-                        <span class="text-content">Total backup size:</span>
-                        <span id="backup-summary-total-size"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                    <p class="mb-4" data-i18n="summary.backup_saved_to">
-                        <span class="text-content">Backup saved to:</span>
-                        <span id="backup-summary-save-path"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                </div>
-
-                <div class="mt-8">
-                    <button id="backup-summary-done" type="button" data-i18n="summary.done"
-                        class="animate-fadeIn hidden text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                        <i class="fa-solid fa-check mr-1"></i>
-                        <span class="text-content">Done</span>
-                    </button>
-                </div>
+                <button id="backup-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
 
-            <!-- Backup content -->
-            <div id="backup-content" class="hidden">
-                <div class="pb-4 bg-white dark:bg-gray-900 sticky top-0 flex flex-row justify-between items-center">
-                    <label for="table-search" class="sr-only">Search</label>
-                    <div class="relative mt-1">
-                        <div
-                            class="absolute inset-y-0 rtl:inset-r-0 start-0 flex items-center ps-3 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" fill="none"
-                                viewBox="0 0 20 20">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
-                                    stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z" />
-                            </svg>
-                        </div>
-                        <input type="text" id="backup-search"
-                            class="block py-2 pt-2 ps-10 text-sm text-gray-900 border border-gray-300 rounded-lg w-80 bg-gray-50 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-                            data-i18n-placeholder="main.search_for_games">
+            <div id="backup-content" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 opacity-40"></i>
+                        <input type="text" id="backup-search" class="pl-10 w-80" data-i18n-placeholder="main.search_for_games">
                     </div>
                     <div class="text-right">
-                        <p id="backup-selected-count" class="text-lg text-gray-900 dark:text-white"></p>
-                        <p id="backup-selected-size" class="text-sm text-gray-500 dark:text-gray-40e"></p>
+                        <div id="backup-selected-count" class="text-xl font-bold"></div>
+                        <div id="backup-selected-size" class="text-sm opacity-50"></div>
                     </div>
                 </div>
 
-                <!-- Backup table -->
-                <div
-                    class="table-container table-height shadow-md rounded-lg overflow-y-auto scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-                    <table class="w-full table-fixed text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                        <thead
-                            class="sticky top-0 text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                <div class="table-container h-[calc(100vh-250px)]">
+                    <table class="w-full text-left">
+                        <thead>
                             <tr>
-                                <th scope="col" class="w-[6%] py-3 pl-4">
-                                    <div class="flex items-center">
-                                        <input id="backup-checkbox-all-search" type="checkbox"
-                                            class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:outline-hidden dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600">
-                                        <label for="backup-checkbox-all-search" class="sr-only">checkbox</label>
-                                    </div>
-                                </th>
-                                <th scope="col" class="pr-6 py-3 truncate w-[26%]" data-i18n="main.game_name">
-                                    <span class="text-content">Game Name</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[21%]" data-i18n="main.supported_plats">
-                                    <span class="text-content">Supported Platforms</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[16%]" data-i18n="main.backup_size">
-                                    <span class="text-content">Backup Size</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[18%]" data-i18n="main.newest_backup_time">
-                                    <span class="text-content">Newest Backup Time</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[13%] text-center" data-i18n="main.more">
-                                    <span class="text-content">More</span>
-                                </th>
+                                <th class="w-12 p-4"><input id="backup-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
+                                <th class="p-4" data-i18n="main.game_name">Game Name</th>
+                                <th class="p-4" data-i18n="main.supported_plats">Platforms</th>
+                                <th class="p-4" data-i18n="main.backup_size">Size</th>
+                                <th class="p-4" data-i18n="main.newest_backup_time">Last Backup</th>
+                                <th class="p-4 text-center" data-i18n="main.more">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Backup table content -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
 
-                <!-- Backup and database update button -->
-                <div class="mt-4 mb-2 flex flex-row items-center">
-                    <button id="backup-button" type="button" data-i18n="main.backup_selected"
-                        class="select-none whitespace-nowrap text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                        <i id="backup-icon" class="fa-solid fa-arrow-right-long mr-1"></i>
-                        <span id="backup-text" class="text-content">Backup Selected Games</span>
-                    </button>
-
-                    <button id="update-database" type="button" data-i18n="main.update_database"
-                        class="select-none ml-auto text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-green-500 dark:hover:bg-green-600">
-                        <i id="update-database-icon" class="fa-solid fa-rotate mr-1"></i>
-                        <span id="update-database-text" class="text-content">Update Database</span>
+                <div class="flex justify-end">
+                    <button id="backup-button" class="primary-button px-8 py-3 flex items-center gap-2">
+                        <i id="backup-icon" class="fa-solid fa-bolt"></i> <span id="backup-text" data-i18n="main.backup_selected">Backup Selected</span>
                     </button>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Tab 2: Restore -->
-        <div class="hidden" id="restore" role="tabpanel" aria-labelledby="restore-tab">
-            <div id="restore-loading" role="status" class="flex justify-center" data-i18n="main.loading"></div>
-
-            <!-- Restore summary -->
-            <div id="restore-summary" class="w-full p-8 text-center hidden animate-fadeInShift">
-                <h5 data-i18n="main.restore_complete" class="mb-8 text-5xl font-bold text-gray-900 dark:text-white">
-                    <span class="text-content">Restore Complete</span>
-                </h5>
-
-                <div class="flex justify-center items-center mb-8">
-                    <i class="fa-solid fa-circle-check text-green-500 fa-5x"></i>
+        <section id="restore" role="tabpanel" class="hidden">
+            <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
+            
+            <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
+                <h2 class="text-4xl font-black mb-6" data-i18n="main.restore_complete">RESTORE COMPLETE</h2>
+                <i class="fa-solid fa-circle-check text-xbox-green text-7xl mb-8"></i>
+                <div class="space-y-2 text-lg opacity-80">
+                    <p id="restore-summary-total-games"></p>
+                    <p id="restore-summary-total-size"></p>
                 </div>
-
-                <div class="text-lg text-gray-700 dark:text-gray-300 mb-6">
-                    <p class="mb-4" data-i18n="summary.total_games_restored">
-                        <span class="text-content">Total games restored:</span>
-                        <span id="restore-summary-total-games"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                    <p id="restore-summary-total-failed-container" class="hidden mb-4"
-                        data-i18n="summary.total_restore_failed">
-                        <i class="fa-solid fa-xmark mr-1 text-red-700"></i>
-                        <span id="restore-summary-total-failed" class="text-content">Failed to restore x games</span>
-                        <button id="restore-failed-learn-more" type="button"
-                            class="ms-2 text-blue-500 text-lg font-medium underline" data-i18n="alert.learn_more">
-                            <span class="text-content">Learn More</span>
-                        </button>
-                    </p>
-                    <p class="mb-4" data-i18n="summary.total_restore_size">
-                        <span class="text-content">Total restore size:</span>
-                        <span id="restore-summary-total-size"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                    <p class="mb-4" data-i18n="summary.restored_from">
-                        <span class="text-content">Restored from:</span>
-                        <span id="restore-summary-save-path"
-                            class="font-semibold text-gray-900 dark:text-white text-xl"></span>
-                    </p>
-                </div>
-
-                <div class="mt-8">
-                    <button id="restore-summary-done" type="button" data-i18n="summary.done"
-                        class="animate-fadeIn hidden text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                        <i class="fa-solid fa-check mr-1"></i>
-                        <span class="text-content">Done</span>
-                    </button>
-                </div>
+                <button id="restore-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
 
-            <!-- Restore content -->
-            <div id="restore-content" class="hidden">
-                <div class="pb-4 bg-white dark:bg-gray-900 sticky top-0 flex flex-row justify-between items-center">
-                    <label for="table-search" class="sr-only">Search</label>
-                    <div class="relative mt-1">
-                        <div
-                            class="absolute inset-y-0 rtl:inset-r-0 start-0 flex items-center ps-3 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" fill="none"
-                                viewBox="0 0 20 20">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
-                                    stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z" />
-                            </svg>
-                        </div>
-                        <input type="text" id="restore-search"
-                            class="block py-2 pt-2 ps-10 text-sm text-gray-900 border border-gray-300 rounded-lg w-80 bg-gray-50 focus:outline-hidden dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-                            data-i18n-placeholder="main.search_for_games">
-                    </div>
+            <div id="restore-content" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <input type="text" id="restore-search" class="w-80" data-i18n-placeholder="main.search_for_games">
                     <div class="text-right">
-                        <p id="restore-selected-count" class="text-lg text-gray-900 dark:text-white"></p>
-                        <p id="restore-selected-size" class="text-sm text-gray-500 dark:text-gray-40e"></p>
+                        <div id="restore-selected-count" class="text-xl font-bold"></div>
+                        <div id="restore-selected-size" class="text-sm opacity-50"></div>
                     </div>
                 </div>
 
-                <!-- Restore table -->
-                <div
-                    class="table-container table-height shadow-md rounded-lg overflow-y-auto scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-                    <table class="w-full table-fixed text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                        <thead
-                            class="sticky top-0 text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                <div class="table-container h-[calc(100vh-250px)]">
+                    <table class="w-full text-left">
+                        <thead>
                             <tr>
-                                <th scope="col" class="w-[6%] py-3 pl-4">
-                                    <div class="flex items-center">
-                                        <input id="restore-checkbox-all-search" type="checkbox"
-                                            class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:outline-hidden dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600">
-                                        <label for="restore-checkbox-all-search" class="sr-only">checkbox</label>
-                                    </div>
-                                </th>
-                                <th scope="col" class="pr-6 py-3 truncate w-[26%]" data-i18n="main.game_name">
-                                    <span class="text-content">Game Name</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[21%]" data-i18n="main.backup_count">
-                                    <span class="text-content">Number of Backups</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[16%]" data-i18n="main.restore_size">
-                                    <span class="text-content">Backup Size</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[18%]" data-i18n="main.newest_backup_time">
-                                    <span class="text-content">Newest Backup Time</span>
-                                </th>
-                                <th scope="col" class="px-6 py-3 truncate w-[13%] text-center" data-i18n="main.more">
-                                    <span class="text-content">More</span>
-                                </th>
+                                <th class="w-12 p-4"><input id="restore-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
+                                <th class="p-4" data-i18n="main.game_name">Game Name</th>
+                                <th class="p-4" data-i18n="main.backup_count">Backups</th>
+                                <th class="p-4" data-i18n="main.restore_size">Size</th>
+                                <th class="p-4" data-i18n="main.newest_backup_time">Last Backup</th>
+                                <th class="p-4 text-center" data-i18n="main.more">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Restore table content -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
 
-                <!-- Restore button -->
-                <div class="mt-4 mb-2 flex flex-row items-center">
-                    <button id="restore-button" type="button" data-i18n="main.restore_selected"
-                        class="select-none whitespace-nowrap text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                        <i id="restore-icon" class="fa-solid fa-arrow-right-long mr-1"></i>
-                        <span id="restore-text" class="text-content">Restore Selected Games</span>
+                <div class="flex justify-end">
+                    <button id="restore-button" class="primary-button px-8 py-3 flex items-center gap-2">
+                        <i id="restore-icon" class="fa-solid fa-clock-rotate-left"></i> <span id="restore-text" data-i18n="main.restore_selected">Restore Selected</span>
                     </button>
                 </div>
             </div>
-        </div>
-
-        <!-- Tab 3: Custom Games -->
-        <div class="hidden rounded-lg" id="custom" role="tabpanel" aria-labelledby="custom-tab">
-            <div id="custom-content" data-accordion="collapse"
-                class="custom-height overflow-y-auto scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-            </div>
-
-            <!-- Custom Buttons -->
-            <div class="flex mt-4">
-                <button type="button" id="custom-save-all" data-i18n="custom.save_all"
-                    class="select-none text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i>
-                    <span class="text-content">Save All</span>
-                </button>
-
-                <button type="button" id="custom-view-placeholder" data-i18n="custom.view_placeholder"
-                    class="select-none ml-auto text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-green-500 dark:hover:bg-green-600">
-                    <i class="fa-solid fa-list mr-1"></i>
-                    <span class="text-content">View Placeholders</span>
-                </button>
-                <button type="button" id="custom-add-game" data-i18n="custom.add_game"
-                    class="select-none ml-2 text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-green-500 dark:hover:bg-green-600">
-                    <i class="fa-solid fa-plus mr-1"></i>
-                    <span class="text-content">Add Game</span>
-                </button>
-            </div>
-
-            <!-- Placeholders Guide -->
-            <div id="placeholder-guide"
-                class="hidden animate-fadeInShift overflow-x-hidden fixed top-0 right-0 left-0 z-50 px-30 py-10 justify-center items-center w-full md:inset-0 scrollbar scrollbar-w-2 scrollbar-h-2 scrollbar-track-rounded-full scrollbar-thumb-rounded-full scrollbar-track-white scrollbar-thumb-slate-300 dark:scrollbar-track-gray-800 dark:scrollbar-thumb-slate-600">
-                <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-                    <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                        <caption
-                            class="p-5 text-lg font-semibold text-left rtl:text-right text-gray-900 bg-white dark:text-white dark:bg-gray-800">
-                            <div class="flex items-start justify-between">
-                                <div>
-                                    <span class="text-content" data-i18n="custom.placeholders_guide">Placeholders
-                                        Guide</span>
-                                    <p class="mt-1 text-sm font-normal text-gray-500 dark:text-gray-400 text-content"
-                                        data-i18n="custom.placeholders_guide_desc">
-                                        ...
-                                    </p>
-                                </div>
-                                <button type="button" id="placeholder-guide-close"
-                                    class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                                    <svg class="w-3 h-3" aria-hidden="true" fill="none" viewBox="0 0 14 14">
-                                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
-                                            stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </caption>
-                        <thead class="text-xs text-gray-700 bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                            <tr>
-                                <th scope="col" class="px-6 py-3 text-content" data-i18n="custom.placeholder">
-                                    Placeholder</th>
-                                <th scope="col" class="px-6 py-3 text-content" data-i18n="custom.resolved_path">Resolved
-                                    Path</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200"
-                                data-i18n="custom.game_install_path">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|game}}
-                                </th>
-                                <td class="px-6 py-4 text-content">{game_install_path}</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200"
-                                data-i18n="custom.steam_install_path">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|steam}}
-                                </th>
-                                <td class="px-6 py-4 text-content">{steam_install_path}</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200"
-                                data-i18n="custom.ubi_install_path">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|ubisoftconnect}}
-                                </th>
-                                <td class="px-6 py-4 text-content">{ubisoft_install_path}</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200"
-                                data-i18n="custom.os_username">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|username}}
-                                </th>
-                                <td class="px-6 py-4 text-content">{os_username}</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|userprofile}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    C:\Users\<span class="text-content">{os_username}</span>
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|userprofile/documents}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    C:\Users\<span class="text-content">{os_username}</span>\Documents
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i
-                                        class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|userprofile/appdata/locallow}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    C:\Users\<span class="text-content">{os_username}</span>\AppData\LocalLow
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|appdata}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    C:\Users\<span class="text-content">{os_username}</span>\AppData\Roaming
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|localappdata}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    C:\Users\<span class="text-content">{os_username}</span>\AppData\Local
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|programfiles}}
-                                </th>
-                                <td class="px-6 py-4">C:\Program Files</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|programdata}}
-                                </th>
-                                <td class="px-6 py-4">C:\ProgramData</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|public}}
-                                </th>
-                                <td class="px-6 py-4">C:\Users\Public</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|windir}}
-                                </th>
-                                <td class="px-6 py-4">C:\Windows</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|hkcu}}
-                                </th>
-                                <td class="px-6 py-4">HKEY_CURRENT_USER</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|hklm}}
-                                </th>
-                                <td class="px-6 py-4">HKEY_LOCAL_MACHINE</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|wow64}}
-                                </th>
-                                <td class="px-6 py-4">HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node</td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|osxhome}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    /Users/<span class="text-content">{os_username}</span>
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|linuxhome}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    /home/<span class="text-content">{os_username}</span>
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|xdgdatahome}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    /home/<span class="text-content">{os_username}</span>/.local/share
-                                </td>
-                            </tr>
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <i class="cursor-pointer fa-solid fa-copy mr-2"></i>{{p|xdgconfighome}}
-                                </th>
-                                <td class="px-6 py-4" data-i18n="custom.os_username">
-                                    /home/<span class="text-content">{os_username}</span>/.config
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
+        </section>
+    </main>
 </body>
 
 </html>

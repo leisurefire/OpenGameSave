@@ -1,0 +1,77 @@
+* {
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    overflow: hidden;
+    background: transparent;
+    user-select: none;
+    -webkit-app-region: no-drag;
+    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.menu-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(40, 40, 40, 0.96);
+    backdrop-filter: blur(35px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+}
+
+#menu-content-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    color: rgba(255, 255, 255, 0.9);
+    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+    transition: none !important;
+}
+
+.menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.menu-item i {
+    width: 16px;
+    min-width: 16px;
+    text-align: center;
+    opacity: 0.6;
+    font-size: 14px;
+    transition: none !important;
+}
+
+.menu-item:hover i {
+    opacity: 1;
+    color: #ffffff;
+}
+
+.menu-item span {
+    flex: 1;
+    overflow: hidden;
+    color: inherit;
+    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -72,7 +72,7 @@ async function populateBackupTable(data, iconMap) {
     const pinnedGamesWikiIds = settings.pinnedGames || [];
     const selectedWikiIds = getSelectedWikiIds('backup');
 
-    const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
+    const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
 
     tableBody.innerHTML = '';
     backupTableDataMap.clear();

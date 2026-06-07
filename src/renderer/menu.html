@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <div id="menu" class="menu-container">
+        <div id="menu-content-wrapper"></div>
+    </div>
+    <script>
+        window.api.receive('set-menu-items', (items) => {
+            const wrapper = document.getElementById('menu-content-wrapper');
+            wrapper.innerHTML = '';
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'menu-item';
+                div.innerHTML = `${item.icon ? `<i class="${item.icon}"></i>` : ''} <span>${item.label}</span>`;
+                div.addEventListener('pointerdown', (event) => {
+                    event.preventDefault();
+                    window.api.send('menu-item-click', item.action, item.data);
+                });
+                wrapper.appendChild(div);
+            });
+            
+            // Measure the inner wrapper ONLY, ignoring body/container residual sizes
+            requestAnimationFrame(() => {
+                const height = wrapper.offsetHeight; // This is the exact height of the items
+                // Add 2px to account for the top and bottom 1px border of menu-container
+                window.api.send('resize-and-show-menu', height + 2); 
+            });
+        });
+    </script>
+</body>
+</html>

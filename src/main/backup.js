@@ -16,13 +16,16 @@ const sqlite3 = require('sqlite3');
 const WinReg = require('winreg');
 
 const {
-    getMainWin, getStatus, updateStatus, getSignedDownloadUrl, getGameDisplayName,
+    getMainWin, getStatus, updateStatus, getGameDisplayName,
     calculateDirectorySize, ensureWritable, getNewestBackup, fsOriginalCopyFolder,
     placeholder_mapping, osKeyMap, getSettings, saveSettings
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
 
+const DATABASE_DOWNLOAD_URL = 'https://example.com/database.db';
 const execPromise = util.promisify(exec);
+
+
 
 
 // A sample backup game object: {
@@ -139,14 +142,6 @@ async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
                 }
 
                 await processAndPushGame(row, games);
-            } else {
-                // 2. Fallback to checking custom games
-                const customJsonPath = path.join(getSettings().backupPath, 'custom_entries.json');
-                if (fs.existsSync(customJsonPath)) {
-                    const { customGames, customGameErrors } = await processCustomEntries(customJsonPath, gameInstallPaths, wikiId);
-                    games.push(...customGames);
-                    errors.push(...customGameErrors);
-                }
             }
         } catch (error) {
             console.error(`Error fetching single game data for ${wikiId}: ${error.stack}`);
@@ -237,15 +232,6 @@ async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
                 }
             }
 
-            // 3. Process custom entries
-            const customJsonPath = path.join(getSettings().backupPath, 'custom_entries.json');
-
-            if (fs.existsSync(customJsonPath)) {
-                const { customGames, customGameErrors } = await processCustomEntries(customJsonPath, gameInstallPaths);
-                games.push(...customGames);
-                errors.push(...customGameErrors);
-            }
-
         } catch (error) {
             console.error(`Error displaying backup table: ${error.stack}`);
             errors.push(`${i18next.t('alert.backup_process_error_display')}: ${error.message}`);
@@ -313,13 +299,6 @@ async function getAllGameDataFromDB() {
                 mainWin.webContents.send('update-progress', progressId, progressTitle, dbProgress);
             }
 
-            const customJsonPath = path.join(getSettings().backupPath, 'custom_entries.json');
-            if (fs.existsSync(customJsonPath)) {
-                const { customGames, customGameErrors } = await processCustomEntries(customJsonPath, gameInstallPaths);
-                games.push(...customGames);
-                errors.push(...customGameErrors);
-            }
-
             mainWin.webContents.send('update-progress', progressId, progressTitle, 100);
             mainWin.webContents.send('show-alert', 'success', i18next.t('alert.scan_full_complete'));
 
@@ -334,34 +313,6 @@ async function getAllGameDataFromDB() {
             return { games, errors };
         }
     }
-}
-
-async function processCustomEntries(customJsonPath, gameInstallPaths, targetWikiId = null) {
-    const customGames = [];
-    const customGameErrors = [];
-
-    const customEntries = JSON.parse(fs.readFileSync(customJsonPath, 'utf-8'));
-    const entriesToProcess = targetWikiId
-        ? customEntries.filter(e => e.wiki_page_id === targetWikiId)
-        : customEntries;
-
-    for (let customEntry of entriesToProcess) {
-        try {
-            findInstallPath(customEntry, gameInstallPaths);
-            customEntry.platform = ['Custom'];
-            customEntry.latest_backup = getNewestBackup(customEntry.wiki_page_id);
-            for (const plat in customEntry.save_location) {
-                customEntry.save_location[plat] = customEntry.save_location[plat].map(entry => entry.template);
-            }
-
-            await processAndPushGame(customEntry, customGames);
-        } catch (err) {
-            console.error(`Error processing custom game ${customEntry.title}: ${err.stack}`);
-            customGameErrors.push(`${i18next.t('alert.backup_process_error_custom', { game_name: customEntry.title })}: ${err.message}`);
-        }
-    }
-
-    return { customGames, customGameErrors };
 }
 
 async function process_game(db_game_row) {
@@ -770,25 +721,27 @@ async function updateDatabase() {
 
         await new Promise(async (resolve, reject) => {
             try {
-                const databaseLink = await getSignedDownloadUrl('GSM/database.db');
-                if (!databaseLink) {
-                    throw new Error("Request failed.");
-                }
                 const { data, headers } = await axios({
                     method: 'get',
-                    url: databaseLink,
+                    url: DATABASE_DOWNLOAD_URL,
                     responseType: 'stream',
+                    timeout: 30000,
                 });
 
                 const totalSize = parseInt(headers['content-length'], 10);
+
                 let downloadedSize = 0;
 
                 const fileStream = fs.createWriteStream(dbTempPath);
 
                 data.on('data', (chunk) => {
                     downloadedSize += chunk.length;
-                    const progressPercentage = Math.round((downloadedSize / totalSize) * 100);
+                    const progressPercentage = Number.isFinite(totalSize) && totalSize > 0
+                        ? Math.round((downloadedSize / totalSize) * 100)
+                        : 0;
                     getMainWin().webContents.send('update-progress', progressId, progressTitle, progressPercentage);
+
+
                 });
 
                 data.on('error', (error) => {

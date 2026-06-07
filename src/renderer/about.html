@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -7,59 +7,40 @@
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://api.github.com;">
     <title class="text-content" data-i18n="about.title">About</title>
-    <!-- <link href="../../node_modules/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
-    <link href="output.css" rel="stylesheet">
-    <script defer type="module" src="js/utility.js"></script>
-    <script defer type="module" src="js/aboutPage.js"></script> -->
 </head>
 
-<body class="bg-white dark:bg-gray-900 p-3 flex flex-col items-center justify-center h-screen select-none">
+<body class="mica-effect about-container select-none">
 
-    <div class="flex flex-row max-w-sm mx-auto w-full text-center items-center justify-center mb-7">
-        <img src="../assets/logo.png" alt="App Logo" class="w-32 rounded-sm mr-5">
-
-        <div class="text-gray-900 dark:text-white">
-            <h1 class="text-2xl mb-4" data-i18n="main.title">
-                <span class="text-content">Game Save manager</span>
-            </h1>
-            <div class="text-[0.8rem] gap-5 flex flex-row items-center justify-center">
-                <div class="flex flex-col gap-y-0.5">
-                    <div>
-                        <span class="text-content" data-i18n="about.current_version">Current version: </span>
-                        <span id="current-version"></span>
-                    </div>
-                    <div>
-                        <span class="text-content" data-i18n="about.latest_version">Latest version: </span>
-                        <span id="latest-version" class="text-content" data-i18n="main.loading">Loading...</span>
-                    </div>
-                </div>
-
-                <button id="update-button" type="button" data-i18n="about.update"
-                    class="hidden text-white bg-blue-700 hover:bg-blue-800 rounded-sm px-1.5 py-1 dark:bg-blue-600 dark:hover:bg-blue-700 border-1 border-blue-400">
-                    <span id="backup-text" class="text-content">Update Now</span>
-                </button>
+    <div class="flex items-center gap-6 w-full max-w-md justify-center">
+        <img src="../assets/logo.png" alt="App Logo" class="w-20 rounded-2xl shadow-2xl">
+        <div class="text-left">
+            <h1 class="text-2xl font-black text-xbox-green tracking-tight" data-i18n="main.title">Game Save Manager</h1>
+            <div class="mt-1 space-y-0.5 opacity-60 text-xs">
+                <p><span data-i18n="about.current_version">Current version:</span> <span id="current-version" class="font-mono"></span></p>
+                <p><span data-i18n="about.latest_version">Latest version:</span> <span id="latest-version" class="font-mono" data-i18n="main.loading">Loading...</span></p>
             </div>
-
+            <button id="update-button" class="hidden mt-3 primary-button px-4 py-1.5 text-[10px] font-bold" data-i18n="about.update">UPDATE NOW</button>
         </div>
     </div>
 
-    <div class="text-[0.8rem] text-gray-900 dark:text-white flex flex-col gap-2 items-center mb-2">
-        <p data-i18n="about.official_website">
-            <span class="text-content">Official Website: </span>
-            <a id="website-link" class="text-blue-600 dark:text-blue-400 cursor-pointer">https://gamezonelabs.com</a>
+    <div class="surface-effect p-6 w-full max-w-sm space-y-3">
+        <p class="text-sm flex justify-between">
+            <span class="opacity-40" data-i18n="about.official_website">Website</span>
+            <a id="website-link" class="text-xbox-green hover:underline cursor-pointer">gamezonelabs.com</a>
         </p>
-        <p data-i18n="about.github">
-            <span class="text-content">GitHub: </span>
-            <a id="github-link"
-                class="text-blue-600 dark:text-blue-400 cursor-pointer">https://github.com/dyang886/Game-Save-Manager</a>
+        <p class="text-sm flex justify-between">
+            <span class="opacity-40" data-i18n="about.github">GitHub</span>
+            <a id="github-link" class="text-xbox-green hover:underline cursor-pointer">dyang886/Game-Save-Manager</a>
         </p>
-        <p data-i18n="about.bilibili">
-            <span class="text-content">Bilibili: </span>
-            <a id="bilibili-link"
-                class="text-blue-600 dark:text-blue-400 cursor-pointer">https://space.bilibili.com/256673766</a>
+        <p class="text-sm flex justify-between">
+            <span class="opacity-40" data-i18n="about.bilibili">Bilibili</span>
+            <a id="bilibili-link" class="text-xbox-green hover:underline cursor-pointer">@yongcan_yang</a>
         </p>
     </div>
 
-</body>
+    <footer class="mt-8 text-[10px] opacity-30 font-medium tracking-widest uppercase">
+        Designed for Windows 11 & Xbox
+    </footer>
 
+</body>
 </html>

@@ -1,5 +1,4 @@
 import { showAlert, updateTranslations } from './utility.js';
-import { checkAndWarnUnsavedChanges } from './customTab.js';
 import { showManageBackupsModal, showAutoBackupModal } from './modalDisplay.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -51,13 +50,12 @@ function initializeTabs() {
     const tabElements = [
         { id: 'backup', triggerEl: document.querySelector('#backup-tab'), targetEl: document.querySelector('#backup') },
         { id: 'restore', triggerEl: document.querySelector('#restore-tab'), targetEl: document.querySelector('#restore') },
-        { id: 'custom', triggerEl: document.querySelector('#custom-tab'), targetEl: document.querySelector('#custom') },
     ];
 
     const options = {
         defaultTabId: 'backup',
-        activeClasses: 'text-blue-600 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-400 border-blue-600 dark:border-blue-500',
-        inactiveClasses: 'text-gray-500 hover:text-gray-600 dark:text-gray-400 border-gray-100 hover:border-gray-300 dark:border-gray-700 dark:hover:text-gray-300',
+        activeClasses: 'tab-active opacity-100',
+        inactiveClasses: 'opacity-60 hover:opacity-100',
     };
 
     if (tabsElement) {
@@ -68,21 +66,9 @@ function initializeTabs() {
 
         tabElements.forEach(tab => {
             tab.triggerEl.addEventListener('click', async () => {
-                // Check for unsaved changes in custom tab before leaving it
-                const currentCustomTab = tabElements.find(t => t.id === 'custom' && !t.targetEl.classList.contains('hidden'));
-                if (currentCustomTab && tab.id !== 'custom') {
-                    const canLeave = await checkAndWarnUnsavedChanges();
-                    if (!canLeave) {
-                        return;
-                    }
-                }
-
                 const contentEl = document.getElementById(`${tab.id}-content`);
                 if (contentEl) {
                     contentEl.classList.remove('animate-fadeInShift', 'animate-fadeOut');
-                }
-                if (tab.id === 'custom') {
-                    loadEntriesFromJson();
                 }
                 showTab(tab, tabElements, options);
             });
@@ -110,11 +96,13 @@ function showTab(tab, tabElements, options) {
 }
 
 const loader = `
-    <svg data-loader-active="true" aria-hidden="true" class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600" viewBox="0 0 100 101" fill="none">
-        <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
-        <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill"/>
-    </svg>
-    <span class="text-content pl-3 text-gray-900 dark:text-white">Loading...</span>
+    <div class="flex flex-col items-center gap-4">
+        <svg data-loader-active="true" aria-hidden="true" class="w-12 h-12 text-white/10 animate-spin fill-xbox-green" viewBox="0 0 100 101" fill="none">
+            <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
+            <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill"/>
+        </svg>
+        <span class="text-content text-xl font-bold opacity-40">Loading...</span>
+    </div>
 `;
 
 export async function showLoadingIndicator(tabName) {
@@ -126,7 +114,7 @@ export async function showLoadingIndicator(tabName) {
     actionSummary.classList.add('hidden');
     document.querySelector(`#${tabName}-summary-done`).classList.add('hidden');
     actionButton.disabled = true;
-    actionButton.classList.add('cursor-not-allowed');
+    actionButton.classList.add('cursor-not-allowed', 'opacity-50');
 
     if (contentContainer && window.getComputedStyle(contentContainer).display !== 'none') {
         contentContainer.classList.remove('animate-fadeInShift');
@@ -141,8 +129,6 @@ export async function showLoadingIndicator(tabName) {
             loadingContainer.querySelector('.text-content').textContent = await window.i18n.translate(loadingTextKey);
             loadingContainer.classList.remove('hidden');
         }
-
-        // First time showing loader without table content
     } else {
         if (loadingContainer) {
             loadingContainer.innerHTML = loader;
@@ -159,7 +145,7 @@ export function hideLoadingIndicator(tabName) {
     const actionButton = document.getElementById(`${tabName}-button`);
 
     actionButton.disabled = false;
-    actionButton.classList.remove('cursor-not-allowed');
+    actionButton.classList.remove('cursor-not-allowed', 'opacity-50');
 
     if (loadingContainer) {
         loadingContainer.classList.add('hidden');
@@ -214,36 +200,29 @@ const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox'
 export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId) {
     const row = document.createElement('tr');
     row.setAttribute('data-wiki-id', wikiPageId);
-    row.classList.add('bg-white', 'border-b', 'dark:bg-gray-800', 'dark:border-gray-700', 'hover:bg-gray-50', 'dark:hover:bg-gray-600');
+    row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
-        <td class="py-4 pl-4">
-            <div class="flex items-center">
-                <input type="checkbox" class="row-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:outline-hidden dark:bg-gray-700 dark:border-gray-600">
-                <label class="sr-only">checkbox</label>
-            </div>
+        <td class="p-4">
+            <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
         </td>
-        <th scope="row" class="pr-6 py-4 truncate font-medium text-gray-900 whitespace-nowrap dark:text-white">
+        <th scope="row" class="p-4 font-bold text-white truncate">
             <span data-icon="pin" class="hidden"><i class="fa-solid fa-thumbtack text-red-500 mr-2"></i></span>
             <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-green-500 mr-2"></i></span>
+            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
-        <td class="px-6 py-4 truncate">
+        <td class="p-4 truncate opacity-80">
             ${platformIcons}
         </td>
-        <td class="px-6 py-4 truncate backup-size">
+        <td class="p-4 truncate opacity-80 backup-size">
             ${backupSize}
         </td>
-        <td class="px-6 py-4 truncate newest-backup-time">
+        <td class="p-4 truncate opacity-60 newest-backup-time">
             ${newestBackupTime}
         </td>
-        <td class="px-6 py-4 truncate text-center">
-            <button class="dropdown-menu-button inline-flex items-center p-2 text-sm font-medium text-center text-gray-900 hover:bg-transparent focus:outline-hidden dark:text-white"
-                type="button">
-                <svg class="w-5 h-5" aria-hidden="true" fill="currentColor" viewBox="0 0 16 3">
-                    <path
-                        d="M2 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm6.041 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM14 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
-                </svg>
+        <td class="p-4 text-center">
+            <button class="dropdown-menu-button p-2 hover:text-xbox-green transition-colors" type="button">
+                <i class="fa-solid fa-ellipsis-vertical"></i>
             </button>
         </td>
     `;
@@ -253,36 +232,29 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
 export function createRestoreTableRow(gameTitle, backupCount, backupSize, newestBackupTime, wikiPageId) {
     const row = document.createElement('tr');
     row.setAttribute('data-wiki-id', wikiPageId);
-    row.classList.add('bg-white', 'border-b', 'dark:bg-gray-800', 'dark:border-gray-700', 'hover:bg-gray-50', 'dark:hover:bg-gray-600');
+    row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
-        <td class="py-4 pl-4">
-            <div class="flex items-center">
-                <input type="checkbox" class="row-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:outline-hidden dark:bg-gray-700 dark:border-gray-600">
-                <label class="sr-only">checkbox</label>
-            </div>
+        <td class="p-4">
+            <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
         </td>
-        <th scope="row" class="pr-6 py-4 truncate font-medium text-gray-900 whitespace-nowrap dark:text-white">
+        <th scope="row" class="p-4 font-bold text-white truncate">
             <span data-icon="pin" class="hidden"><i class="fa-solid fa-thumbtack text-red-500 mr-2"></i></span>
             <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-green-500 mr-2"></i></span>
+            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
-        <td class="px-6 py-4 truncate backup-count">
+        <td class="p-4 truncate opacity-80 backup-count">
             ${backupCount}
         </td>
-        <td class="px-6 py-4 truncate backup-size">
+        <td class="p-4 truncate opacity-80 backup-size">
             ${backupSize}
         </td>
-        <td class="px-6 py-4 truncate newest-backup-time">
+        <td class="p-4 truncate opacity-60 newest-backup-time">
             ${newestBackupTime}
         </td>
-        <td class="px-6 py-4 truncate text-center">
-            <button class="dropdown-menu-button inline-flex items-center p-2 text-sm font-medium text-center text-gray-900 hover:bg-transparent focus:outline-hidden dark:text-white"
-                type="button">
-                <svg class="w-5 h-5" aria-hidden="true" fill="currentColor" viewBox="0 0 16 3">
-                    <path
-                        d="M2 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm6.041 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM14 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
-                </svg>
+        <td class="p-4 text-center">
+            <button class="dropdown-menu-button p-2 hover:text-xbox-green transition-colors" type="button">
+                <i class="fa-solid fa-ellipsis-vertical"></i>
             </button>
         </td>
     `;
@@ -407,178 +379,111 @@ export function removeTableRow(tabName, wikiId) {
     updateSelectedCountAndSize(tabName);
 }
 
-async function createDropdownMenu(wikiPageId, tabName) {
-    let action = 'pin-on-top';
-    let i18nKey = 'main.pin_on_top';
-
-    const settings = await window.api.invoke('get-settings');
-    if (settings && settings.pinnedGames.includes(wikiPageId.toString())) {
-        action = 'unpin';
-        i18nKey = 'main.unpin';
+window.api.receive('execute-menu-action', async (action, data) => {
+    window.activeMenuTrigger = null;
+    if (action === 'pin-on-top') {
+        const wikiId = data;
+        const settings = await window.api.invoke('get-settings');
+        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
+        pinned_games_wiki_ids.add(wikiId);
+        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
+        pinGameOnTop('backup', wikiId);
+        pinGameOnTop('restore', wikiId);
+    } else if (action === 'unpin') {
+        const wikiId = data;
+        const settings = await window.api.invoke('get-settings');
+        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
+        pinned_games_wiki_ids.delete(wikiId);
+        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
+        unpinGameFromTop('backup', wikiId);
+        unpinGameFromTop('restore', wikiId);
+    } else if (action === 'open-wiki') {
+        if (data && data !== 'none') window.api.invoke('open-url', data);
+        else showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
+    } else if (action === 'manage-backups') {
+        showManageBackupsModal(data);
+    } else if (action === 'auto-backup') {
+        showAutoBackupModal(data);
+    } else if (action === 'settings') {
+        window.api.send('open-settings-window');
+    } else if (action === 'view-account-ids') {
+        window.api.send('view-account-ids');
+    } else if (action === 'scan-full') {
+        window.api.send('scan-full');
+    } else if (action === 'about') {
+        window.api.send('open-about-window');
     }
-    const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : "none";
-
-    const dropdownMenu = document.createElement('div');
-    dropdownMenu.className = 'bg-white rounded-lg shadow-sm w-48 dark:bg-gray-700 absolute hidden animate-fadeInShift';
-    dropdownMenu.innerHTML = `
-        <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
-            <li>
-                <a href="#" data-action="${action}" data-id="${wikiPageId}" data-i18n="${i18nKey}"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">
-                    <span class="text-content"></span>
-                </a>
-            </li>
-            <li>
-                <a href="#" data-action="open-wiki" data-url="${wikiUrl}" data-i18n="main.view_wiki"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">
-                    <span class="text-content">View on PCGamingWiki</span>
-                </a>
-            </li>
-            <li>
-                <a href="#" data-action="manage-backups" data-id="${wikiPageId}" data-i18n="main.manage_backups"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">
-                    <span class="text-content">Manage Backups</span>
-                </a>
-            </li>
-            ${tabName !== 'restore' ? `<li>
-                <a href="#" data-action="auto-backup" data-id="${wikiPageId}" data-i18n="main.auto_backup"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">
-                    <span class="text-content"></span>
-                </a>
-            </li>` : ''}
-        </ul>
-    `;
-    dropdownMenu.querySelectorAll('.text-content').forEach(async (span) => {
-        span.textContent = await window.i18n.translate(span.parentElement.getAttribute('data-i18n'));
-    })
-    document.body.appendChild(dropdownMenu);
-    return dropdownMenu;
-}
-
-function positionDropdownMenu(button, dropdownMenu) {
-    const buttonRect = button.getBoundingClientRect();
-    const dropdownLeft = buttonRect.left + window.scrollX - buttonRect.width * 2;
-    const dropdownTop = buttonRect.bottom + window.scrollY;
-
-    dropdownMenu.style.top = `${dropdownTop}px`;
-    dropdownMenu.style.left = `${dropdownLeft}px`;
-    dropdownMenu.classList.remove('hidden');
-}
+});
 
 function setDropDownAction() {
-    let activeDropdownMenu = null;
-    let lastButtonClicked = null;
-
-    function removeDropDown() {
-        activeDropdownMenu.remove();
-        activeDropdownMenu = null;
-        lastButtonClicked = null;
-    }
-
     document.addEventListener('click', async (event) => {
         const button = event.target.closest('.dropdown-menu-button');
 
-        // Handle actions in the dropdown menu
-        let actionElement = event.target;
-        if (actionElement.tagName === 'SPAN') {
-            actionElement = actionElement.closest('a');
-        }
-        if (actionElement && actionElement.dataset.action === 'pin-on-top') {
-            const wikiId = actionElement.dataset.id;
-            if (wikiId) {
-                window.api.invoke('get-settings').then((settings) => {
-                    if (settings) {
-                        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
-                        pinned_games_wiki_ids.add(wikiId);
-                        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
-                        pinGameOnTop('backup', wikiId);
-                        pinGameOnTop('restore', wikiId);
-                    }
-                });
-            }
-            removeDropDown();
-            return;
-        }
-        if (actionElement && actionElement.dataset.action === 'unpin') {
-            const wikiId = actionElement.dataset.id;
-            if (wikiId) {
-                window.api.invoke('get-settings').then((settings) => {
-                    if (settings) {
-                        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
-                        pinned_games_wiki_ids.delete(wikiId);
-                        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
-                        unpinGameFromTop('backup', wikiId);
-                        unpinGameFromTop('restore', wikiId);
-                    }
-                });
-            }
-            removeDropDown();
-            return;
-        }
-        if (actionElement && actionElement.dataset.action === 'open-wiki') {
-            const wikiUrl = actionElement.dataset.url;
-            if (wikiUrl && wikiUrl !== 'none') {
-                window.api.invoke('open-url', wikiUrl);
-            } else {
-                showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
-            }
-            removeDropDown();
-            return;
-        }
-        if (actionElement && actionElement.dataset.action === 'manage-backups') {
-            const wikiId = actionElement.dataset.id;
-            if (wikiId) {
-                showManageBackupsModal(wikiId);
-            }
-            removeDropDown();
-            return;
-        }
-        if (actionElement && actionElement.dataset.action === 'auto-backup') {
-            const wikiId = actionElement.dataset.id;
-            if (wikiId) {
-                showAutoBackupModal(wikiId);
-            }
-            removeDropDown();
-            return;
-        }
-
-        // If clicking outside any dropdown, remove the active one
-        if (!button && activeDropdownMenu) {
-            removeDropDown();
-            return;
-        }
-
-        // If clicking the same button, toggle the dropdown visibility
-        if (button === lastButtonClicked && activeDropdownMenu) {
-            removeDropDown();
-            return;
-        }
-
-        // If clicking a different button or first time clicking
         if (button) {
-            const wikiPageId = button.closest('tr').getAttribute('data-wiki-id');
+            event.stopPropagation();
+            if (button === window.activeMenuTrigger) {
+                // Clicking the same button again should hide the menu
+                window.api.send('hide-popup-menu');
+                window.activeMenuTrigger = null;
+                return;
+            }
+
+            const row = button.closest('tr');
+            const wikiPageId = row.getAttribute('data-wiki-id');
             const tabName = button.closest('#backup, #restore, #custom')?.id || 'backup';
 
-            if (activeDropdownMenu) {
-                activeDropdownMenu.remove();
+            const settings = await window.api.invoke('get-settings');
+            const isPinned = settings.pinnedGames.includes(wikiPageId.toString());
+            const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : "none";
+
+            const menuItems = [
+                {
+                    label: await window.i18n.translate(isPinned ? 'main.unpin' : 'main.pin_on_top'),
+                    icon: isPinned ? 'fa-solid fa-thumbtack-slash' : 'fa-solid fa-thumbtack',
+                    action: isPinned ? 'unpin' : 'pin-on-top',
+                    data: wikiPageId
+                },
+                {
+                    label: await window.i18n.translate('main.view_wiki'),
+                    icon: 'fa-solid fa-globe',
+                    action: 'open-wiki',
+                    data: wikiUrl
+                },
+                {
+                    label: await window.i18n.translate('main.manage_backups'),
+                    icon: 'fa-solid fa-list-check',
+                    action: 'manage-backups',
+                    data: wikiPageId
+                }
+            ];
+
+            if (tabName !== 'restore') {
+                menuItems.push({
+                    label: await window.i18n.translate('main.auto_backup'),
+                    icon: 'fa-solid fa-clock-rotate-left',
+                    action: 'auto-backup',
+                    data: wikiPageId
+                });
             }
-            const dropdownMenu = await createDropdownMenu(wikiPageId, tabName);
-            positionDropdownMenu(button, dropdownMenu);
-            activeDropdownMenu = dropdownMenu;
-            lastButtonClicked = button;
+
+            const rect = button.getBoundingClientRect();
+            window.api.send('show-popup-menu', {
+                items: menuItems,
+                x: rect.right + 4, // Align right edge (MENU_WIDTH is 180)
+                y: rect.bottom + 8
+            });
+            window.activeMenuTrigger = button;
+            return;
         }
     });
 
-    // Close dropdown on scroll
-    document.querySelector('#backup .table-container').addEventListener('scroll', () => {
-        if (activeDropdownMenu) {
-            removeDropDown();
-        }
-    });
-    document.querySelector('#restore .table-container').addEventListener('scroll', () => {
-        if (activeDropdownMenu) {
-            removeDropDown();
-        }
+    // Close on scroll in either table
+    ['#backup .table-container', '#restore .table-container'].forEach(selector => {
+        const el = document.querySelector(selector);
+        if (el) el.addEventListener('scroll', () => {
+            window.api.send('hide-popup-menu');
+            window.activeMenuTrigger = null;
+        });
     });
 }
 

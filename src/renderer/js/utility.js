@@ -1,8 +1,4 @@
-window.api.send('load-theme');
-
-window.api.receive('apply-theme', (theme) => {
-    changeTheme(theme);
-});
+document.documentElement.classList.add('dark');
 
 window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
@@ -24,117 +20,157 @@ window.api.receive('view_account_ids', () => {
     showAccountModal();
 });
 
+window.api.receive('menu-hidden', () => {
+    window.activeMenuTrigger = null;
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.documentElement.classList.add('dark');
+    setupHomeActions();
+});
+
+function setupHomeActions() {
+    const optionsButton = document.getElementById('home-options-button');
+    const importButton = document.getElementById('home-import-button');
+    const exportButton = document.getElementById('home-export-button');
+
+    if (optionsButton) {
+        optionsButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+
+            if (optionsButton === window.activeMenuTrigger) {
+                window.api.send('hide-popup-menu');
+                window.activeMenuTrigger = null;
+                return;
+            }
+
+            const menuItems = [
+                {
+                    label: await window.i18n.translate('settings.title'),
+                    icon: 'fa-solid fa-gear',
+                    action: 'settings'
+                },
+                {
+                    label: await window.i18n.translate('main.view_account_ids'),
+                    icon: 'fa-solid fa-user-tag',
+                    action: 'view-account-ids'
+                },
+                {
+                    label: await window.i18n.translate('main.scan_full'),
+                    icon: 'fa-solid fa-magnifying-glass-plus',
+                    action: 'scan-full'
+                },
+                {
+                    label: await window.i18n.translate('about.title'),
+                    icon: 'fa-solid fa-circle-info',
+                    action: 'about'
+                }
+            ];
+
+            const rect = optionsButton.getBoundingClientRect();
+            window.api.send('show-popup-menu', {
+                items: menuItems,
+                x: rect.right - 180, // Align right edge (MENU_WIDTH is 180)
+                y: rect.bottom + 8
+            });
+            window.activeMenuTrigger = optionsButton;
+        });
+    }
+
+    if (importButton) {
+        importButton.addEventListener('click', () => showImportModal(''));
+    }
+
+    if (exportButton) {
+        exportButton.addEventListener('click', () => showExportModal());
+    }
+}
+
 export async function updateTranslations(container) {
     container.querySelectorAll("[data-i18n]").forEach(async (el) => {
         const key = el.getAttribute("data-i18n");
         const translation = await window.i18n.translate(key);
         if (translation) {
-
-            // The element itself has .text-content
-            if (el.classList.contains('text-content')) {
-                el.innerText = translation;
-            }
-
-            // The element has a child that contains .text-content
+            // Priority 1: Specifically marked span for dynamic content protection
             const textContentElement = el.querySelector('.text-content');
             if (textContentElement) {
                 textContentElement.innerText = translation;
             }
+            // Priority 2: If the element itself is marked as text-content
+            else if (el.classList.contains('text-content')) {
+                el.innerText = translation;
+            }
+            // Priority 3: Default behavior for buttons and simple containers without children
+            else if (el.children.length === 0 || (el.tagName === 'BUTTON' && !el.querySelector('i'))) {
+                el.innerText = translation;
+            }
         }
     });
 
-    // Translate placeholders
     container.querySelectorAll('[data-i18n-placeholder]').forEach(async element => {
         const i18nKey = element.getAttribute('data-i18n-placeholder');
         element.setAttribute('placeholder', await window.i18n.translate(i18nKey));
     });
 }
 
-function changeTheme(theme) {
-    if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
-}
 
 export async function showAlert(type, message, modalContent) {
     const alertContainer = document.getElementById('alert-container');
 
-    const alertClasses = {
-        info: 'text-blue-800 bg-blue-50 dark:bg-gray-800 dark:text-blue-400',
-        error: 'text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400',
-        success: 'text-green-800 bg-green-50 dark:bg-gray-800 dark:text-green-400',
-        warning: 'text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300',
-        modal: 'text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400',
+    const alertStyles = {
+        info: 'bg-white/10 text-white border-white/5',
+        error: 'bg-red-500/10 text-red-500 border-red-500/20',
+        success: 'bg-xbox-green/10 text-xbox-green border-xbox-green/20',
+        warning: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+        modal: 'bg-red-500/10 text-red-500 border-red-500/20',
     };
 
-    const iconPaths = {
-        info: 'M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z',
-        error: 'M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z',
-        success: 'M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z',
-        warning: 'M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z',
-        modal: 'M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z',
+    const iconClass = {
+        info: 'fa-circle-info',
+        error: 'fa-circle-xmark',
+        success: 'fa-circle-check',
+        warning: 'fa-triangle-exclamation',
+        modal: 'fa-circle-question',
     };
 
     const alertElement = document.createElement('div');
-    alertElement.className = `flex ml-auto max-w-max items-center p-4 mb-2 rounded-lg ${alertClasses[type]} animate-fadeInShift`;
+    alertElement.className = `flex items-center gap-4 p-4 rounded-xl border floating-surface shadow-2xl ${alertStyles[type]} animate-fadeInShift max-w-sm`;
 
     alertElement.innerHTML = `
-        <svg class="shrink-0 w-4 h-4" aria-hidden="true" fill="currentColor"
-            viewBox="0 0 20 20">
-            <path
-                d="${iconPaths[type]}" />
-        </svg>
-        <span class="sr-only">${type.charAt(0).toUpperCase() + type.slice(1)}</span>
-        <div class="ms-3 text-sm font-medium">
+        <i class="fa-solid ${iconClass[type]} text-xl"></i>
+        <div class="flex-1 text-sm font-bold leading-tight">
             <span class="text-content">${message}</span>
         </div>
     `;
 
     if (type === 'modal') {
-        alertElement.innerHTML += `
-            <button type="button" class="ms-2 text-blue-500 text-sm font-medium underline" data-i18n="alert.learn_more">
-                <span class="text-content">Learn More</span>
-            </button>
-        `;
-
-        alertElement.querySelector('button').addEventListener('click', () => {
+        const learnMoreBtn = document.createElement('button');
+        learnMoreBtn.className = 'text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity underline';
+        learnMoreBtn.setAttribute('data-i18n', 'alert.learn_more');
+        learnMoreBtn.innerHTML = '<span class="text-content"></span>';
+        learnMoreBtn.addEventListener('click', () => {
             showInfoModal(message, modalContent);
         });
-
+        alertElement.appendChild(learnMoreBtn);
     } else {
-        alertElement.innerHTML += `
-            <button type="button"
-                class="ms-auto -mx-1.5 -my-1.5 rounded-lg p-1.5 inline-flex items-center justify-center h-8 w-8 hover:bg-opacity-75"
-                aria-label="Close">
-                <span class="sr-only">Close</span>
-                <svg class="w-3 h-3" aria-hidden="true" fill="none"
-                    viewBox="0 0 14 14">
-                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-                </svg>
-            </button>
-        `;
-
-        // Handle manual close
-        alertElement.querySelector('button').addEventListener('click', () => {
-            alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOutShift');
-            alertElement.addEventListener('animationend', () => {
-                alertElement.remove();
-            });
-        });
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'p-1 opacity-40 hover:opacity-100 transition-opacity';
+        closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        closeBtn.onclick = () => {
+            alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOut');
+            setTimeout(() => alertElement.remove(), 300);
+        };
+        alertElement.appendChild(closeBtn);
     }
 
     alertContainer.appendChild(alertElement);
     updateTranslations(alertElement);
 
-    // Handle automatic removal after 5 seconds
     setTimeout(() => {
-        alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOutShift');
-        alertElement.addEventListener('animationend', () => {
-            alertElement.remove();
-        });
+        if (alertElement.parentNode) {
+            alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOut');
+            setTimeout(() => alertElement.remove(), 300);
+        }
     }, 5000);
 }
 
@@ -151,21 +187,16 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
 
         modalTitleElement.textContent = modalTitle;
 
-        // Handle mixed content: strings as plain text, arrays as list items
         if (Array.isArray(modalContent)) {
-            const contentElements = modalContent.map(item => {
+            modalContentElement.innerHTML = modalContent.map(item => {
                 if (Array.isArray(item)) {
-                    // Nested array becomes a list
-                    const listItems = item.map(listItem => `<li>${listItem}</li>`).join('');
-                    return `<ul class="list-disc list-inside ml-3">${listItems}</ul>`;
-                } else {
-                    // String becomes a paragraph
-                    return `<p>${item}</p>`;
+                    return `<ul class="space-y-2 py-2">${item.map(li => `<li class="flex gap-2 opacity-80 text-sm"><i class="fa-solid fa-caret-right text-xbox-green mt-1"></i>${li}</li>`).join('')}</ul>`;
                 }
+                return `<p class="text-sm opacity-80 leading-relaxed mb-2">${item}</p>`;
             }).join('');
-            modalContentElement.innerHTML = contentElements;
         } else {
             modalContentElement.textContent = modalContent;
+            modalContentElement.className = "text-sm opacity-80 leading-relaxed";
         }
 
         const closeModal = () => {
@@ -176,28 +207,14 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
         };
 
         const cleanupListeners = () => {
-            closeButton.removeEventListener('click', handleClose);
-            noButton.removeEventListener('click', handleNo);
-            confirmButton.removeEventListener('click', handleConfirm);
+            closeButton.onclick = null;
+            noButton.onclick = null;
+            confirmButton.onclick = null;
         };
 
         const handleClose = () => {
             closeModal();
-            if (style === 'yesno') {
-                resolve(false);
-            } else {
-                resolve(true);
-            }
-        };
-
-        const handleNo = () => {
-            closeModal();
-            resolve(false);
-        };
-
-        const handleConfirm = () => {
-            closeModal();
-            resolve(true);
+            resolve(style === 'yesno' ? false : true);
         };
 
         if (style === 'yesno') {
@@ -206,16 +223,16 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
             confirmButton.textContent = await window.i18n.translate('alert.yes');
         } else {
             noButton.style.display = 'none';
-            confirmButton.textContent = 'Ok';
+            confirmButton.textContent = 'OK';
         }
 
         modal.classList.add('flex');
         modal.classList.remove('hidden');
         modalOverlay.classList.remove('hidden');
 
-        closeButton.addEventListener('click', handleClose);
-        noButton.addEventListener('click', handleNo);
-        confirmButton.addEventListener('click', handleConfirm);
+        closeButton.onclick = handleClose;
+        noButton.onclick = () => { closeModal(); resolve(false); };
+        confirmButton.onclick = () => { closeModal(); resolve(true); };
     });
 }
 
@@ -239,23 +256,9 @@ function showExportModal() {
     });
 
     if (!modal.dataset.listenerAdded) {
-        modalExportCountInput.addEventListener('input', () => {
-            const min = parseInt(modalExportCountInput.min, 10);
-            const max = parseInt(modalExportCountInput.max, 10);
-            let value = parseInt(modalExportCountInput.value, 10);
-
-            if (isNaN(value) || value < 1) {
-                modalExportCountInput.value = min;
-            } else if (value > max) {
-                modalExportCountInput.value = max;
-            }
-        });
-
         modalExportPathSelectButton.addEventListener('click', async () => {
             const result = await window.api.invoke('select-path', 'folder');
-            if (result) {
-                modalExportPathInput.value = result;
-            }
+            if (result) modalExportPathInput.value = result;
         });
         modal.dataset.listenerAdded = true;
     }
@@ -264,8 +267,8 @@ function showExportModal() {
     modal.classList.remove('hidden');
     modalOverlay.classList.remove('hidden');
 
-    document.getElementById('modal-export-close').addEventListener('click', closeExportModal);
-    document.getElementById('modal-export-confirm').addEventListener('click', exportConfirm);
+    document.getElementById('modal-export-close').onclick = closeExportModal;
+    document.getElementById('modal-export-confirm').onclick = exportConfirm;
 }
 
 async function exportConfirm() {
@@ -279,16 +282,13 @@ async function exportConfirm() {
         if (scope !== 'all') {
             const table = document.querySelector(`#${scope}`);
             const selectedRows = table.querySelectorAll('.row-checkbox:checked');
-            wikiIds = Array.from(selectedRows).map(checkbox => {
-                return checkbox.closest('tr').getAttribute('data-wiki-id').trim();
-            });
+            wikiIds = Array.from(selectedRows).map(checkbox => checkbox.closest('tr').getAttribute('data-wiki-id').trim());
             if (wikiIds.length === 0) {
                 showAlert('warning', await window.i18n.translate('alert.no_games_selected'));
                 closeExportModal();
                 return;
             }
         }
-
         window.api.send("export-backups", count, exportPath, wikiIds);
     }
     closeExportModal();
@@ -298,7 +298,6 @@ function closeExportModal() {
     const modal = document.getElementById('modal-export');
     const modalOverlay = document.getElementById('modal-overlay');
     const modalExportPathInput = document.getElementById('modal-export-path');
-
     window.api.send('save-settings', 'exportPath', modalExportPathInput.value);
     modal.classList.add('hidden');
     modal.classList.remove('flex');
@@ -316,12 +315,10 @@ function showImportModal(gsmPath) {
 
     if (gsmPath) modalImportPathInput.value = gsmPath;
     if (!modal.dataset.listenerAdded) {
-        modalImportPathSelectButton.addEventListener('click', async () => {
+        modalImportPathSelectButton.onclick = async () => {
             const result = await window.api.invoke('select-path', 'gsmr');
-            if (result) {
-                modalImportPathInput.value = result;
-            }
-        });
+            if (result) modalImportPathInput.value = result;
+        };
         modal.dataset.listenerAdded = true;
     }
 
@@ -329,8 +326,8 @@ function showImportModal(gsmPath) {
     modal.classList.remove('hidden');
     modalOverlay.classList.remove('hidden');
 
-    document.getElementById('modal-import-close').addEventListener('click', closeImportModal);
-    document.getElementById('modal-import-confirm').addEventListener('click', importConfirm);
+    document.getElementById('modal-import-close').onclick = closeImportModal;
+    document.getElementById('modal-import-confirm').onclick = importConfirm;
 }
 
 async function importConfirm() {
@@ -345,7 +342,6 @@ async function importConfirm() {
 function closeImportModal() {
     const modal = document.getElementById('modal-import');
     const modalOverlay = document.getElementById('modal-overlay');
-
     modal.classList.add('hidden');
     modal.classList.remove('flex');
     modalOverlay.classList.add('hidden');
@@ -357,20 +353,18 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
         progressElement.id = progressId;
-        progressElement.className = "ml-auto max-w-max p-4 mb-2 rounded-lg bg-blue-50 dark:bg-gray-800 animate-fadeIn";
+        progressElement.className = "ml-auto p-4 mb-2 rounded-xl border border-white/10 bg-black/40 backdrop-blur-xl animate-fadeIn w-72 shadow-2xl";
         progressElement.innerHTML = `
-            <div class="flex justify-between mb-1 text-sm font-medium text-blue-700 dark:text-white">
+            <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-xbox-green">
                 <span>${progressTitle}</span>
                 <span id="${progressId}-percentage">0%</span>
             </div>
-            <div class="w-60 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                <div id="${progressId}-bar" class="bg-blue-600 w-0 h-2.5 rounded-full"></div>
+            <div class="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                <div id="${progressId}-bar" class="bg-xbox-green w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
             </div>
         `;
-
         progressContainer.appendChild(progressElement);
         return;
-
     } else if (percentage === 'end') {
         const progressElement = document.getElementById(progressId);
         if (progressElement) progressElement.remove();
@@ -379,8 +373,8 @@ export function updateProgress(progressId, progressTitle, percentage) {
 
     const progressBar = document.getElementById(`${progressId}-bar`);
     const progressPercentage = document.getElementById(`${progressId}-percentage`);
-    progressBar.style.width = `${percentage}%`;
-    progressPercentage.innerText = `${percentage}%`;
+    if (progressBar) progressBar.style.width = `${percentage}%`;
+    if (progressPercentage) progressPercentage.innerText = `${percentage}%`;
 }
 
 function showAccountModal() {
@@ -405,10 +399,10 @@ function showAccountModal() {
         const isBackupAllAccounts = settings.backupAllAccounts || false;
 
         let contentHTML = `
-            <div class="space-y-4">
-                <div class="space-y-2">
-                    <h4 class="font-semibold text-gray-900 dark:text-white text-content" data-i18n="alert.detected_accounts"></h4>
-                    <div class="bg-gray-50 dark:bg-gray-600 p-4 rounded-lg space-y-2">
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content" data-i18n="alert.detected_accounts"></h4>
+                    <div class="surface-effect p-4 space-y-3">
         `;
 
         if (accountData && Object.keys(accountData).length > 0) {
@@ -423,43 +417,38 @@ function showAccountModal() {
                         rockStarId: 'alert.rockstar_user_id'
                     };
                     contentHTML += `
-                        <div class="flex justify-between items-center text-sm">
-                            <span class="text-gray-700 dark:text-gray-300 text-content" data-i18n="${platformKeys[platform] || platform}"></span>
-                            <code class="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded text-gray-900 dark:text-gray-100">${id}</code>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-semibold opacity-70 text-content" data-i18n="${platformKeys[platform] || platform}"></span>
+                            <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-xbox-green">${id}</code>
                         </div>
                     `;
                 }
             }
         } else {
-            contentHTML += `<p class="text-gray-600 dark:text-gray-400 text-content" data-i18n="alert.no_accounts_detected"></p>`;
+            contentHTML += `<p class="text-sm opacity-40 text-center py-4 text-content" data-i18n="alert.no_accounts_detected"></p>`;
         }
 
         contentHTML += `
                     </div>
                 </div>
 
-                <div class="border-t border-gray-300 dark:border-gray-600 pt-4">
-                    <h4 class="font-semibold text-gray-900 dark:text-white mb-3 text-content" data-i18n="alert.backup_scope"></h4>
-                    <div class="flex flex-col gap-2">
-                        <label class="flex items-center cursor-pointer">
-                            <input id="backup-scope-current" type="radio" name="backup-scope" 
-                                ${!isBackupAllAccounts ? 'checked' : ''}
-                                class="w-4 h-4 text-blue-600 dark:text-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 text-content" data-i18n="alert.current_account_only"></span>
+                <div>
+                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content" data-i18n="alert.backup_scope"></h4>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content" data-i18n="alert.current_account_only"></span>
                         </label>
-
-                        <label class="flex items-center cursor-pointer">
-                            <input id="backup-scope-all" type="radio" name="backup-scope" 
-                                ${isBackupAllAccounts ? 'checked' : ''}
-                                class="w-4 h-4 text-blue-600 dark:text-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 text-content" data-i18n="alert.all_accounts"></span>
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content" data-i18n="alert.all_accounts"></span>
                         </label>
                     </div>
                 </div>
 
-                <div class="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
-                    <p class="text-sm text-blue-800 dark:text-blue-200">
-                        <strong data-i18n="alert.note" class="text-content">Note: </strong><span class="text-content" data-i18n="alert.account_backup_note"></span>
+                <div class="p-4 bg-xbox-green/10 border border-xbox-green/20 rounded-xl">
+                    <p class="text-xs font-bold text-xbox-green leading-relaxed">
+                        <i class="fa-solid fa-circle-info mr-1"></i> <span data-i18n="alert.account_backup_note"></span>
                     </p>
                 </div>
             </div>
@@ -481,37 +470,25 @@ function showAccountModal() {
         };
 
         confirmButton.setAttribute('data-i18n', 'alert.confirm');
-        confirmButton.className += ' text-content';
+        confirmButton.className = 'primary-button px-8 py-2 text-content';
 
-        // Clear previous listeners
-        const newCloseButton = closeButton.cloneNode(true);
-        closeButton.parentNode.replaceChild(newCloseButton, closeButton);
-        document.getElementById('modal-info-close').addEventListener('click', handleClose);
+        const nCloseB = closeButton.cloneNode(true);
+        closeButton.parentNode.replaceChild(nCloseB, closeButton);
+        nCloseB.onclick = handleClose;
 
-        const newConfirmButton = confirmButton.cloneNode(true);
-        confirmButton.parentNode.replaceChild(newConfirmButton, confirmButton);
-        document.getElementById('modal-info-confirm').addEventListener('click', handleConfirm);
+        const nConfirmB = confirmButton.cloneNode(true);
+        confirmButton.parentNode.replaceChild(nConfirmB, confirmButton);
+        nConfirmB.onclick = handleConfirm;
 
         updateTranslations(modal);
-
         modal.classList.add('flex');
         modal.classList.remove('hidden');
         modalOverlay.classList.remove('hidden');
     }).catch(err => {
         console.error('Error fetching account data:', err);
-        modalTitleElement.textContent = 'Error';
-        modalContentElement.textContent = 'Failed to load account information.';
-        modal.classList.add('flex');
-        modal.classList.remove('hidden');
-        modalOverlay.classList.remove('hidden');
     });
 }
 
-/**
- * Wrap a number input with custom increment/decrement controls.
- * Hides native spinners (via CSS) and adds styled chevron buttons.
- * @param {HTMLInputElement} input - The input[type="number"] element to wrap
- */
 export function wrapNumberInput(input) {
     if (!input || input.type !== 'number' || input.dataset.wrapped) return;
     input.dataset.wrapped = 'true';
@@ -519,11 +496,9 @@ export function wrapNumberInput(input) {
     const min = input.min !== '' ? parseInt(input.min, 10) : null;
     const max = input.max !== '' ? parseInt(input.max, 10) : null;
 
-    // Create wrapper
     const wrapper = document.createElement('div');
     wrapper.className = 'relative inline-flex items-center w-full';
 
-    // Transfer margin classes from input to wrapper
     for (const cls of [...input.classList]) {
         if (cls.startsWith('mb-') || cls.startsWith('mt-') || cls.startsWith('my-')) {
             wrapper.classList.add(cls);
@@ -533,114 +508,44 @@ export function wrapNumberInput(input) {
 
     input.parentNode.insertBefore(wrapper, input);
     wrapper.appendChild(input);
-    input.classList.add('pr-8');
+    input.classList.add('pr-10');
 
-    // Create controls
     const controls = document.createElement('div');
-    controls.className = 'absolute right-0 top-0 bottom-0 flex flex-col w-7';
-    const btnClass = 'flex-1 flex items-center justify-center cursor-pointer text-gray-400 dark:text-gray-400 text-[0.6rem] hover:text-gray-800 dark:hover:text-white active:scale-125 transition-all duration-150';
+    controls.className = 'absolute right-0 top-0 bottom-0 flex flex-col w-9 border-l border-white/10';
+    const btnClass = 'flex-1 flex items-center justify-center cursor-pointer text-white/40 hover:text-xbox-green hover:bg-white/5 transition-all';
     controls.innerHTML = `
-        <button type="button" tabindex="-1" data-action="increment" class="${btnClass} items-end pb-0.5 rounded-tr-lg">
-            <i class="fa-solid fa-chevron-up"></i>
+        <button type="button" tabindex="-1" data-action="increment" class="${btnClass} rounded-tr-lg">
+            <i class="fa-solid fa-chevron-up text-[10px]"></i>
         </button>
-        <button type="button" tabindex="-1" data-action="decrement" class="${btnClass} items-start pt-0.5 rounded-br-lg">
-            <i class="fa-solid fa-chevron-down"></i>
+        <button type="button" tabindex="-1" data-action="decrement" class="${btnClass} rounded-br-lg border-t border-white/5">
+            <i class="fa-solid fa-chevron-down text-[10px]"></i>
         </button>
     `;
     wrapper.appendChild(controls);
 
-    // Button handlers
     controls.querySelectorAll('button[data-action]').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.onclick = () => {
             const current = parseInt(input.value, 10) || 0;
             let next = btn.dataset.action === 'increment' ? current + 1 : current - 1;
             if (min !== null && next < min) next = min;
             if (max !== null && next > max) next = max;
             input.value = next;
             input.dispatchEvent(new Event('input'));
-        });
+        };
     });
 }
 
 export async function operationStartCheck(operation) {
     const status = await window.api.invoke('get-status');
-
-    // Define contradicting operations
-    // Each operation lists status flags that must be false before it can start.
     const statusChecks = {
-        'backup': {
-            restoring: 'alert.wait_for_restore',
-            scanning_full: 'alert.wait_for_scan_full',
-            migrating: 'alert.wait_for_migrate',
-            updating_db: 'alert.wait_for_updating_db',
-            exporting: 'alert.wait_for_export',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup',
-            updating_restore: 'alert.wait_for_updating_restore'
-        },
-        'scan-full': {
-            backuping: 'alert.wait_for_backup',
-            restoring: 'alert.wait_for_restore',
-            migrating: 'alert.wait_for_migrate',
-            updating_db: 'alert.wait_for_updating_db',
-            exporting: 'alert.wait_for_export',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup'
-        },
-        'restore': {
-            restoring: 'alert.wait_for_restore',
-            backuping: 'alert.wait_for_backup',
-            migrating: 'alert.wait_for_migrate',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup',
-            updating_restore: 'alert.wait_for_updating_restore'
-        },
-        'change-settings': {
-            backuping: 'alert.wait_for_backup',
-            restoring: 'alert.wait_for_restore',
-            scanning_full: 'alert.wait_for_scan_full',
-            migrating: 'alert.wait_for_migrate',
-            updating_db: 'alert.wait_for_updating_db',
-            exporting: 'alert.wait_for_export',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup',
-            updating_restore: 'alert.wait_for_updating_restore'
-        },
-        'save-custom': {
-            backuping: 'alert.wait_for_backup',
-            restoring: 'alert.wait_for_restore',
-            scanning_full: 'alert.wait_for_scan_full',
-            migrating: 'alert.wait_for_migrate',
-            exporting: 'alert.wait_for_export',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup'
-        },
-        'update-db': {
-            updating_db: 'alert.wait_for_updating_db',
-            backuping: 'alert.wait_for_backup',
-            scanning_full: 'alert.wait_for_scan_full',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup'
-        },
-        'export': {
-            exporting: 'alert.wait_for_export',
-            backuping: 'alert.wait_for_backup',
-            scanning_full: 'alert.wait_for_scan_full',
-            migrating: 'alert.wait_for_migrate',
-            importing: 'alert.wait_for_import',
-            updating_backup: 'alert.wait_for_updating_backup',
-            updating_restore: 'alert.wait_for_updating_restore'
-        },
-        'import': {
-            importing: 'alert.wait_for_import',
-            backuping: 'alert.wait_for_backup',
-            restoring: 'alert.wait_for_restore',
-            scanning_full: 'alert.wait_for_scan_full',
-            migrating: 'alert.wait_for_migrate',
-            exporting: 'alert.wait_for_export',
-            updating_backup: 'alert.wait_for_updating_backup',
-            updating_restore: 'alert.wait_for_updating_restore'
-        },
+        'backup': { restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'scan-full': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
+        'restore': { restoring: 'alert.wait_for_restore', backuping: 'alert.wait_for_backup', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'change-settings': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'save-custom': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
+        'update-db': { updating_db: 'alert.wait_for_updating_db', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
+        'export': { exporting: 'alert.wait_for_export', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'import': { importing: 'alert.wait_for_import', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
     };
 
     const alerts = statusChecks[operation];
@@ -650,6 +555,13 @@ export async function operationStartCheck(operation) {
             return false;
         }
     }
-
     return true;
 }
+
+// Global click listener to dismiss popup menu when clicking outside any trigger
+document.addEventListener('click', (event) => {
+    const isMenuTrigger = event.target.closest('.dropdown-menu-button') || event.target.closest('#home-options-button');
+    if (!isMenuTrigger) {
+        window.api.send('hide-popup-menu');
+    }
+});

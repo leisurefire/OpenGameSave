@@ -8,72 +8,213 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-    --animate-fadeIn: fadeIn 0.3s ease-in-out forwards;
-    --animate-fadeOut: fadeOut 0.3s ease-in-out forwards;
-    --animate-fadeInShift: fadeInShift 0.3s ease-in-out forwards;
-    --animate-fadeOutShift: fadeOutShift 0.3s ease-in-out forwards;
+    /* Windows 11 + Xbox Fluorescent Green Theme */
+    --color-xbox-green: #107C10;
+    --color-xbox-green-bright: #16c60c;
+    --color-xbox-green-fluorescent: #52ff4a;
+    
+    --color-win-bg: rgba(20, 20, 20, 0.7);
+    --color-win-surface: rgba(30, 30, 30, 0.6);
+    --color-win-surface-bright: rgba(50, 50, 50, 0.7);
+    --color-win-border: rgba(255, 255, 255, 0.08);
+    --color-win-border-bright: rgba(255, 255, 255, 0.18);
+    
+    --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    
+    --radius-win: 8px;
+    --radius-win-sm: 4px;
+
+    --animate-fadeIn: fadeIn 0.1s ease-out forwards;
+    --animate-fadeOut: fadeOut 0.1s ease-in forwards;
+    --animate-fadeInShift: fadeIn 0.1s ease-out forwards; /* Map Shift to just fadeIn for stability */
 
     @keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
+        from { opacity: 0; }
+        to { opacity: 1; }
     }
-
     @keyframes fadeOut {
-        from {
-            opacity: 1;
-        }
-
-        to {
-            opacity: 0;
-        }
+        from { opacity: 1; }
+        to { opacity: 0; }
     }
-
-    @keyframes fadeInShift {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    @keyframes fadeOutShift {
-        from {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        to {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-    }
+    /* Removed fadeInShift keyframes as it's no longer used */
 }
 
-/* Hide native number input spinners */
-input[type="number"] {
-    -moz-appearance: textfield;
-    appearance: textfield;
+/* Base Styles */
+body, html {
+    background: transparent !important;
+    font-family: var(--font-sans);
+    color: #ffffff;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
 }
 
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    appearance: none;
+/* Mica / Acrylic Simulation */
+.mica-effect {
+    backdrop-filter: blur(40px) saturate(150%);
+    background-color: rgba(20, 20, 20, 0.88);
 }
 
-.table-height {
-    max-height: calc(100vh - 230px);
+.surface-effect {
+    backdrop-filter: blur(25px) saturate(120%);
+    background-color: var(--color-win-surface);
+    border: 1px solid var(--color-win-border);
+    border-radius: var(--radius-win);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.custom-height {
-    max-height: calc(100vh - 166px);
+/* Floating Elements (Dropdowns, Alerts, Tooltips) */
+.floating-surface {
+    backdrop-filter: blur(40px) saturate(140%);
+    background-color: rgba(38, 38, 38, 0.95);
+    border: 1px solid var(--color-win-border-bright);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-win);
 }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-xbox-green-bright);
+    background-clip: content-box;
+}
+
+/* Table Styling */
+.table-container {
+    background: var(--color-win-surface);
+    border: 1px solid var(--color-win-border);
+    border-radius: var(--radius-win);
+    overflow-y: auto !important;
+    overflow-x: hidden;
+}
+
+/* About Page Layout */
+.about-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+    padding: 2rem;
+    gap: 1.5rem;
+    overflow-y: auto !important;
+}
+
+/* Settings & Main Scroll Fix */
+.scrollable-content {
+    overflow-y: auto !important;
+    height: 100%;
+    scrollbar-gutter: stable;
+}
+
+/* Modals */
+.modal-container {
+    background: rgba(32, 32, 32, 0.98);
+    backdrop-filter: blur(45px);
+    border: 1px solid var(--color-win-border-bright);
+    border-radius: 12px;
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.modal-body-scroll {
+    overflow-y: auto !important;
+    max-height: 75vh;
+}
+
+table thead {
+    background: var(--color-win-surface-bright);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+table tr {
+    transition: background-color 0.1s ease;
+    backdrop-filter: blur(20px);
+}
+
+table tr:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Buttons - Formal Styles */
+.home-action-button {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-win-border);
+    color: rgba(255, 255, 255, 0.9);
+    transition: background-color 0.1s ease, border-color 0.1s ease;
+    border-radius: var(--radius-win);
+}
+
+.home-action-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.primary-button {
+    background: var(--color-xbox-green-bright);
+    color: #000;
+    font-weight: 600;
+    border-radius: var(--radius-win);
+    border: 1px solid transparent;
+    transition: background-color 0.1s ease;
+}
+
+.primary-button:hover {
+    background: var(--color-xbox-green-fluorescent);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.primary-button:active {
+    opacity: 0.8;
+}
+
+/* Form Inputs */
+input[type="text"], input[type="number"], select {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--color-win-border) !important;
+    border-radius: var(--radius-win-sm) !important;
+    color: #ffffff !important;
+    padding: 8px 12px;
+    transition: all 0.1s ease;
+}
+
+input[type="text"]:focus, input[type="number"]:focus {
+    border-color: var(--color-xbox-green-bright) !important;
+    outline: none;
+    background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Tab Active State */
+.tab-active {
+    border-bottom: 3px solid var(--color-xbox-green-bright) !important;
+    color: var(--color-xbox-green-bright) !important;
+}
+
+/* Utilities */
+.text-xbox-green { color: var(--color-xbox-green-bright); }
+.bg-xbox-green { background-color: var(--color-xbox-green-bright); }

@@ -64,6 +64,150 @@ if (!gotTheLock) {
     }
 }
 
+let menuWindow = null;
+let isMenuOpen = false;
+
+const MENU_WIDTH = 180;
+const MENU_POSITION_OFFSET_X = 6;
+const MENU_POSITION_OFFSET_Y = 6;
+
+function hideMenuWindow() {
+    isMenuOpen = false;
+
+    if (menuWindow && !menuWindow.isDestroyed()) {
+        // Keep normal dismissal free of Windows' visible hide/show scaling animation:
+        // first move the live popup off-screen, then recreate it off-screen so the
+        // next visible open starts from a fresh clickable BrowserWindow instance.
+        menuWindow.setIgnoreMouseEvents(true);
+        menuWindow.setPosition(-10000, -10000);
+        destroyMenuWindow();
+        createMenuWindow();
+    }
+
+    const mainWin = getMainWin();
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('menu-hidden');
+}
+
+function hideMenuWindowAfterBlur() {
+    setTimeout(() => {
+        if (!isMenuOpen || !menuWindow || menuWindow.isDestroyed()) {
+            return;
+        }
+        hideMenuWindow();
+    }, 150);
+}
+
+ipcMain.on('hide-popup-menu', () => {
+    hideMenuWindow();
+});
+
+function destroyMenuWindow() {
+    if (menuWindow && !menuWindow.isDestroyed()) {
+        menuWindow.destroy();
+    }
+    menuWindow = null;
+    isMenuOpen = false;
+}
+
+function createMenuWindow() {
+    if (menuWindow && !menuWindow.isDestroyed()) {
+        return;
+    }
+
+    const newMenuWindow = new BrowserWindow({
+        width: MENU_WIDTH,
+        height: 10,
+        x: -10000,
+        y: -10000,
+        frame: false,
+        transparent: true,
+        show: false, // Initially false, shown right after creation
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        type: 'toolbar',
+        hasShadow: false,
+        focusable: false, // Critical: Prevent stealing focus from main window
+        webPreferences: {
+            preload: path.join(__dirname, '../preload/preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            backgroundThrottling: false,
+        },
+    });
+
+    menuWindow = newMenuWindow;
+    newMenuWindow.loadFile(path.join(__dirname, '../renderer/menu.html'));
+
+    newMenuWindow.once('ready-to-show', () => {
+        if (newMenuWindow.isDestroyed()) {
+            return;
+        }
+        newMenuWindow.setIgnoreMouseEvents(true);
+        newMenuWindow.showInactive();
+    });
+
+    newMenuWindow.on('closed', () => {
+        if (menuWindow === newMenuWindow) {
+            menuWindow = null;
+            isMenuOpen = false;
+        }
+    });
+}
+
+ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
+    if (!menuWindow || menuWindow.isDestroyed()) createMenuWindow();
+
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const [winX, winY] = parentWindow.getPosition();
+
+    // Ensure we hide menu if main window loses focus to another app
+    // Safely remove existing listeners to prevent duplicates, then add them
+    parentWindow.removeListener('blur', hideMenuWindowAfterBlur);
+    parentWindow.removeListener('move', hideMenuWindow);
+    parentWindow.on('blur', hideMenuWindowAfterBlur);
+    parentWindow.on('move', hideMenuWindow);
+
+    // Store target coordinates in a property so the resize event can use them
+    menuWindow.targetScreenX = Math.round(winX + x + MENU_POSITION_OFFSET_X);
+    menuWindow.targetScreenY = Math.round(winY + y + MENU_POSITION_OFFSET_Y);
+
+    if (menuWindow.webContents.isLoading()) {
+        const targetMenuWindow = menuWindow;
+        menuWindow.webContents.once('did-finish-load', () => {
+            if (!targetMenuWindow.isDestroyed()) {
+                targetMenuWindow.webContents.send('set-menu-items', items);
+            }
+        });
+    } else {
+        menuWindow.webContents.send('set-menu-items', items);
+    }
+});
+
+ipcMain.on('resize-and-show-menu', (event, height) => {
+    if (menuWindow && !menuWindow.isDestroyed()) {
+        isMenuOpen = true;
+        menuWindow.setIgnoreMouseEvents(false);
+        menuWindow.setSize(MENU_WIDTH, height);
+        menuWindow.setPosition(menuWindow.targetScreenX, menuWindow.targetScreenY);
+        menuWindow.setOpacity(1);
+
+        // Normal path: the window is already shown off-screen, so this does not run and no animation occurs.
+        if (!menuWindow.isVisible()) {
+            menuWindow.showInactive();
+        }
+    }
+});
+
+ipcMain.on('menu-item-click', (event, action, data) => {
+    hideMenuWindow();
+
+    const mainWin = getMainWin();
+    if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send('execute-menu-action', action, data);
+    }
+});
+
 app.whenReady().then(async () => {
     app.setAsDefaultProtocolClient('gamesavemanager');
 
@@ -77,6 +221,7 @@ app.whenReady().then(async () => {
     }
 
     await createMainWindow();
+    createMenuWindow(); // Pre-load menu
     app.setAppUserModelId(i18next.t('main.title'));
 
     if (getSettings().autoAppUpdate) {
@@ -119,10 +264,6 @@ ipcMain.handle("translate", async (event, key, options) => {
 
 ipcMain.on('save-settings', async (event, key, value) => {
     saveSettings(key, value);
-});
-
-ipcMain.on("load-theme", (event) => {
-    event.reply("apply-theme", getSettings().theme);
 });
 
 ipcMain.handle("get-settings", () => {
@@ -225,46 +366,6 @@ ipcMain.handle('sort-games', (event, games) => {
     });
 });
 
-ipcMain.handle('save-custom-entries', async (event, jsonObj) => {
-    try {
-        const filePath = path.join(getSettings().backupPath, "custom_entries.json");
-        let currentData = {};
-
-        if (fs.existsSync(filePath)) {
-            currentData = await fse.readJson(filePath);
-        }
-
-        if (JSON.stringify(currentData) !== JSON.stringify(jsonObj)) {
-            await fse.writeJson(filePath, jsonObj, { spaces: 4 });
-            getMainWin().webContents.send('show-alert', 'success', i18next.t('alert.save_custom_success'));
-            getMainWin().webContents.send('update-backup-table');
-        }
-
-    } catch (error) {
-        console.error(`Error saving custom games: ${error.stack}`);
-        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.save_custom_error'), error.message);
-    }
-});
-
-ipcMain.handle('load-custom-entries', async () => {
-    try {
-        const filePath = path.join(getSettings().backupPath, "custom_entries.json");
-
-        const fileExists = await fse.pathExists(filePath);
-        if (!fileExists) {
-            return [];
-        }
-
-        const jsonData = await fse.readJson(filePath);
-        return jsonData;
-
-    } catch (error) {
-        console.error(`Error loading custom games: ${error.stack}`);
-        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.load_custom_error'), error.message);
-        return [];
-    }
-});
-
 ipcMain.handle('get-account-data', () => {
     return getAllUserIds();
 });
@@ -279,7 +380,6 @@ ipcMain.handle('get-uuid', () => {
 
 ipcMain.handle('get-icon-map', async () => {
     return {
-        'Custom': fs.readFileSync(path.join(__dirname, '../assets/custom.svg'), 'utf-8'),
         'Steam': fs.readFileSync(path.join(__dirname, '../assets/steam.svg'), 'utf-8'),
         'Ubisoft': fs.readFileSync(path.join(__dirname, '../assets/ubisoft.svg'), 'utf-8'),
         'EA': fs.readFileSync(path.join(__dirname, '../assets/ea.svg'), 'utf-8'),
@@ -312,7 +412,7 @@ ipcMain.handle('fetch-restore-table-data', async (event, wikiId = null) => {
     const { games, errors } = await getGameDataForRestore(wikiId);
 
     if (errors.length > 0) {
-        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.restore_process_error_display'), errors);
+        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.backup_process_error_display'), errors);
     }
 
     return games;

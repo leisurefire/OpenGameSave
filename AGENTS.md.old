@@ -1,0 +1,171 @@
+# AGENTS.md
+
+## Purpose
+
+This document provides development guidance for agents and contributors working on **Game Save Manager (GSM)**. Keep changes focused, compatible with the existing Electron architecture, and safe for user save data.
+
+## Project Overview
+
+GSM is an Electron-based desktop application for detecting, backing up, restoring, exporting, and importing PC game save files. It supports platform-aware game detection, custom entries, localization, and Windows-oriented workflows.
+
+## Technology Stack
+
+- Runtime: Electron 31
+- Language: JavaScript
+- UI: HTML, Tailwind CSS, Font Awesome
+- Bundling: Webpack
+- Main process: Node.js / Electron main APIs
+- Renderer process: Browser JavaScript with preload bridge
+- Data and file handling: SQLite, filesystem APIs, 7-Zip integration
+- Localization: i18next with JSON locale files
+
+## Repository Structure
+
+```text
+src/main/          Electron main-process code and core backup logic
+src/preload/       Context bridge APIs exposed to renderer pages
+src/renderer/      HTML pages, renderer entries, UI logic, and styles
+src/locale/        Translation files
+src/assets/        Application icons and UI assets
+src/assets_export/ Assets copied for packaged runtime resources
+webpack.*.config.js Webpack configurations for main, preload, and renderer
+```
+
+## Core Entry Points
+
+- `src/main/main.js`: application bootstrap and IPC registration
+- `src/main/global.js`: window creation, settings, notifications, shared utilities
+- `src/preload/preload.js`: safe IPC bridge exposed as `window.api` and `window.i18n`
+- `src/renderer/index.entry.js`: main page renderer bundle entry
+- `src/renderer/settings.entry.js`: settings page renderer bundle entry
+- `src/renderer/about.entry.js`: about page renderer bundle entry
+- `src/renderer/styles.css`: Tailwind input and shared custom CSS
+
+## Development Commands
+
+Run commands from the repository root.
+
+```powershell
+npm install
+npm start
+npm run build
+npm run package
+```
+
+Command meanings:
+
+- `npm start`: development mode with Tailwind watch, Webpack watch, and Electron launch
+- `npm run build`: production build into `dist/out`
+- `npm run package`: build and package with Electron Builder in directory mode
+- `npm run tailwind:build`: compile Tailwind CSS only
+
+If command shims are unavailable on Windows, run `npm install` before retrying.
+
+## Architecture Guidelines
+
+### Main Process
+
+- Put Electron lifecycle, windows, dialogs, notifications, and OS integration in `src/main`.
+- Register IPC handlers in `src/main/main.js` unless there is a strong reason to colocate elsewhere.
+- Keep long-running backup, restore, import, and export operations status-aware using the existing `status` flags.
+- Never block the UI unnecessarily; report progress through IPC where practical.
+
+### Preload Layer
+
+- Keep `src/preload/preload.js` minimal.
+- Expose only narrow, intentional APIs through `contextBridge`.
+- Do not expose raw Node.js, filesystem, or Electron objects to renderer code.
+
+### Renderer Layer
+
+- Keep page initialization in page-specific modules under `src/renderer/js`.
+- Reuse shared helpers from `utility.js` and `commonTabs.js` instead of duplicating UI logic.
+- Use existing modal, alert, progress, theme, and translation patterns.
+- Avoid inline scripts; respect the existing Content Security Policy.
+
+## IPC Conventions
+
+- Use `ipcMain.handle` / `window.api.invoke` for request-response flows.
+- Use `ipcMain.on` / `window.api.send` for fire-and-forget events.
+- Use `webContents.send` and `window.api.receive` for main-to-renderer notifications.
+- Keep channel names descriptive and consistent with the existing kebab-case style.
+- Validate inputs in the main process before filesystem, registry, shell, or archive operations.
+
+## Styling Guidelines
+
+- Edit `src/renderer/styles.css` as the Tailwind input file.
+- Do not edit generated Tailwind output manually.
+- Prefer existing Tailwind utility classes in HTML and generated DOM templates.
+- Keep custom CSS limited to reusable behavior that is hard to express with utilities.
+- Maintain dark/light theme compatibility for all new UI.
+
+## Localization Guidelines
+
+- User-visible strings should be localized.
+- Add matching keys to all locale files in `src/locale`:
+  - `en_US.json`
+  - `zh_CN.json`
+  - `zh_TW.json`
+- Use existing `data-i18n`, `data-i18n-placeholder`, or `window.i18n.translate` patterns.
+- Keep translation keys namespaced by feature area when possible.
+
+## Data Safety Rules
+
+- Treat game save files, backup archives, registry keys, and user settings as sensitive user data.
+- Avoid destructive operations unless the user has explicitly confirmed them.
+- Prefer `original-fs` where the existing code uses it for real filesystem access.
+- Preserve timestamps and metadata where existing workflows do so.
+- Do not silently overwrite newer local saves during restore flows.
+- Do not log secrets, API keys, personal paths unnecessarily, or backup contents.
+
+## Platform Considerations
+
+- The app is primarily Windows-oriented, but keep non-Windows behavior from regressing unless the feature is explicitly Windows-only.
+- Guard Windows-specific APIs, registry access, toast notifications, and visual effects with `process.platform === 'win32'`.
+- Keep path handling cross-platform by using Node's `path` utilities.
+
+## Build and Packaging Notes
+
+- Webpack builds three targets: main, preload, and renderer.
+- Production builds may apply obfuscation and Bytenode compilation.
+- Packaged resources are copied through Webpack and Electron Builder configuration.
+- Do not assume development paths and packaged paths are identical; use existing resource path helpers where available.
+
+## Code Style
+
+- Follow the existing JavaScript style: CommonJS in main/preload, ES modules in renderer files.
+- Use clear function names and small helper functions.
+- Keep changes minimal and localized.
+- Prefer async/await for asynchronous control flow.
+- Handle errors with `try/catch` where filesystem, network, archive, registry, or shell operations are involved.
+- Avoid introducing new dependencies unless clearly justified.
+
+## Testing Checklist
+
+Before finalizing changes, verify as applicable:
+
+- The app starts in development mode.
+- `npm run build` succeeds.
+- Main, settings, and about windows still load.
+- Theme switching works.
+- Language switching works.
+- Backup and restore tables still update.
+- IPC channels touched by the change behave correctly.
+- File, folder, archive, or registry operations are safe and confirmed.
+- Windows-only features are guarded and do not affect other platforms.
+
+## Contribution Boundaries
+
+- Do not modify generated build output under `dist/`.
+- Do not commit local user data, databases, backups, logs, secrets, or packaged installers.
+- Do not change license, product identity, update endpoints, or signing/package metadata unless explicitly requested.
+- Do not weaken Electron security boundaries such as preload isolation and CSP.
+
+## Agent Workflow
+
+1. Inspect relevant files before editing.
+2. Make the smallest coherent change set.
+3. Preserve existing behavior unless the task requires otherwise.
+4. Update localization, styles, and IPC together when a feature needs them.
+5. Run the most relevant command or explain why it could not be run.
+6. Summarize changed files and any validation results clearly.
