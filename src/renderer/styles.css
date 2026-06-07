@@ -108,9 +108,9 @@ body, html {
     align-items: center;
     justify-content: flex-start;
     text-align: center;
-    padding: 2rem;
+        padding: 2rem;
     gap: 1.5rem;
-    overflow-y: auto !important;
+    overflow: hidden !important;
 }
 
 /* Settings & Main Scroll Fix */

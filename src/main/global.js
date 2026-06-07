@@ -56,13 +56,14 @@ let status = {
 }
 
 const openSettingsWindow = () => {
-    let settings_window_size = [650, 700];
+    let settings_window_size = [580, 760];
     if (!settingsWin || settingsWin.isDestroyed()) {
         settingsWin = new BrowserWindow({
             width: settings_window_size[0],
             height: settings_window_size[1],
             minWidth: settings_window_size[0],
             minHeight: settings_window_size[1],
+            resizable: false,
             icon: path.join(__dirname, "../assets/setting.ico"),
             parent: win,
             modal: true,
@@ -90,7 +91,7 @@ const openSettingsWindow = () => {
 };
 
 const openAboutWindow = () => {
-    let about_window_size = [480, 290];
+    let about_window_size = [480, 380];
     if (!aboutWin || aboutWin.isDestroyed()) {
         aboutWin = new BrowserWindow({
             width: about_window_size[0],
@@ -131,7 +132,7 @@ const initializeMenu = () => {
                 {
                     label: i18next.t("settings.title"),
                     click() {
-                        let settings_window_size = [650, 700];
+                        let settings_window_size = [580, 760];
                         // Check if settingsWin is already open
                         if (!settingsWin || settingsWin.isDestroyed()) {
                             settingsWin = new BrowserWindow({
@@ -139,6 +140,7 @@ const initializeMenu = () => {
                                 height: settings_window_size[1],
                                 minWidth: settings_window_size[0],
                                 minHeight: settings_window_size[1],
+                                resizable: false,
                                 icon: path.join(__dirname, "../assets/setting.ico"),
                                 parent: win,
                                 modal: true,
@@ -180,7 +182,7 @@ const initializeMenu = () => {
                 {
                     label: i18next.t("about.title"),
                     click() {
-                        let about_window_size = [480, 290];
+                        let about_window_size = [480, 380];
                         if (!aboutWin || aboutWin.isDestroyed()) {
                             aboutWin = new BrowserWindow({
                                 width: about_window_size[0],

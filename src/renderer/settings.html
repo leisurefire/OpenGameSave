@@ -9,10 +9,10 @@
     <title class="text-content" data-i18n="settings.title">Settings</title>
 </head>
 
-<body class="mica-effect p-8 h-screen overflow-y-auto scrollbar-thin flex flex-col items-center">
+<body class="mica-effect p-7 h-screen overflow-hidden flex flex-col items-center">
     <div id="alert-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
-    <form class="max-w-md w-full mb-24 space-y-6">
+    <form class="max-w-md w-full mb-0 space-y-5">
         <!-- Language selection -->
         <div>
             <label for="language" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.language">Language</label>
@@ -39,7 +39,7 @@
         </div>
 
         <!-- Toggles -->
-        <div class="space-y-4 pt-2">
+        <div class="space-y-3 pt-1">
             <label class="flex items-center gap-3 cursor-pointer group">
                 <input id="auto-app-update" type="checkbox" class="accent-xbox-green w-5 h-5">
                 <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_app_update">Check software update automatically</span>

@@ -136,6 +136,7 @@ function createMenuWindow() {
         y: MENU_HIDDEN_BOUNDS.y,
         frame: false,
         transparent: true,
+        backgroundColor: '#00000000',
         show: false, // Initially false, shown right after creation
         alwaysOnTop: true,
         skipTaskbar: true,
