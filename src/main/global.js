@@ -22,6 +22,8 @@ let settings;
 let writeQueue = Promise.resolve();
 
 const appVersion = "2.2.0-beta.3";
+const supportedLanguages = new Set(['en_US', 'zh_CN']);
+const normalizeLanguage = (language) => supportedLanguages.has(language) ? language : 'en_US';
 const isWindows = process.platform === 'win32';
 
 nativeTheme.themeSource = 'dark';
@@ -887,14 +889,11 @@ const loadSettings = () => {
         'en-US': 'en_US',
         'zh-Hans-CN': 'zh_CN',
         'zh-Hans-SG': 'zh_CN',
-        'zh-Hant-HK': 'zh_CN',
-        'zh-Hant-MO': 'zh_CN',
-        'zh-Hant-TW': 'zh_CN',
     };
 
     const systemLocale = app.getLocale();
     console.log(`Current locale: ${systemLocale}; Preferred languages: ${app.getPreferredSystemLanguages()}`);
-    const detectedLanguage = locale_mapping[systemLocale] || 'en_US';
+    const detectedLanguage = normalizeLanguage(locale_mapping[systemLocale]);
 
     // Default settings
     const defaultSettings = {
@@ -918,6 +917,7 @@ const loadSettings = () => {
         const data = fs.readFileSync(settingsPath, 'utf8');
         const loadedSettings = JSON.parse(data);
         settings = { ...defaultSettings, ...loadedSettings };
+        settings.language = normalizeLanguage(settings.language);
 
     } catch (err) {
         console.error("Error loading settings, using defaults:", err);
@@ -930,7 +930,7 @@ function saveSettings(key, value) {
     const userDataPath = app.getPath('userData');
     const settingsPath = path.join(userDataPath, 'GSM Settings', 'settings.json');
 
-    settings[key] = value;
+    settings[key] = key === 'language' ? normalizeLanguage(value) : value;
 
     // Queue the write operation to prevent simultaneous writes
     writeQueue = writeQueue.then(() => {
@@ -940,7 +940,7 @@ function saveSettings(key, value) {
                     console.error('Error saving settings:', writeErr);
                     reject(writeErr);
                 } else {
-                    console.log(`Settings updated successfully: ${key}: ${value}`);
+                    console.log(`Settings updated successfully: ${key}: ${settings[key]}`);
 
 
                     if (key === 'gameInstalls' || key === 'saveUninstalledGames') {
@@ -948,7 +948,7 @@ function saveSettings(key, value) {
                     }
 
                     if (key === 'language') {
-                        i18next.changeLanguage(value).then(() => {
+                        i18next.changeLanguage(settings[key]).then(() => {
                             BrowserWindow.getAllWindows().forEach((window) => {
                                 window.webContents.send('apply-language');
                             });
