@@ -6,6 +6,14 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const WebpackObfuscator = require('webpack-obfuscator');
 
 const isProduction = process.env.NODE_ENV === 'production';
+const htmlMinifyOptions = isProduction ? {
+    collapseWhitespace: true,
+    removeComments: true,
+    removeRedundantAttributes: false,
+    removeScriptTypeAttributes: true,
+    removeStyleLinkTypeAttributes: true,
+    useShortDoctype: true,
+} : false;
 
 module.exports = {
     mode: isProduction ? 'production' : 'development',
@@ -48,21 +56,25 @@ module.exports = {
             template: './src/renderer/index.html',  // Path to the source HTML
             filename: 'index.html',                 // Name of the output HTML in 'dist/out/renderer/'
             chunks: ['index'],                      // IMPORTANT: Inject only the 'index' JavaScript bundle
+            minify: htmlMinifyOptions,
         }),
         new HtmlWebpackPlugin({
             template: './src/renderer/settings.html',
             filename: 'settings.html',
             chunks: ['settings'],
+            minify: htmlMinifyOptions,
         }),
         new HtmlWebpackPlugin({
             template: './src/renderer/about.html',
             filename: 'about.html',
             chunks: ['about'],
+            minify: htmlMinifyOptions,
         }),
         new HtmlWebpackPlugin({
             template: './src/renderer/menu.html',
             filename: 'menu.html',
             chunks: ['menu'],
+            minify: htmlMinifyOptions,
         }),
 
         new MiniCssExtractPlugin({

@@ -61,6 +61,7 @@ if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
 app.commandLine.appendSwitch("lang", "en");
 const gotTheLock = app.requestSingleInstanceLock();
 let pendingGSMPath = null;
+let isQuitting = false;
 
 if (!gotTheLock) {
     app.quit();
@@ -77,8 +78,22 @@ if (!gotTheLock) {
         }
     });
 
-    app.on('will-quit', () => {
-        stopAllAutoBackups();
+    app.on('before-quit', async (event) => {
+        if (isQuitting) {
+            return;
+        }
+
+        event.preventDefault();
+        isQuitting = true;
+
+        try {
+            destroyMenuWindow();
+            await stopAllAutoBackups();
+        } catch (error) {
+            logFatalError(error);
+        } finally {
+            app.quit();
+        }
     });
 
     if (process.platform === 'win32') {

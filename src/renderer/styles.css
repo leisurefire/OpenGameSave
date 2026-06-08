@@ -19,7 +19,7 @@
     
     --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     
-        --radius-win: 8px;
+    --radius-win: 8px;
     --radius-win-sm: 8px;
 
     --animate-fadeIn: fadeIn 0.1s ease-out forwards;
@@ -107,8 +107,8 @@ body, html {
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    text-align: center;
-        padding: 2rem;
+        text-align: center;
+    padding: 2rem;
     gap: 1.5rem;
     overflow: hidden !important;
 }
@@ -199,14 +199,28 @@ button {
 input[type="text"], input[type="number"], select {
     background: rgba(0, 0, 0, 0.3) !important;
     border: 1px solid var(--color-win-border) !important;
-    border-radius: var(--radius-win-sm) !important;
+    border-radius: var(--radius-win) !important;
     color: #ffffff !important;
+    min-height: 38px;
     padding: 8px 12px;
     transition: all 0.1s ease;
 }
 
+.search-field {
+    margin-left: 8px;
+}
+
+.search-field-icon {
+    left: 14px;
+    color: rgba(255, 255, 255, 0.45);
+}
+
 input[type="text"].search-input {
-    padding-left: 48px !important;
+    height: 38px;
+    min-height: 38px;
+    border-radius: var(--radius-win) !important;
+    padding: 8px 12px 8px 40px !important;
+    line-height: 20px;
 }
 
 input[type="text"].search-input::placeholder {

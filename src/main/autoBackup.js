@@ -74,9 +74,12 @@ function stopAutoBackup(wikiId, showSummary = true) {
         entry.timer = null;
     }
 
-    // Close watcher
+    // Close watcher. chokidar.close() is asynchronous, but do not await it in
+    // normal UI paths; stopAllAutoBackups() handles graceful shutdown on quit.
     if (entry.watcher) {
-        entry.watcher.close();
+        entry.watcher.close().catch((error) => {
+            console.error(`Error closing file watcher for ${wikiId}:`, error.message);
+        });
         entry.watcher = null;
     }
 
@@ -268,13 +271,21 @@ async function restoreAutoBackups() {
 /**
  * Stop all auto backups (for app quit) - cleanup only, preserves settings
  */
-function stopAllAutoBackups() {
+async function stopAllAutoBackups() {
+    const closePromises = [];
+
     for (const [wikiId, entry] of activeAutoBackups) {
         if (entry.timer) {
             clearInterval(entry.timer);
+            entry.timer = null;
         }
         if (entry.watcher) {
-            entry.watcher.close();
+            closePromises.push(
+                entry.watcher.close().catch((error) => {
+                    console.error(`Error closing file watcher for ${wikiId}:`, error.message);
+                })
+            );
+            entry.watcher = null;
         }
         if (watcherCooldowns.has(wikiId)) {
             clearTimeout(watcherCooldowns.get(wikiId));
@@ -283,6 +294,8 @@ function stopAllAutoBackups() {
         pendingWatcherBackups.delete(wikiId);
     }
     activeAutoBackups.clear();
+
+    await Promise.allSettled(closePromises);
 }
 
 module.exports = {
