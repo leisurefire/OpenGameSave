@@ -887,9 +887,9 @@ const loadSettings = () => {
         'en-US': 'en_US',
         'zh-Hans-CN': 'zh_CN',
         'zh-Hans-SG': 'zh_CN',
-        'zh-Hant-HK': 'zh_TW',
-        'zh-Hant-MO': 'zh_TW',
-        'zh-Hant-TW': 'zh_TW',
+        'zh-Hant-HK': 'zh_CN',
+        'zh-Hant-MO': 'zh_CN',
+        'zh-Hant-TW': 'zh_CN',
     };
 
     const systemLocale = app.getLocale();
