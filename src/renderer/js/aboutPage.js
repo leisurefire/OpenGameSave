@@ -3,7 +3,6 @@ import { updateTranslations } from './utility.js';
 document.addEventListener('DOMContentLoaded', () => {
     const latestVersionSpan = document.getElementById('latest-version');
     const currentVersionSpan = document.getElementById('current-version');
-    const websiteLink = document.getElementById('website-link');
     const githubLink = document.getElementById('github-link');
     const bilibiliLink = document.getElementById('bilibili-link');
     const updateButton = document.getElementById('update-button');
@@ -36,9 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchLatestVersion();
     updateTranslations(document);
 
-    websiteLink.addEventListener('click', () => {
-        window.api.invoke('open-url', websiteLink.innerText);
-    });
     githubLink.addEventListener('click', () => {
         window.api.invoke('open-url', githubLink.innerText);
     });
