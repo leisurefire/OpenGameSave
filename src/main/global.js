@@ -21,7 +21,7 @@ let aboutWin;
 let settings;
 let writeQueue = Promise.resolve();
 
-const appVersion = "0.6.22 D.Va edition";
+const appVersion = "0.6.22 D.VA edition";
 const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
 const appRepositoryApiLatestReleaseUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 const supportedLanguages = new Set(['en_US', 'zh_CN']);
@@ -905,7 +905,7 @@ const loadSettings = () => {
     // Default settings
     const defaultSettings = {
         language: detectedLanguage,
-        backupPath: path.join(appDataPath, "GSM Backups"),
+        backupPath: path.join(appDataPath, "OGS Backups"),
         exportPath: "",
         maxBackups: 5,
         autoAppUpdate: true,

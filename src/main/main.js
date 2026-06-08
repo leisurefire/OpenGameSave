@@ -346,7 +346,7 @@ ipcMain.handle('open-backup-dialog', async () => {
     });
 
     if (result.filePaths.length > 0) {
-        return path.join(result.filePaths[0], 'GSM Backups');
+        return path.join(result.filePaths[0], 'OGS Backups');
     }
 
     return null;
