@@ -22,6 +22,31 @@ const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = 
 const { getGameDataForRestore, restoreGame } = require("./restore");
 const { startAutoBackup, stopAutoBackup, getAutoBackupState, restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
 
+function logFatalError(error) {
+    const message = error && error.stack ? error.stack : String(error);
+    console.error(message);
+
+    try {
+        const logDir = path.join(app.getPath('userData'), 'logs');
+        fs.mkdirSync(logDir, { recursive: true });
+        fs.appendFileSync(
+            path.join(logDir, 'main-error.log'),
+            `[${new Date().toISOString()}] ${message}\n\n`,
+            'utf8'
+        );
+    } catch (logError) {
+        console.error('Failed to write fatal error log:', logError);
+    }
+}
+
+process.on('uncaughtException', (error) => {
+    logFatalError(error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    logFatalError(reason);
+});
+
 
 // Setup hot reload for development
 if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
@@ -265,6 +290,10 @@ app.whenReady().then(async () => {
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
     });
+}).catch((error) => {
+    logFatalError(error);
+    dialog.showErrorBox('Game Save Manager startup failed', error && error.stack ? error.stack : String(error));
+    app.quit();
 });
 
 // Language settings

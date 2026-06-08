@@ -9,7 +9,8 @@
     "clean": "rimraf dist/out",
     "start": "npm run clean && npm run tailwind:build && concurrently -k -s first -n \"TAILWIND,RENDERER,MAIN,ELECTRON\" \"npm:tailwind:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js && electron .\"",
     "build": "npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
-    "package": "npm run build && electron-builder --dir"
+    "package": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
   },
   "build": {
     "extends": null,
@@ -28,7 +29,7 @@
     ],
     "extraFiles": [
       {
-        "from": "../Automation/GSM/database.db",
+        "from": "./database/database.db",
         "to": "./database/database.db"
       }
     ]
