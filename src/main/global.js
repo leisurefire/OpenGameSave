@@ -21,7 +21,7 @@ let aboutWin;
 let settings;
 let writeQueue = Promise.resolve();
 
-const appVersion = "2.2.0-beta.3";
+const appVersion = "0.6.22 D.Va edition";
 const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
 const appRepositoryApiLatestReleaseUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 const supportedLanguages = new Set(['en_US', 'zh_CN']);

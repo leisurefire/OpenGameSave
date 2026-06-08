@@ -1,6 +1,6 @@
 {
   "name": "opengamesave",
-  "version": "2.2.0",
+  "version": "0.6.22",
   "description": "Easily backup and restore your game saves anytime",
   "main": "dist/out/main/main.js",
   "scripts": {
