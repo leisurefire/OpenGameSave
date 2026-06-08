@@ -97,7 +97,7 @@ async function processAndPushGame(row, games) {
 async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
     const games = [];
     const errors = [];
-    const dbPath = path.join(app.getPath("userData"), "GSM Database", "database.db");
+    const dbPath = path.join(app.getPath("userData"), "OGS Database", "database.db");
 
     if (!fs.existsSync(dbPath)) {
         const installedDbPath = path.join('./database', 'database.db');
@@ -249,7 +249,7 @@ async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
 async function getAllGameDataFromDB() {
     const games = [];
     const errors = [];
-    const dbPath = path.join(app.getPath("userData"), "GSM Database", "database.db");
+    const dbPath = path.join(app.getPath("userData"), "OGS Database", "database.db");
     const gameInstallPaths = getSettings().gameInstalls;
 
     if (!getStatus().scanning_full) {
@@ -706,7 +706,7 @@ async function backupGame(gameObj) {
 async function updateDatabase() {
     const progressId = 'update-db';
     const progressTitle = i18next.t('alert.updating_database');
-    const dbPath = path.join(app.getPath("userData"), "GSM Database", "database.db");
+    const dbPath = path.join(app.getPath("userData"), "OGS Database", "database.db");
     const dbTempPath = `${dbPath}.temp`;
 
     getMainWin().webContents.send('update-progress', progressId, progressTitle, 'start');

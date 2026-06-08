@@ -193,6 +193,8 @@
         "delete_failed": "Failed to delete data",
         "local_save_deleted": "Local save and config data deleted successfully",
         "wait_for_backup_loading": "Please wait for the backup tab to finish loading",
-        "auto_backup_game_not_found": "Game data not found for auto backup"
+        "auto_backup_game_not_found": "Game data not found for auto backup",
+        "first_launch_full_scan_tip": "Finding all save locations in the database helps locate save files for uninstalled games.",
+        "scan_full_may_take_minutes": "This may take a few minutes. Continue?"
     }
 }

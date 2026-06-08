@@ -193,6 +193,8 @@
         "delete_failed": "删除数据失败",
         "local_save_deleted": "已成功删除本地存档和配置",
         "wait_for_backup_loading": "请等待备份列表加载完成",
-        "auto_backup_game_not_found": "未找到自动备份的游戏数据"
+        "auto_backup_game_not_found": "未找到自动备份的游戏数据",
+        "first_launch_full_scan_tip": "查找数据库中所有存档位置有助于寻找已卸载游戏的存档。",
+        "scan_full_may_take_minutes": "这可能需要几分钟。是否继续？"
     }
 }

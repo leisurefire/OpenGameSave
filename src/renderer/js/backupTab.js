@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         await updateDatabase();
     }
     await updateBackupTable(true);
+
+    if (!settings.firstLaunchFullScanTipShown) {
+        showInfoModal(
+            await window.i18n.translate('main.scan_full'),
+            await window.i18n.translate('alert.first_launch_full_scan_tip')
+        );
+        window.api.send('save-settings', 'firstLaunchFullScanTipShown', true);
+    }
 });
 
 window.api.receive('update-backup-table', () => {
@@ -21,6 +29,14 @@ window.api.receive('update-backup-table', () => {
 window.api.receive('scan-full', async () => {
     const start = await operationStartCheck('scan-full');
     if (start) {
+        const confirmed = await showInfoModal(
+            await window.i18n.translate('main.scan_full'),
+            await window.i18n.translate('alert.scan_full_may_take_minutes'),
+            'yesno'
+        );
+        if (!confirmed) return;
+
+        window.api.send('update-status', 'scanning_full', true);
         const iconMap = await window.api.invoke('get-icon-map');
         const fullScanGameData = await window.api.invoke('start-scan-full');
 
@@ -42,6 +58,7 @@ window.api.receive('scan-full', async () => {
             hideLoadingIndicator('backup');
             window.api.send('update-status', 'updating_backup', false);
         }
+        window.api.send('update-status', 'scanning_full', false);
     }
 });
 

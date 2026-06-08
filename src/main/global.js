@@ -890,17 +890,37 @@ const osKeyMap = {
 const loadSettings = () => {
     const userDataPath = app.getPath("userData");
     const appDataPath = app.getPath("appData");
-    const settingsPath = path.join(userDataPath, "GSM Settings", "settings.json");
+    const settingsPath = path.join(userDataPath, "OGS Settings", "settings.json");
 
     const locale_mapping = {
+        'en': 'en_US',
         'en-US': 'en_US',
+        'zh': 'zh_CN',
+        'zh-CN': 'zh_CN',
+        'zh-SG': 'zh_CN',
+        'zh-Hans': 'zh_CN',
         'zh-Hans-CN': 'zh_CN',
         'zh-Hans-SG': 'zh_CN',
     };
 
+    const detectLanguage = () => {
+        const locales = [app.getLocale(), ...app.getPreferredSystemLanguages()];
+        const detectedLocale = locales.find(locale => {
+            if (!locale) return false;
+            return supportedLanguages.has(locale_mapping[locale]) || locale.toLowerCase().startsWith('zh');
+        });
+
+        if (detectedLocale && detectedLocale.toLowerCase().startsWith('zh')) {
+            return 'zh_CN';
+        }
+
+        return normalizeLanguage(locale_mapping[detectedLocale]);
+    };
+
     const systemLocale = app.getLocale();
     console.log(`Current locale: ${systemLocale}; Preferred languages: ${app.getPreferredSystemLanguages()}`);
-    const detectedLanguage = normalizeLanguage(locale_mapping[systemLocale]);
+    const detectedLanguage = detectLanguage();
+    const isFirstLaunch = !fs.existsSync(settingsPath);
 
     // Default settings
     const defaultSettings = {
@@ -915,7 +935,8 @@ const loadSettings = () => {
         gameInstalls: 'uninitialized',
         pinnedGames: [],
         uninstalledGames: [],
-        autoBackupGames: {}
+        autoBackupGames: {},
+        firstLaunchFullScanTipShown: !isFirstLaunch
     };
 
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -935,7 +956,7 @@ const loadSettings = () => {
 
 function saveSettings(key, value) {
     const userDataPath = app.getPath('userData');
-    const settingsPath = path.join(userDataPath, 'GSM Settings', 'settings.json');
+    const settingsPath = path.join(userDataPath, 'OGS Settings', 'settings.json');
 
     settings[key] = key === 'language' ? normalizeLanguage(value) : value;
 
@@ -959,6 +980,10 @@ function saveSettings(key, value) {
                             BrowserWindow.getAllWindows().forEach((window) => {
                                 window.webContents.send('apply-language');
                             });
+                            if (win && !win.isDestroyed()) {
+                                win.webContents.send('update-backup-table');
+                                win.webContents.send('update-restore-table');
+                            }
                             Menu.setApplicationMenu(null);
                             resolve();
                         }).catch(reject);
