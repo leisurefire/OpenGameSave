@@ -18,7 +18,7 @@ const WinReg = require('winreg');
 const {
     getMainWin, getStatus, updateStatus, getGameDisplayName,
     calculateDirectorySize, ensureWritable, getNewestBackup, fsOriginalCopyFolder,
-    placeholder_mapping, osKeyMap, getSettings, saveSettings
+    placeholder_mapping, osKeyMap, getSettings, saveSettings, showBackgroundNotification
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
 
@@ -301,6 +301,11 @@ async function getAllGameDataFromDB() {
 
             mainWin.webContents.send('update-progress', progressId, progressTitle, 100);
             mainWin.webContents.send('show-alert', 'success', i18next.t('alert.scan_full_complete'));
+            showBackgroundNotification(
+                'info',
+                i18next.t('alert.scan_full_complete'),
+                i18next.t('alert.scan_full_background_notification')
+            );
 
         } catch (error) {
             console.error(`Error displaying backup table: ${error.stack}`);

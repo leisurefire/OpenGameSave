@@ -338,6 +338,12 @@ function showNotification(type, title, body, latest_version = 0) {
     }
 
     if (process.platform === 'win32') {
+        const actionsXml = latest_version ? `
+                <actions>
+                    <action content="${i18next.t("alert.yes")}" activationType="protocol" arguments="gamesavemanager://yes"/>
+                    <action content="${i18next.t("alert.no")}" activationType="protocol" arguments="gamesavemanager://no"/>
+                </actions>` : '';
+
         const toastXml = `
             <toast launch="gamesavemanager://default-click">
                 <visual>
@@ -346,11 +352,7 @@ function showNotification(type, title, body, latest_version = 0) {
                         <text id="1">${title}</text>
                         <text id="2">${body}</text>
                     </binding>
-                </visual>
-                <actions>
-                    <action content="${i18next.t("alert.yes")}" activationType="protocol" arguments="gamesavemanager://yes"/>
-                    <action content="${i18next.t("alert.no")}" activationType="protocol" arguments="gamesavemanager://no"/>
-                </actions>
+                </visual>${actionsXml}
             </toast>
         `;
 
@@ -360,13 +362,15 @@ function showNotification(type, title, body, latest_version = 0) {
         });
         notification.show();
 
-        const handleAction = (event, action) => {
-            if (action === 'yes') {
-                updateApp(latest_version);
-            }
-            ipcMain.removeListener('notification-action', handleAction);
-        };
-        ipcMain.on('notification-action', handleAction);
+        if (latest_version) {
+            const handleAction = (event, action) => {
+                if (action === 'yes') {
+                    updateApp(latest_version);
+                }
+                ipcMain.removeListener('notification-action', handleAction);
+            };
+            ipcMain.on('notification-action', handleAction);
+        }
 
     } else {
         const notification = new Notification({
@@ -375,6 +379,17 @@ function showNotification(type, title, body, latest_version = 0) {
             icon: icon_map[type]
         });
         notification.show();
+    }
+}
+
+function showBackgroundNotification(type, title, body) {
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+
+    const isInBackground = !win.isFocused() || win.isMinimized() || !win.isVisible();
+    if (isInBackground) {
+        showNotification(type, title, body);
     }
 }
 
@@ -1094,6 +1109,7 @@ module.exports = {
     getRepositoryUrl: () => appRepositoryUrl,
     getLatestVersion,
     checkAppUpdate,
+    showBackgroundNotification,
     updateApp,
     getGameDisplayName,
     calculateDirectorySize,

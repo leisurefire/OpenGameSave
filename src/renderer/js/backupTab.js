@@ -36,7 +36,6 @@ window.api.receive('scan-full', async () => {
         );
         if (!confirmed) return;
 
-        window.api.send('update-status', 'scanning_full', true);
         const iconMap = await window.api.invoke('get-icon-map');
         const fullScanGameData = await window.api.invoke('start-scan-full');
 
@@ -58,7 +57,6 @@ window.api.receive('scan-full', async () => {
             hideLoadingIndicator('backup');
             window.api.send('update-status', 'updating_backup', false);
         }
-        window.api.send('update-status', 'scanning_full', false);
     }
 });
 

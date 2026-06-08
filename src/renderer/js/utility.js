@@ -115,11 +115,11 @@ export async function showAlert(type, message, modalContent) {
     const alertContainer = document.getElementById('alert-container');
 
     const alertStyles = {
-        info: 'bg-white/10 text-white border-white/5',
-        error: 'bg-red-500/10 text-red-500 border-red-500/20',
-        success: 'bg-xbox-green/10 text-xbox-green border-xbox-green/20',
-        warning: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-        modal: 'bg-red-500/10 text-red-500 border-red-500/20',
+        info: 'text-white border-white/10',
+        error: 'text-red-400 border-red-500/30',
+        success: 'text-xbox-green border-xbox-green/30',
+        warning: 'text-yellow-400 border-yellow-500/30',
+        modal: 'text-red-400 border-red-500/30',
     };
 
     const iconClass = {
@@ -350,7 +350,7 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
         progressElement.id = progressId;
-        progressElement.className = "ml-auto p-4 mb-2 rounded-xl border border-white/10 bg-black/40 backdrop-blur-xl animate-fadeIn w-72 shadow-2xl";
+        progressElement.className = "ml-auto p-4 mb-2 rounded-xl border floating-surface animate-fadeIn w-72 shadow-2xl";
         progressElement.innerHTML = `
             <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-xbox-green">
                 <span>${progressTitle}</span>
