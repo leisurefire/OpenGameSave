@@ -93,7 +93,8 @@ let menuWindow = null;
 let menuParentWindow = null;
 let isMenuOpen = false;
 
-const MENU_WIDTH = 180;
+const MENU_MIN_WIDTH = 196;
+const MENU_MAX_WIDTH = 376;
 const MENU_POSITION_OFFSET_X = 6;
 const MENU_POSITION_OFFSET_Y = 6;
 const MENU_HIDDEN_BOUNDS = { x: -10000, y: -10000, width: 1, height: 1 };
@@ -232,13 +233,15 @@ ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
     }
 });
 
-ipcMain.on('resize-and-show-menu', (event, height) => {
+ipcMain.on('resize-and-show-menu', (event, size) => {
     if (menuWindow && !menuWindow.isDestroyed()) {
+        const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
+        const height = Math.ceil(size?.height || 0);
         isMenuOpen = true;
         menuWindow.setBounds({
             x: menuWindow.targetScreenX,
             y: menuWindow.targetScreenY,
-            width: MENU_WIDTH,
+            width,
             height
         }, false);
         menuWindow.setOpacity(1);

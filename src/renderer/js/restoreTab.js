@@ -37,7 +37,7 @@ async function populateRestoreTable(data) {
     const selectAllCheckbox = restoreTable.querySelector('#restore-checkbox-all-search');
 
     const settings = await window.api.invoke('get-settings');
-    const pinnedGamesWikiIds = settings.pinnedGames || [];
+    const favoriteGamesWikiIds = settings.pinnedGames || [];
     const selectedWikiIds = getSelectedWikiIds('restore');
 
     tableBody.innerHTML = '';
@@ -52,22 +52,22 @@ async function populateRestoreTable(data) {
         })
     );
 
-    // Split and sort pinned and unpinned games
-    const pinnedGames = await window.api.invoke(
+    // Split and sort favorite and other games
+    const favoriteGames = await window.api.invoke(
         'sort-games',
-        gamesWithTitleToSort.filter(game => pinnedGamesWikiIds.includes(game.wiki_page_id.toString()))
+        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
     );
 
     const otherGames = await window.api.invoke(
         'sort-games',
-        gamesWithTitleToSort.filter(game => !pinnedGamesWikiIds.includes(game.wiki_page_id.toString()))
+        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
     );
 
     // Append rows to the table body
     const autoBackupState = await window.api.invoke('get-auto-backup-state');
     const autoBackupSet = new Set(Object.keys(autoBackupState));
 
-    const appendRowsToTable = (games, isPinned) => {
+    const appendRowsToTable = (games, isFavorite) => {
         games.forEach((game) => {
             const wikiId = game.wiki_page_id;
             restoreTableDataMap.set(wikiId, game);
@@ -93,9 +93,9 @@ async function populateRestoreTable(data) {
                 }
             }
 
-            // Check if pinned
-            if (isPinned) {
-                setIcon(row, 'pin', true);
+            // Check if favorite
+            if (isFavorite) {
+                setIcon(row, 'favorite', true);
             }
 
             // Check if any backup is permanent
@@ -113,7 +113,7 @@ async function populateRestoreTable(data) {
         });
     };
 
-    appendRowsToTable(pinnedGames, true);
+    appendRowsToTable(favoriteGames, true);
     appendRowsToTable(otherGames, false);
 
     setupSelectAllCheckbox('restore', selectAllCheckbox);

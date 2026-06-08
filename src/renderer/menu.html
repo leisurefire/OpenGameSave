@@ -9,6 +9,7 @@
     </div>
     <script>
         window.api.receive('set-menu-items', (items) => {
+            const menu = document.getElementById('menu');
             const wrapper = document.getElementById('menu-content-wrapper');
             wrapper.innerHTML = '';
             items.forEach(item => {
@@ -21,12 +22,16 @@
                 });
                 wrapper.appendChild(div);
             });
-            
-            // Measure the inner wrapper ONLY, ignoring body/container residual sizes
+
+                                    // Measure the wrapper and include the transparent body padding so
+            // the BrowserWindow has enough room for anti-aliased rounded corners.
             requestAnimationFrame(() => {
-                const height = wrapper.offsetHeight; // This is the exact height of the items
-                // Add 2px to account for the top and bottom 1px border of menu-container
-                window.api.send('resize-and-show-menu', height + 2); 
+                const style = window.getComputedStyle(document.body);
+                const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+                const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+                const width = Math.ceil(menu.scrollWidth + horizontalPadding + 2);
+                const height = Math.ceil(menu.offsetHeight + verticalPadding + 2);
+                window.api.send('resize-and-show-menu', { width, height });
             });
         });
     </script>

@@ -175,10 +175,10 @@ export async function showManageBackupsModal(wikiId) {
 
             <div class="flex gap-3">
                 <button type="button" id="modal-browse-local-save" class="home-action-button px-4 py-2 text-sm font-bold flex items-center gap-2">
-                    <i class="fa-solid fa-folder-tree"></i> ${browseLocalSaveLabel}
+                    <i class="fa-solid fa-book-open"></i> ${browseLocalSaveLabel}
                 </button>
                 <button type="button" id="modal-delete-local-save" class="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-trash-can"></i> ${deleteLocalSaveLabel}
+                    <i class="fa-solid fa-book-open"></i> ${deleteLocalSaveLabel}
                 </button>
             </div>
         </div>
@@ -301,7 +301,7 @@ export async function showManageBackupsModal(wikiId) {
                 const remaining = Array.from(modalContent.querySelectorAll('.permanent-backup-btn'))
                     .map(b => b.dataset.backupDate).sort((a, b) => b.localeCompare(a));
                 if (remaining.length > 0) {
-                    newestE.textContent = remaining[0].replace(/(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})/, (m, y, mo, d, h, mi) => `${y}/${mo.padStart(2,'0')}/${d.padStart(2,'0')} ${h.padStart(2,'0')}:${mi.padStart(2,'0')}`);
+                    newestE.textContent = remaining[0].replace(/(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})/, (m, y, mo, d, h, mi) => `${y}/${mo.padStart(2, '0')}/${d.padStart(2, '0')} ${h.padStart(2, '0')}:${mi.padStart(2, '0')}`);
                 }
                 if (newC === 0) removeTableRow('restore', wikiId);
                 else { await addOrUpdateTableRow('restore', wikiId); updateSelectedCountAndSize('restore'); }

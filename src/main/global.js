@@ -751,33 +751,38 @@ async function browseLocalSave(resolvedPaths) {
             return;
         }
 
-        // 2. Construct dynamic message
-        let message = '';
-        if (folders.length > 0 && hasRegistry) {
-            message = i18next.t('alert.confirm_open_folders_and_reg', {
-                count: folders.length
+        // 2. Open a single directory directly. Prompt only when multiple
+        // directories or any registry key will be opened.
+        const shouldPrompt = hasRegistry || folders.length > 1;
+        let canOpen = true;
+
+        if (shouldPrompt) {
+            let message = '';
+            if (folders.length > 0 && hasRegistry) {
+                message = i18next.t('alert.confirm_open_folders_and_reg', {
+                    count: folders.length
+                });
+            } else if (hasRegistry) {
+                message = i18next.t('alert.confirm_open_reg');
+            } else {
+                message = i18next.t('alert.confirm_open_folders', {
+                    count: folders.length
+                });
+            }
+
+            const response = await dialog.showMessageBox(win, {
+                type: 'question',
+                title: i18next.t('main.browse_local_save'),
+                message: message,
+                buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
+                defaultId: 0,
+                cancelId: 1
             });
-        } else if (hasRegistry) {
-            message = i18next.t('alert.confirm_open_reg');
-        } else {
-            message = i18next.t('alert.confirm_open_folders', {
-                count: folders.length
-            });
+            canOpen = response.response === 0;
         }
 
-        // 3. Prompt User
-        const response = await dialog.showMessageBox(win, {
-            type: 'question',
-            title: i18next.t('main.browse_local_save'),
-            message: message,
-            buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
-            defaultId: 0,
-            cancelId: 1
-        });
-
-        // 4. Execute Actions
-        if (response.response === 0) {
-            // Open Folders
+        if (canOpen) {
+            // Open directories
             for (const folder of folders) {
                 await shell.openPath(folder);
             }

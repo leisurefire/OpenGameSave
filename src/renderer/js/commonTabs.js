@@ -158,21 +158,39 @@ export function hideLoadingIndicator(tabName) {
     }
 }
 
-// Function to set up the search filter for the table
+// Function to set up the search and favorites filters for the table
 function setupSearchFilter(tabName) {
     const searchInput = document.getElementById(`${tabName}-search`);
+    const favoritesButton = document.getElementById(`${tabName}-favorites-only`);
     const tableBody = document.querySelector(`#${tabName} tbody`);
 
-    searchInput.addEventListener('input', function () {
+    const applyFilters = () => {
         const filter = searchInput.value.toLowerCase();
+        const favoritesOnly = favoritesButton?.dataset.favoritesActive === 'true';
         const rows = tableBody.querySelectorAll('tr');
 
         rows.forEach(row => {
             const gameNameCell = row.querySelector('th[scope="row"]');
             const gameName = gameNameCell ? gameNameCell.textContent.toLowerCase() : '';
-            row.style.display = gameName.includes(filter) ? '' : 'none';
+            const isFavorite = !row.querySelector('span[data-icon="favorite"].hidden');
+            const matchesSearch = gameName.includes(filter);
+            const matchesFavorite = !favoritesOnly || isFavorite;
+            row.style.display = matchesSearch && matchesFavorite ? '' : 'none';
         });
-    });
+    };
+
+    searchInput.addEventListener('input', applyFilters);
+
+    if (favoritesButton) {
+        favoritesButton.addEventListener('click', () => {
+            const isActive = favoritesButton.dataset.favoritesActive === 'true';
+            favoritesButton.dataset.favoritesActive = (!isActive).toString();
+            favoritesButton.classList.toggle('text-red-400', !isActive);
+            favoritesButton.classList.toggle('opacity-100', !isActive);
+            favoritesButton.classList.toggle('opacity-70', isActive);
+            applyFilters();
+        });
+    }
 }
 
 export function setIcon(row, iconName, show) {
@@ -206,7 +224,7 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
-            <span data-icon="pin" class="hidden"><i class="fa-solid fa-thumbtack text-red-500 mr-2"></i></span>
+                        <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
             <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
@@ -238,7 +256,7 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
-            <span data-icon="pin" class="hidden"><i class="fa-solid fa-thumbtack text-red-500 mr-2"></i></span>
+                        <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
             <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
@@ -313,10 +331,10 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
             if (hasPermanent) setIcon(row, 'star', true);
         }
 
-        const pinnedGamesWikiIds = settings.pinnedGames || [];
-        const isPinned = pinnedGamesWikiIds.includes(wikiId.toString());
-        if (isPinned) {
-            setIcon(row, 'pin', true);
+        const favoriteGamesWikiIds = settings.pinnedGames || [];
+        const isFavorite = favoriteGamesWikiIds.includes(wikiId.toString());
+        if (isFavorite) {
+            setIcon(row, 'favorite', true);
         }
 
         // Check if auto backup is active
@@ -329,8 +347,8 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
         const tableBody = document.querySelector(`#${tabName} tbody`);
         const siblingRows = Array.from(tableBody.querySelectorAll('tr'))
             .filter(r => {
-                const pinned = !r.querySelector('span[data-icon="pin"].hidden');
-                return isPinned ? pinned : !pinned;
+                const favorite = !r.querySelector('span[data-icon="favorite"].hidden');
+                return isFavorite ? favorite : !favorite;
             })
             .concat({ getAttribute: () => wikiId.toString(), querySelector: () => ({ textContent: gameTitle }) })
             .map(r => ({
@@ -341,8 +359,8 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
         const sorted = await window.api.invoke('sort-games', siblingRows);
         const targetIndex = sorted.findIndex(g => g.wikiId === wikiId.toString());
 
-        if (isPinned) {
-            // Insert among pinned rows
+        if (isFavorite) {
+            // Insert among favorite rows
             if (targetIndex === 0) {
                 tableBody.insertBefore(row, tableBody.firstChild);
             } else {
@@ -350,13 +368,13 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
                 tableBody.insertBefore(row, prevRow.nextSibling);
             }
         } else {
-            // Insert among unpinned rows
+            // Insert among non-favorite rows
             if (targetIndex === 0) {
-                const lastPinnedRow = Array.from(tableBody.querySelectorAll('tr'))
+                const lastFavoriteRow = Array.from(tableBody.querySelectorAll('tr'))
                     .reverse()
-                    .find(r => !r.querySelector('span[data-icon="pin"].hidden'));
-                if (lastPinnedRow) {
-                    tableBody.insertBefore(row, lastPinnedRow.nextSibling);
+                    .find(r => !r.querySelector('span[data-icon="favorite"].hidden'));
+                if (lastFavoriteRow) {
+                    tableBody.insertBefore(row, lastFavoriteRow.nextSibling);
                 } else {
                     tableBody.insertBefore(row, tableBody.firstChild);
                 }
@@ -381,25 +399,33 @@ export function removeTableRow(tabName, wikiId) {
 
 window.api.receive('execute-menu-action', async (action, data) => {
     window.activeMenuTrigger = null;
-    if (action === 'pin-on-top') {
+    if (action === 'add-favorite') {
         const wikiId = data;
         const settings = await window.api.invoke('get-settings');
-        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
-        pinned_games_wiki_ids.add(wikiId);
-        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
-        pinGameOnTop('backup', wikiId);
-        pinGameOnTop('restore', wikiId);
-    } else if (action === 'unpin') {
+        let favorite_games_wiki_ids = new Set(settings['pinnedGames']);
+        favorite_games_wiki_ids.add(wikiId);
+        window.api.send('save-settings', 'pinnedGames', Array.from(favorite_games_wiki_ids));
+        addGameToFavorites('backup', wikiId);
+        addGameToFavorites('restore', wikiId);
+    } else if (action === 'unfavorite') {
         const wikiId = data;
         const settings = await window.api.invoke('get-settings');
-        let pinned_games_wiki_ids = new Set(settings['pinnedGames']);
-        pinned_games_wiki_ids.delete(wikiId);
-        window.api.send('save-settings', 'pinnedGames', Array.from(pinned_games_wiki_ids));
-        unpinGameFromTop('backup', wikiId);
-        unpinGameFromTop('restore', wikiId);
+        let favorite_games_wiki_ids = new Set(settings['pinnedGames']);
+        favorite_games_wiki_ids.delete(wikiId);
+        window.api.send('save-settings', 'pinnedGames', Array.from(favorite_games_wiki_ids));
+        removeGameFromFavorites('backup', wikiId);
+        removeGameFromFavorites('restore', wikiId);
     } else if (action === 'open-wiki') {
         if (data && data !== 'none') window.api.invoke('open-url', data);
         else showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
+    } else if (action === 'open-save-folder') {
+        const gameData = window.backupTableDataMap && window.backupTableDataMap.get(data);
+        const resolvedPaths = gameData?.resolved_paths;
+        if (!gameData || !resolvedPaths || resolvedPaths.length === 0) {
+            showAlert('warning', await window.i18n.translate('alert.no_local_save_found'));
+        } else {
+            window.api.send('browse-local-save', resolvedPaths);
+        }
     } else if (action === 'manage-backups') {
         showManageBackupsModal(data);
     } else if (action === 'auto-backup') {
@@ -433,14 +459,33 @@ function setDropDownAction() {
             const tabName = button.closest('#backup, #restore, #custom')?.id || 'backup';
 
             const settings = await window.api.invoke('get-settings');
-            const isPinned = settings.pinnedGames.includes(wikiPageId.toString());
+            const isFavorite = settings.pinnedGames.includes(wikiPageId.toString());
             const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : "none";
 
             const menuItems = [
                 {
-                    label: await window.i18n.translate(isPinned ? 'main.unpin' : 'main.pin_on_top'),
-                    icon: isPinned ? 'fa-solid fa-thumbtack-slash' : 'fa-solid fa-thumbtack',
-                    action: isPinned ? 'unpin' : 'pin-on-top',
+                    label: await window.i18n.translate(isFavorite ? 'main.remove_favorite' : 'main.add_favorite'),
+                    icon: isFavorite ? 'fa-solid fa-heart-crack' : 'fa-solid fa-heart',
+                    action: isFavorite ? 'unfavorite' : 'add-favorite',
+                    data: wikiPageId
+                },
+                {
+                    label: await window.i18n.translate('main.auto_backup'),
+                    icon: 'fa-solid fa-clock-rotate-left',
+                    action: 'auto-backup',
+                    data: wikiPageId,
+                    visible: tabName !== 'restore'
+                },
+                {
+                    label: await window.i18n.translate('main.manage_backups'),
+                    icon: 'fa-solid fa-list-check',
+                    action: 'manage-backups',
+                    data: wikiPageId
+                },
+                {
+                    label: await window.i18n.translate('main.browse_local_save'),
+                    icon: 'fa-solid fa-book-open',
+                    action: 'open-save-folder',
                     data: wikiPageId
                 },
                 {
@@ -448,28 +493,13 @@ function setDropDownAction() {
                     icon: 'fa-solid fa-globe',
                     action: 'open-wiki',
                     data: wikiUrl
-                },
-                {
-                    label: await window.i18n.translate('main.manage_backups'),
-                    icon: 'fa-solid fa-list-check',
-                    action: 'manage-backups',
-                    data: wikiPageId
                 }
-            ];
-
-            if (tabName !== 'restore') {
-                menuItems.push({
-                    label: await window.i18n.translate('main.auto_backup'),
-                    icon: 'fa-solid fa-clock-rotate-left',
-                    action: 'auto-backup',
-                    data: wikiPageId
-                });
-            }
+            ].filter(item => item.visible !== false);
 
             const rect = button.getBoundingClientRect();
             window.api.send('show-popup-menu', {
                 items: menuItems,
-                x: rect.right + 4, // Align right edge (MENU_WIDTH is 180)
+                x: rect.right + 4,
                 y: rect.bottom + 8
             });
             window.activeMenuTrigger = button;
@@ -487,69 +517,73 @@ function setDropDownAction() {
     });
 }
 
-async function pinGameOnTop(tabName, wikiId) {
+async function addGameToFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
 
     if (rowToMove) {
         tableBody.removeChild(rowToMove);
-        setIcon(rowToMove, 'pin', true);
+        setIcon(rowToMove, 'favorite', true);
 
-        const pinnedGames = Array.from(tableBody.querySelectorAll('tr'))
-            .filter(row => !row.querySelector('span[data-icon="pin"].hidden'))
+        const favoriteGames = Array.from(tableBody.querySelectorAll('tr'))
+            .filter(row => !row.querySelector('span[data-icon="favorite"].hidden'))
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
                 titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
             }));
 
-        const sortedPinnedGames = await window.api.invoke('sort-games', pinnedGames);
-        const targetIndex = sortedPinnedGames.findIndex(game => game.wikiId === wikiId);
+        const sortedFavoriteGames = await window.api.invoke('sort-games', favoriteGames);
+        const targetIndex = sortedFavoriteGames.findIndex(game => game.wikiId === wikiId);
 
         if (targetIndex === 0) {
             tableBody.insertBefore(rowToMove, tableBody.firstChild);
         } else {
-            const previousRowId = sortedPinnedGames[targetIndex - 1].wikiId;
+            const previousRowId = sortedFavoriteGames[targetIndex - 1].wikiId;
             const previousRow = tableBody.querySelector(`tr[data-wiki-id="${previousRowId}"]`);
             tableBody.insertBefore(rowToMove, previousRow.nextSibling);
         }
+
+        document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
     }
 }
 
-async function unpinGameFromTop(tabName, wikiId) {
+async function removeGameFromFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
 
     if (rowToMove) {
-        setIcon(rowToMove, 'pin', false);
+        setIcon(rowToMove, 'favorite', false);
         tableBody.removeChild(rowToMove);
 
-        const unpinnedGames = Array.from(tableBody.querySelectorAll('tr'))
-            .filter(row => row.querySelector('span[data-icon="pin"].hidden'))
+        const nonFavoriteGames = Array.from(tableBody.querySelectorAll('tr'))
+            .filter(row => row.querySelector('span[data-icon="favorite"].hidden'))
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
                 titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
             }));
 
-        const sortedUnpinnedGames = await window.api.invoke('sort-games', unpinnedGames);
-        const targetIndex = sortedUnpinnedGames.findIndex(game => game.wikiId === wikiId);
+        const sortedNonFavoriteGames = await window.api.invoke('sort-games', nonFavoriteGames);
+        const targetIndex = sortedNonFavoriteGames.findIndex(game => game.wikiId === wikiId);
 
-        const lastPinnedRow = Array.from(tableBody.querySelectorAll('tr'))
+        const lastFavoriteRow = Array.from(tableBody.querySelectorAll('tr'))
             .reverse()
-            .find(row => !row.querySelector('span[data-icon="pin"].hidden'));
+            .find(row => !row.querySelector('span[data-icon="favorite"].hidden'));
 
         if (targetIndex === 0) {
-            if (lastPinnedRow) {
-                tableBody.insertBefore(rowToMove, lastPinnedRow.nextSibling);
+            if (lastFavoriteRow) {
+                tableBody.insertBefore(rowToMove, lastFavoriteRow.nextSibling);
             } else {
                 tableBody.insertBefore(rowToMove, tableBody.firstChild);
             }
         } else {
-            const previousRowId = sortedUnpinnedGames[targetIndex - 1].wikiId;
+            const previousRowId = sortedNonFavoriteGames[targetIndex - 1].wikiId;
             const previousRow = tableBody.querySelector(`tr[data-wiki-id="${previousRowId}"]`);
             tableBody.insertBefore(rowToMove, previousRow.nextSibling);
         }
+
+        document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
     }
 }
 

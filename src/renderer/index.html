@@ -176,9 +176,15 @@
 
             <div id="backup-content" class="hidden space-y-4">
                 <div class="flex justify-between items-center">
-                    <div class="relative">
-                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 opacity-40"></i>
-                        <input type="text" id="backup-search" class="pl-10 w-80" data-i18n-placeholder="main.search_for_games">
+                                        <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"></i>
+                            <input type="text" id="backup-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
+                        </div>
+                        <button id="backup-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" title="Favorites">
+                            <i class="fa-solid fa-heart"></i>
+                            <span data-i18n="main.favorites_only">Favorites</span>
+                        </button>
                     </div>
                     <div class="text-right">
                         <div id="backup-selected-count" class="text-xl font-bold"></div>
@@ -226,7 +232,16 @@
 
             <div id="restore-content" class="hidden space-y-4">
                 <div class="flex justify-between items-center">
-                    <input type="text" id="restore-search" class="w-80" data-i18n-placeholder="main.search_for_games">
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"></i>
+                            <input type="text" id="restore-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
+                        </div>
+                        <button id="restore-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" title="Favorites">
+                            <i class="fa-solid fa-heart"></i>
+                            <span data-i18n="main.favorites_only">Favorites</span>
+                        </button>
+                    </div>
                     <div class="text-right">
                         <div id="restore-selected-count" class="text-xl font-bold"></div>
                         <div id="restore-selected-size" class="text-sm opacity-50"></div>

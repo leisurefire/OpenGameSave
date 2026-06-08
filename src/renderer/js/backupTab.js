@@ -69,7 +69,7 @@ async function populateBackupTable(data, iconMap) {
     const selectAllCheckbox = backupTable.querySelector('#backup-checkbox-all-search');
 
     const settings = await window.api.invoke('get-settings');
-    const pinnedGamesWikiIds = settings.pinnedGames || [];
+    const favoriteGamesWikiIds = settings.pinnedGames || [];
     const selectedWikiIds = getSelectedWikiIds('backup');
 
     const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
@@ -86,22 +86,22 @@ async function populateBackupTable(data, iconMap) {
         })
     );
 
-    // Split and sort pinned and unpinned games
-    const pinnedGames = await window.api.invoke(
+    // Split and sort favorite and other games
+    const favoriteGames = await window.api.invoke(
         'sort-games',
-        gamesWithTitleToSort.filter(game => pinnedGamesWikiIds.includes(game.wiki_page_id.toString()))
+        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
     );
 
     const otherGames = await window.api.invoke(
         'sort-games',
-        gamesWithTitleToSort.filter(game => !pinnedGamesWikiIds.includes(game.wiki_page_id.toString()))
+        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
     );
 
     // Append rows to the table body
     const autoBackupState = await window.api.invoke('get-auto-backup-state');
     const autoBackupSet = new Set(Object.keys(autoBackupState));
 
-    const appendRowsToTable = (games, isPinned) => {
+    const appendRowsToTable = (games, isFavorite) => {
         games.forEach((game) => {
             const wikiId = game.wiki_page_id;
             backupTableDataMap.set(wikiId, game);
@@ -128,9 +128,9 @@ async function populateBackupTable(data, iconMap) {
                 }
             }
 
-            // Check if pinned
-            if (isPinned) {
-                setIcon(row, 'pin', true);
+            // Check if favorite
+            if (isFavorite) {
+                setIcon(row, 'favorite', true);
             }
 
             // Check if any backup is permanent by looking at restore table data which has is_permanent
@@ -149,7 +149,7 @@ async function populateBackupTable(data, iconMap) {
         });
     };
 
-    appendRowsToTable(pinnedGames, true);
+    appendRowsToTable(favoriteGames, true);
     appendRowsToTable(otherGames, false);
 
     setupSelectAllCheckbox('backup', selectAllCheckbox);
