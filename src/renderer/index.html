@@ -126,8 +126,14 @@
     <!-- Navigation Header -->
     <header class="flex items-center justify-between mb-6 pb-2">
         <nav class="flex gap-1" id="main-tab" role="tablist">
-            <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100" data-i18n="main.backup">Backup</button>
-            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100" data-i18n="main.restore">Restore</button>
+                        <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.backup">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span class="text-content">Backup</span>
+            </button>
+            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.restore">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span class="text-content">Restore</span>
+            </button>
         </nav>
 
         <div class="flex items-center gap-3">

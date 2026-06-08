@@ -178,7 +178,7 @@ export async function showManageBackupsModal(wikiId) {
                     <i class="fa-solid fa-book-open"></i> ${browseLocalSaveLabel}
                 </button>
                 <button type="button" id="modal-delete-local-save" class="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-book-open"></i> ${deleteLocalSaveLabel}
+                    <i class="fa-solid fa-trash"></i> ${deleteLocalSaveLabel}
                 </button>
             </div>
         </div>
