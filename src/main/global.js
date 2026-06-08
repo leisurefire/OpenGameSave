@@ -22,6 +22,8 @@ let settings;
 let writeQueue = Promise.resolve();
 
 const appVersion = "2.2.0-beta.3";
+const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
+const appRepositoryApiLatestReleaseUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 const supportedLanguages = new Set(['en_US', 'zh_CN']);
 const normalizeLanguage = (language) => supportedLanguages.has(language) ? language : 'en_US';
 const isWindows = process.platform === 'win32';
@@ -281,10 +283,10 @@ function resource_path(resource_name) {
 
 async function getLatestVersion(appName) {
     try {
-        const response = await axios.get('https://api.github.com/repos/dyang886/Game-Save-Manager/releases/latest', {
+        const response = await axios.get(appRepositoryApiLatestReleaseUrl, {
             headers: {
                 'Accept': 'application/vnd.github+json',
-                'User-Agent': 'Game-Save-Manager'
+                'User-Agent': 'OpenGameSave'
             },
             timeout: 15000 // 15 seconds
         });
@@ -305,7 +307,7 @@ async function getLatestVersion(appName) {
 
 async function checkAppUpdate() {
     try {
-        const latestVersion = await getLatestVersion('GSM');
+        const latestVersion = await getLatestVersion('OpenGameSave');
 
         if (latestVersion > appVersion) {
             showNotification(
@@ -352,7 +354,7 @@ function showNotification(type, title, body, latest_version = 0) {
             </toast>
         `;
 
-        app.setAppUserModelId('com.yyc.game-save-manager');
+        app.setAppUserModelId('com.leisurefire.opengamesave');
         const notification = new Notification({
             toastXml: toastXml
         });
@@ -378,7 +380,7 @@ function showNotification(type, title, body, latest_version = 0) {
 
 function updateApp(latest_version) {
     const updaterPath = './Updater.exe';
-    const s3Path = `GSM/Game Save Manager Setup ${latest_version}.exe`;
+    const s3Path = `OpenGameSave/OpenGameSave Setup ${latest_version}.exe`;
     const args = ['--pid', process.pid, '--s3-path', s3Path, '--language', settings['language']];
 
     try {
@@ -1059,6 +1061,7 @@ module.exports = {
     updateStatus,
 
     getCurrentVersion: () => appVersion,
+    getRepositoryUrl: () => appRepositoryUrl,
     getLatestVersion,
     checkAppUpdate,
     updateApp,

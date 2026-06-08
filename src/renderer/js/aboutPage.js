@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const latestVersionSpan = document.getElementById('latest-version');
     const currentVersionSpan = document.getElementById('current-version');
     const githubLink = document.getElementById('github-link');
-    const bilibiliLink = document.getElementById('bilibili-link');
+    const authorLink = document.getElementById('author-link');
     const updateButton = document.getElementById('update-button');
 
     const fetchLatestVersion = async () => {
@@ -35,10 +35,11 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchLatestVersion();
     updateTranslations(document);
 
-    githubLink.addEventListener('click', () => {
-        window.api.invoke('open-url', githubLink.innerText);
+    githubLink.addEventListener('click', async () => {
+        const repositoryUrl = await window.api.invoke('get-repository-url');
+        window.api.invoke('open-url', repositoryUrl);
     });
-    bilibiliLink.addEventListener('click', () => {
-        window.api.invoke('open-url', bilibiliLink.innerText);
+    authorLink.addEventListener('click', () => {
+        window.api.invoke('open-url', 'https://github.com/leisurefire');
     });
 });

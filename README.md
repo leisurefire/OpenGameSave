@@ -6,6 +6,8 @@ English | [中文](./README_CN.md)
 <img src="src/assets/logo.png" alt="OpenGameSave logo" width="250" />
 </div>
 
+> Current developers: [leisurefire](https://github.com/leisurefire). Former developers: Yongcan Yang. This fork is maintained at [leisurefire/OpenGameSave](https://github.com/leisurefire/OpenGameSave).
+
 Safeguard every save from Steam, Epic, and even custom locations all in one place. Restore them in a heartbeat. Your progress, exactly as it should be—yours.
 
 ### Stunning by design.
@@ -24,4 +26,11 @@ Powered by the PCGamingWiki database, OpenGameSave effortlessly recognizes save 
 Upgraded your PC? Just export a sleek .gsmr archive and bring your entire gaming history to your new device with one simple click.
 
 ### Installation
-Head over to our Latest Release page, download the newest installer built for Windows, launch OpenGameSave, and enjoy your games with absolute peace of mind.
+Head over to the [Latest Release page](https://github.com/leisurefire/OpenGameSave/releases/latest), download the newest installer built for Windows, launch OpenGameSave, and enjoy your games with absolute peace of mind.
+
+### Developers
+- Current developers: [leisurefire](https://github.com/leisurefire)
+- Former developers: Yongcan Yang
+
+### License
+OpenGameSave is licensed under GPL-3.0-only.

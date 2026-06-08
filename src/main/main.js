@@ -15,7 +15,7 @@ const { pinyin } = require('pinyin');
 const {
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
-    moveFilesWithProgress, getCurrentVersion, getLatestVersion, updateApp
+    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
@@ -292,7 +292,7 @@ app.whenReady().then(async () => {
     });
 }).catch((error) => {
     logFatalError(error);
-    dialog.showErrorBox('Game Save Manager startup failed', error && error.stack ? error.stack : String(error));
+    dialog.showErrorBox('OpenGameSave startup failed', error && error.stack ? error.stack : String(error));
     app.quit();
 });
 
@@ -565,8 +565,12 @@ ipcMain.handle('get-current-version', () => {
     return getCurrentVersion();
 });
 
+ipcMain.handle('get-repository-url', () => {
+    return getRepositoryUrl();
+});
+
 ipcMain.handle('get-latest-version', () => {
-    return getLatestVersion('GSM');
+    return getLatestVersion('OpenGameSave');
 });
 
 ipcMain.handle('update-database', async () => {

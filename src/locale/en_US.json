@@ -23,12 +23,13 @@
         "current_version": "Current version: ",
         "latest_version": "Latest version: ",
         "github": "GitHub: ",
-        "bilibili": "Bilibili: ",
+        "developers": "Developers: ",
+        "former_developers": "Former developers: ",
         "load_failed": "Failed to load",
         "update": "Update Now"
     },
     "main": {
-        "title": "Game Save Manager",
+        "title": "OpenGameSave",
         "options": "Options",
         "loading": "Loading...",
         "backup": "Backup",

@@ -1,5 +1,5 @@
 {
-  "name": "game-save-manager",
+  "name": "opengamesave",
   "version": "2.2.0",
   "description": "Easily backup and restore your game saves anytime",
   "main": "dist/out/main/main.js",
@@ -15,9 +15,9 @@
   "build": {
     "extends": null,
     "icon": "./src/assets/logo.ico",
-    "appId": "com.yyc.game-save-manager",
-    "productName": "Game Save Manager",
-    "copyright": "Copyright © 2024-2026 Yongcan Yang",
+    "appId": "com.leisurefire.opengamesave",
+    "productName": "OpenGameSave",
+    "copyright": "Copyright © 2024-2026 leisurefire. Original work Copyright © 2024-2026 Yongcan Yang",
     "files": [
       "dist/out/**/*"
     ],
@@ -34,7 +34,7 @@
       }
     ]
   },
-  "author": "Yongcan Yang",
+  "author": "leisurefire",
   "license": "GPL-3.0-only",
   "dependencies": {
     "7zip-bin": "^5.2.0",
