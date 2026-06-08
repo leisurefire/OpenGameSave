@@ -1,6 +1,10 @@
 import { updateTranslations } from './utility.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+window.api.receive('apply-language', async () => {
+    await updateTranslations(document);
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
     const latestVersionSpan = document.getElementById('latest-version');
     const currentVersionSpan = document.getElementById('current-version');
     const githubLink = document.getElementById('github-link');
@@ -33,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     fetchLatestVersion();
-    updateTranslations(document);
+    await updateTranslations(document);
 
     githubLink.addEventListener('click', async () => {
         const repositoryUrl = await window.api.invoke('get-repository-url');

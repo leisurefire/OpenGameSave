@@ -84,30 +84,37 @@ function setupHomeActions() {
 }
 
 export async function updateTranslations(container) {
-    container.querySelectorAll("[data-i18n]").forEach(async (el) => {
+    const translationTasks = [];
+
+    container.querySelectorAll("[data-i18n]").forEach((el) => {
         const key = el.getAttribute("data-i18n");
-        const translation = await window.i18n.translate(key);
-        if (translation) {
-            // Priority 1: Specifically marked span for dynamic content protection
-            const textContentElement = el.querySelector('.text-content');
-            if (textContentElement) {
-                textContentElement.innerText = translation;
+        translationTasks.push(window.i18n.translate(key).then((translation) => {
+            if (translation) {
+                // Priority 1: Specifically marked span for dynamic content protection
+                const textContentElement = el.querySelector('.text-content');
+                if (textContentElement) {
+                    textContentElement.innerText = translation;
+                }
+                // Priority 2: If the element itself is marked as text-content
+                else if (el.classList.contains('text-content')) {
+                    el.innerText = translation;
+                }
+                // Priority 3: Default behavior for buttons and simple containers without children
+                else if (el.children.length === 0 || (el.tagName === 'BUTTON' && !el.querySelector('i'))) {
+                    el.innerText = translation;
+                }
             }
-            // Priority 2: If the element itself is marked as text-content
-            else if (el.classList.contains('text-content')) {
-                el.innerText = translation;
-            }
-            // Priority 3: Default behavior for buttons and simple containers without children
-            else if (el.children.length === 0 || (el.tagName === 'BUTTON' && !el.querySelector('i'))) {
-                el.innerText = translation;
-            }
-        }
+        }));
     });
 
-    container.querySelectorAll('[data-i18n-placeholder]').forEach(async element => {
+    container.querySelectorAll('[data-i18n-placeholder]').forEach((element) => {
         const i18nKey = element.getAttribute('data-i18n-placeholder');
-        element.setAttribute('placeholder', await window.i18n.translate(i18nKey));
+        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
+            element.setAttribute('placeholder', translation);
+        }));
     });
+
+    await Promise.all(translationTasks);
 }
 
 

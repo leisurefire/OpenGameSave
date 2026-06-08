@@ -20,6 +20,7 @@ let settingsWin;
 let aboutWin;
 let settings;
 let writeQueue = Promise.resolve();
+let allowAuxiliaryWindowClose = false;
 
 const appVersion = "0.6.22 D.VA edition";
 const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
@@ -59,71 +60,126 @@ let status = {
     updating_restore: false
 }
 
-const openSettingsWindow = () => {
+const showAuxiliaryWindow = (browserWindow) => {
+    if (!browserWindow || browserWindow.isDestroyed()) {
+        return;
+    }
+
+    browserWindow.show();
+    browserWindow.focus();
+};
+
+const createSettingsWindow = (showWhenReady = true) => {
     let settings_window_size = [580, 760];
-    if (!settingsWin || settingsWin.isDestroyed()) {
-        settingsWin = new BrowserWindow({
-            width: settings_window_size[0],
-            height: settings_window_size[1],
-            minWidth: settings_window_size[0],
-            minHeight: settings_window_size[1],
-            resizable: false,
-            icon: path.join(__dirname, "../assets/setting.ico"),
-            parent: win,
-            modal: true,
-            ...windowVisualEffect,
-            webPreferences: {
-                preload: path.join(__dirname, "../preload/preload.js"),
-                sandbox: false,
-            },
-        });
+    settingsWin = new BrowserWindow({
+        width: settings_window_size[0],
+        height: settings_window_size[1],
+        minWidth: settings_window_size[0],
+        minHeight: settings_window_size[1],
+        resizable: false,
+        show: false,
+        icon: path.join(__dirname, "../assets/setting.ico"),
+        parent: win,
+        modal: true,
+        ...windowVisualEffect,
+        webPreferences: {
+            preload: path.join(__dirname, "../preload/preload.js"),
+            sandbox: false,
+        },
+    });
 
-        applyWindowsMicaEffect(settingsWin);
+    applyWindowsMicaEffect(settingsWin);
 
-        if (!app.isPackaged) {
-            settingsWin.webContents.openDevTools({ mode: "detach" });
+    if (!app.isPackaged) {
+        settingsWin.webContents.openDevTools({ mode: "detach" });
+    }
+    settingsWin.setMenuBarVisibility(false);
+    settingsWin.loadFile(path.join(__dirname, "../renderer/settings.html"));
+
+    settingsWin.once('ready-to-show', () => {
+        if (showWhenReady) {
+            showAuxiliaryWindow(settingsWin);
         }
-        settingsWin.setMenuBarVisibility(false);
-        settingsWin.loadFile(path.join(__dirname, "../renderer/settings.html"));
+    });
 
-        settingsWin.on("closed", () => {
-            settingsWin = null;
-        });
+    settingsWin.on('close', (event) => {
+        if (!allowAuxiliaryWindowClose && settingsWin && !settingsWin.isDestroyed()) {
+            event.preventDefault();
+            settingsWin.hide();
+        }
+    });
+
+    settingsWin.on("closed", () => {
+        settingsWin = null;
+    });
+};
+
+const openSettingsWindow = () => {
+    if (!settingsWin || settingsWin.isDestroyed()) {
+        createSettingsWindow(true);
     } else {
-        settingsWin.focus();
+        showAuxiliaryWindow(settingsWin);
     }
 };
 
-const openAboutWindow = () => {
+const createAboutWindow = (showWhenReady = true) => {
     let about_window_size = [480, 380];
-    if (!aboutWin || aboutWin.isDestroyed()) {
-        aboutWin = new BrowserWindow({
-            width: about_window_size[0],
-            height: about_window_size[1],
-            resizable: false,
-            icon: path.join(__dirname, "../assets/logo.ico"),
-            parent: win,
-            modal: true,
-            ...windowVisualEffect,
-            webPreferences: {
-                preload: path.join(__dirname, "../preload/preload.js"),
-                sandbox: false,
-            },
-        });
+    aboutWin = new BrowserWindow({
+        width: about_window_size[0],
+        height: about_window_size[1],
+        resizable: false,
+        show: false,
+        icon: path.join(__dirname, "../assets/logo.ico"),
+        parent: win,
+        modal: true,
+        ...windowVisualEffect,
+        webPreferences: {
+            preload: path.join(__dirname, "../preload/preload.js"),
+            sandbox: false,
+        },
+    });
 
-        applyWindowsMicaEffect(aboutWin);
+    applyWindowsMicaEffect(aboutWin);
 
-        if (!app.isPackaged) {
-            aboutWin.webContents.openDevTools({ mode: "detach" });
+    if (!app.isPackaged) {
+        aboutWin.webContents.openDevTools({ mode: "detach" });
+    }
+    aboutWin.setMenuBarVisibility(false);
+    aboutWin.loadFile(path.join(__dirname, "../renderer/about.html"));
+
+    aboutWin.once('ready-to-show', () => {
+        if (showWhenReady) {
+            showAuxiliaryWindow(aboutWin);
         }
-        aboutWin.setMenuBarVisibility(false);
-        aboutWin.loadFile(path.join(__dirname, "../renderer/about.html"));
+    });
 
-        aboutWin.on("closed", () => {
-            aboutWin = null;
-        });
+    aboutWin.on('close', (event) => {
+        if (!allowAuxiliaryWindowClose && aboutWin && !aboutWin.isDestroyed()) {
+            event.preventDefault();
+            aboutWin.hide();
+        }
+    });
+
+    aboutWin.on("closed", () => {
+        aboutWin = null;
+    });
+};
+
+const openAboutWindow = () => {
+    if (!aboutWin || aboutWin.isDestroyed()) {
+        createAboutWindow(true);
     } else {
-        aboutWin.focus();
+        showAuxiliaryWindow(aboutWin);
+    }
+};
+
+const preloadAuxiliaryWindows = () => {
+    if (!settingsWin || settingsWin.isDestroyed()) {
+        createSettingsWindow(false);
+    }
+
+    if (!aboutWin || aboutWin.isDestroyed()) {
+        createAboutWindow(false);
     }
 };
 
@@ -136,39 +192,7 @@ const initializeMenu = () => {
                 {
                     label: i18next.t("settings.title"),
                     click() {
-                        let settings_window_size = [580, 760];
-                        // Check if settingsWin is already open
-                        if (!settingsWin || settingsWin.isDestroyed()) {
-                            settingsWin = new BrowserWindow({
-                                width: settings_window_size[0],
-                                height: settings_window_size[1],
-                                minWidth: settings_window_size[0],
-                                minHeight: settings_window_size[1],
-                                resizable: false,
-                                icon: path.join(__dirname, "../assets/setting.ico"),
-                                parent: win,
-                                modal: true,
-                                ...windowVisualEffect,
-                                webPreferences: {
-                                    preload: path.join(__dirname, "../preload/preload.js"),
-                                    sandbox: false,
-                                },
-                            });
-
-                            applyWindowsMicaEffect(settingsWin);
-
-                            if (!app.isPackaged) {
-                                settingsWin.webContents.openDevTools({ mode: "detach" });
-                            }
-                            settingsWin.setMenuBarVisibility(false);
-                            settingsWin.loadFile(path.join(__dirname, "../renderer/settings.html"));
-
-                            settingsWin.on("closed", () => {
-                                settingsWin = null;
-                            });
-                        } else {
-                            settingsWin.focus();
-                        }
+                        openSettingsWindow();
                     },
                 },
                 {
@@ -186,36 +210,7 @@ const initializeMenu = () => {
                 {
                     label: i18next.t("about.title"),
                     click() {
-                        let about_window_size = [480, 380];
-                        if (!aboutWin || aboutWin.isDestroyed()) {
-                            aboutWin = new BrowserWindow({
-                                width: about_window_size[0],
-                                height: about_window_size[1],
-                                resizable: false,
-                                icon: path.join(__dirname, "../assets/logo.ico"),
-                                parent: win,
-                                modal: true,
-                                ...windowVisualEffect,
-                                webPreferences: {
-                                    preload: path.join(__dirname, "../preload/preload.js"),
-                                    sandbox: false,
-                                },
-                            });
-
-                            applyWindowsMicaEffect(aboutWin);
-
-                            if (!app.isPackaged) {
-                                aboutWin.webContents.openDevTools({ mode: "detach" });
-                            }
-                            aboutWin.setMenuBarVisibility(false);
-                            aboutWin.loadFile(path.join(__dirname, "../renderer/about.html"));
-
-                            aboutWin.on("closed", () => {
-                                aboutWin = null;
-                            });
-                        } else {
-                            aboutWin.focus();
-                        }
+                        openAboutWindow();
                     },
                 },
             ],
@@ -259,6 +254,10 @@ const createMainWindow = async () => {
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
     win.setMenuBarVisibility(false);
     Menu.setApplicationMenu(null);
+
+    win.on("close", () => {
+        allowAuxiliaryWindowClose = true;
+    });
 
     win.on("closed", () => {
         BrowserWindow.getAllWindows().forEach((window) => {
@@ -976,7 +975,7 @@ function saveSettings(key, value) {
     settings[key] = key === 'language' ? normalizeLanguage(value) : value;
 
     // Queue the write operation to prevent simultaneous writes
-    writeQueue = writeQueue.then(() => {
+    return writeQueue = writeQueue.then(() => {
         return new Promise((resolve, reject) => {
             fs.writeFile(settingsPath, JSON.stringify(settings), (writeErr) => {
                 if (writeErr) {
@@ -1102,6 +1101,7 @@ module.exports = {
     createMainWindow,
     getMainWin: () => win,
     getSettingsWin: () => settingsWin,
+    preloadAuxiliaryWindows,
     getStatus: () => status,
     updateStatus,
 

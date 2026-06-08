@@ -15,7 +15,7 @@ const { pinyin } = require('pinyin');
 const {
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
-    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp
+    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp, preloadAuxiliaryWindows
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
@@ -289,6 +289,15 @@ app.whenReady().then(async () => {
     }
 
     await createMainWindow();
+    getMainWin().webContents.once('did-finish-load', () => {
+        preloadAuxiliaryWindows();
+
+        if (pendingGSMPath) {
+            getMainWin().webContents.send('open-import-modal', pendingGSMPath);
+            pendingGSMPath = null;
+        }
+    });
+
     createMenuWindow(); // Pre-load menu
     app.setAppUserModelId(i18next.t('main.title'));
 
@@ -296,14 +305,8 @@ app.whenReady().then(async () => {
         checkAppUpdate();
     }
 
-    await restoreAutoBackups();
 
-    getMainWin().webContents.once('did-finish-load', () => {
-        if (pendingGSMPath) {
-            getMainWin().webContents.send('open-import-modal', pendingGSMPath);
-            pendingGSMPath = null;
-        }
-    });
+    await restoreAutoBackups();
 
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -332,6 +335,11 @@ const initializeI18next = (language) => {
 // ======================================================================
 ipcMain.handle("translate", async (event, key, options) => {
     return i18next.t(key, options);
+});
+
+ipcMain.handle('change-language', async (event, language) => {
+    await saveSettings('language', language);
+    return getSettings().language;
 });
 
 ipcMain.on('save-settings', async (event, key, value) => {

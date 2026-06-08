@@ -1,7 +1,12 @@
 import { updateTranslations, showAlert, operationStartCheck, wrapNumberInput } from './utility.js';
 
-window.api.receive('apply-language', () => {
-    updateTranslations(document);
+window.api.receive('apply-language', async () => {
+    const settings = await window.api.invoke('get-settings');
+    const languageSelect = document.getElementById('language');
+    if (languageSelect && settings?.language) {
+        languageSelect.value = settings.language;
+    }
+    await updateTranslations(document);
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wrapNumberInput(maxBackupsInput);
 
     // Initial load
-    window.api.invoke('get-settings').then((settings) => {
+    window.api.invoke('get-settings').then(async (settings) => {
         if (settings) {
             languageSelect.value = settings.language;
             backupPathInput.value = settings.backupPath;
@@ -34,13 +39,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        updateTranslations(document);
+        await updateTranslations(document);
     });
 
     // Auto-save function
     async function autoSave() {
         const previousSettings = await window.api.invoke('get-settings');
-        
+
         // Collect current paths
         const newGameInstallPaths = [];
         document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
@@ -80,8 +85,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Event listeners for auto-save
-    languageSelect.addEventListener('change', (event) => {
-        window.api.send('save-settings', 'language', event.target.value);
+    languageSelect.addEventListener('change', async (event) => {
+        const previousLanguage = (await window.api.invoke('get-settings')).language;
+        const nextLanguage = event.target.value;
+
+        if (previousLanguage === nextLanguage) {
+            return;
+        }
+
+        languageSelect.disabled = true;
+        try {
+            await window.i18n.changeLanguage(nextLanguage);
+        } catch (error) {
+            console.error('Failed to change language:', error);
+            languageSelect.value = previousLanguage;
+        } finally {
+            languageSelect.disabled = false;
+        }
     });
 
     backupPathButton.addEventListener('click', async () => {
