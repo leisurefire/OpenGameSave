@@ -1,4 +1,4 @@
-import { updateTranslations, showAlert, wrapNumberInput } from './utility.js';
+import { updateTranslations, showAlert, wrapNumberInput, autoResizeWindow } from './utility.js';
 
 window.api.receive('apply-language', async () => {
     const settings = await window.api.invoke('get-settings');
@@ -7,6 +7,7 @@ window.api.receive('apply-language', async () => {
         languageSelect.value = settings.language;
     }
     await updateTranslations(document);
+    autoResizeWindow();
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         await updateTranslations(document);
+        autoResizeWindow();
     });
 
     // Auto-save function
@@ -155,9 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
         removePathButton.addEventListener('click', () => {
             newPath.remove();
             autoSave();
+            autoResizeWindow();
         });
 
         if (triggerSave) autoSave();
+        autoResizeWindow();
     }
 
     function duplicatePathCheck(newPath, currentInput) {

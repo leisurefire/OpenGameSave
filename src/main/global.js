@@ -70,52 +70,54 @@ const modalWindowDefinitions = {
     settings: {
         file: 'settings.html',
         width: 620,
-        height: 820,
+        height: 600,
         minWidth: 620,
-        minHeight: 820,
-        resizable: false,
+        minHeight: 400,
+        resizable: true,
         icon: 'setting.ico'
     },
     about: {
         file: 'about.html',
-        width: 480,
+        width: 620,
         height: 380,
-        resizable: false,
+        minWidth: 620,
+        minHeight: 250,
+        resizable: true,
         icon: 'logo.ico'
     },
     export: {
         file: 'modal.html',
-        width: 620,
-        height: 430,
-        minWidth: 620,
-        minHeight: 430,
+        width: 520,
+        height: 360,
+        minWidth: 520,
+        minHeight: 300,
         resizable: false,
         icon: 'logo.ico'
     },
     import: {
         file: 'modal.html',
-        width: 620,
-        height: 260,
-        minWidth: 620,
-        minHeight: 260,
+        width: 520,
+        height: 220,
+        minWidth: 520,
+        minHeight: 200,
         resizable: false,
         icon: 'logo.ico'
     },
     account: {
         file: 'modal.html',
         width: 620,
-        height: 560,
+        height: 500,
         minWidth: 620,
-        minHeight: 560,
+        minHeight: 300,
         resizable: false,
         icon: 'logo.ico'
     },
     'auto-backup': {
         file: 'modal.html',
         width: 620,
-        height: 560,
+        height: 400,
         minWidth: 620,
-        minHeight: 560,
+        minHeight: 300,
         resizable: false,
         icon: 'logo.ico'
     },
@@ -139,28 +141,28 @@ const modalWindowDefinitions = {
     },
     'scan-full': {
         file: 'modal.html',
-        width: 560,
-        height: 300,
-        minWidth: 560,
-        minHeight: 300,
+        width: 520,
+        height: 200,
+        minWidth: 520,
+        minHeight: 200,
         resizable: false,
         icon: 'logo.ico'
     },
     confirm: {
         file: 'modal.html',
         width: 520,
-        height: 280,
+        height: 200,
         minWidth: 520,
-        minHeight: 280,
+        minHeight: 200,
         resizable: false,
         icon: 'logo.ico'
     },
     dialog: {
         file: 'modal.html',
-        width: 680,
-        height: 460,
-        minWidth: 560,
-        minHeight: 280,
+        width: 520,
+        height: 200,
+        minWidth: 520,
+        minHeight: 200,
         resizable: true,
         icon: 'logo.ico'
     }
@@ -1265,6 +1267,14 @@ ipcMain.on('close-current-modal-window', (event) => {
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
     if (browserWindow && !browserWindow.isDestroyed()) {
         browserWindow.close();
+    }
+});
+
+ipcMain.on('resize-current-modal-window', (event, width, height) => {
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    if (browserWindow && !browserWindow.isDestroyed()) {
+        const [currentWidth, currentHeight] = browserWindow.getContentSize();
+        browserWindow.setContentSize(width || currentWidth, height || currentHeight, false);
     }
 });
 

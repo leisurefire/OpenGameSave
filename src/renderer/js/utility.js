@@ -257,3 +257,39 @@ document.addEventListener('click', (event) => {
         window.api.send('hide-popup-menu');
     }
 });
+
+export function autoResizeWindow() {
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            const originalHeight = document.body.style.height;
+            const originalOverflow = document.body.style.overflow;
+            
+            document.body.style.height = 'auto';
+            document.body.style.overflow = 'visible';
+
+            // Also remove constraints from modal panel or settings form if any
+            let targetContent = document.querySelector('.settings-form') || document.querySelector('.modal-window-panel') || document.querySelector('.about-container');
+            let originalTargetHeight, originalTargetOverflow;
+            if (targetContent) {
+                originalTargetHeight = targetContent.style.height;
+                originalTargetOverflow = targetContent.style.overflow;
+                targetContent.style.height = 'auto';
+                targetContent.style.overflow = 'visible';
+            }
+
+            const height = document.documentElement.scrollHeight;
+
+            document.body.style.height = originalHeight;
+            document.body.style.overflow = originalOverflow;
+            
+            if (targetContent) {
+                targetContent.style.height = originalTargetHeight;
+                targetContent.style.overflow = originalTargetOverflow;
+            }
+
+            // In Windows, add a small buffer for the frame if needed, but setContentSize is inner.
+            // But we add a small padding if it feels cramped.
+            window.api.send('resize-current-modal-window', null, height);
+        }, 50); // slight delay to allow rendering and i18n
+    });
+}

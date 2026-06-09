@@ -1,4 +1,4 @@
-import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput } from './utility.js';
+import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -64,7 +64,6 @@ async function renderExportModal(root) {
     await setWindowTitle(title);
     root.innerHTML = `
         <section class="modal-window-panel">
-            <h1 class="text-xl font-bold text-xbox-green mb-6">${escapeHtml(title)}</h1>
             <div class="modal-window-content space-y-4">
                 <div>
                     <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(exportScopeLabel)}</label>
@@ -135,7 +134,6 @@ async function renderImportModal(root, initData) {
     await setWindowTitle(title);
     root.innerHTML = `
         <section class="modal-window-panel">
-            <h1 class="text-xl font-bold text-xbox-green mb-6">${escapeHtml(title)}</h1>
             <div class="modal-window-content space-y-4">
                 <div>
                     <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(gsmPathLabel)}</label>
@@ -518,6 +516,7 @@ async function renderAutoBackupModal(root, initData) {
             const intervalConfig = document.getElementById('auto-backup-interval-config');
             if (radio.value === 'watcher') intervalConfig.classList.add('hidden');
             else intervalConfig.classList.remove('hidden');
+            autoResizeWindow();
         });
     });
 
@@ -658,9 +657,13 @@ async function renderScanFullModal(root) {
     await setWindowTitle(title);
     root.innerHTML = `
         <section class="modal-window-panel">
-            <div class="modal-window-content">
-                <p class="text-sm opacity-80 leading-relaxed">${escapeHtml(explain)}</p>
-                <p class="text-sm opacity-80 leading-relaxed">${escapeHtml(message)}</p>
+            <div class="modal-window-content flex items-start gap-4">
+                <img src="../assets_export/information.png" class="w-12 h-12 flex-shrink-0" alt="Info">
+                <div>
+                    <p class="text-sm opacity-80 leading-relaxed mb-2">${escapeHtml(explain)}
+                    <br>
+                    ${escapeHtml(message)}</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button id="modal-scan-full-confirm" type="button" class="primary-button px-8 py-2">${escapeHtml(confirmLabel)}</button>
@@ -696,6 +699,7 @@ async function renderDialogModal(root, initData) {
         : [{ value: true, text: await window.i18n.translate('alert.confirm'), primary: true }];
     const requestId = initData?.requestId;
     const checkbox = initData?.checkbox || null;
+    const iconPath = initData?.iconType === 'warning' ? '../assets_export/warning.png' : '../assets_export/information.png';
 
     await setWindowTitle(title || 'OpenGameSave');
 
@@ -716,10 +720,12 @@ async function renderDialogModal(root, initData) {
 
     root.innerHTML = `
         <section class="modal-window-panel">
-            <h1 class="text-xl font-bold text-xbox-green mb-4">${escapeHtml(title)}</h1>
-            <div class="modal-window-content">
-                ${renderDialogContent(initData?.content)}
-                ${checkboxHtml}
+            <div class="modal-window-content flex items-start gap-4">
+                <img src="${iconPath}" class="w-12 h-12 flex-shrink-0" alt="Icon">
+                <div class="flex-1">
+                    ${renderDialogContent(initData?.content)}
+                    ${checkboxHtml}
+                </div>
             </div>
             <div class="modal-footer">${buttonsHtml}</div>
         </section>
@@ -749,9 +755,11 @@ async function renderConfirmModal(root, initData) {
     await setWindowTitle(title || 'OpenGameSave');
     root.innerHTML = `
         <section class="modal-window-panel">
-            <h1 class="text-xl font-bold text-xbox-green mb-4">${escapeHtml(title)}</h1>
-            <div class="modal-window-content">
-                <p class="text-sm opacity-80 leading-relaxed whitespace-pre-line">${escapeHtml(message)}</p>
+            <div class="modal-window-content flex items-start gap-4">
+                <img src="../assets_export/warning.png" class="w-12 h-12 flex-shrink-0" alt="Warning">
+                <div class="flex-1">
+                    <p class="text-sm opacity-80 leading-relaxed whitespace-pre-line">${escapeHtml(message)}</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button id="modal-confirm-cancel" type="button" class="secondary-button">${escapeHtml(cancelLabel)}</button>
@@ -797,6 +805,10 @@ async function initModalWindowPage() {
         await renderConfirmModal(root, initData);
     } else {
         root.innerHTML = `<div class="modal-loading-state">Unknown modal: ${escapeHtml(modalType)}</div>`;
+    }
+
+    if (modalType !== 'manage-backups' && modalType !== 'local-save') {
+        autoResizeWindow();
     }
 }
 

@@ -1,7 +1,8 @@
-import { updateTranslations } from './utility.js';
+import { updateTranslations, autoResizeWindow } from './utility.js';
 
 window.api.receive('apply-language', async () => {
     await updateTranslations(document);
+    autoResizeWindow();
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -33,11 +34,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateButton.addEventListener('click', () => {
                 window.api.send('update-app', latestVersion);
             });
+            autoResizeWindow();
         }
     };
 
     fetchLatestVersion();
     await updateTranslations(document);
+    autoResizeWindow();
 
     githubLink.addEventListener('click', async () => {
         const repositoryUrl = await window.api.invoke('get-repository-url');

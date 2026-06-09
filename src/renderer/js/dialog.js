@@ -14,6 +14,7 @@ async function invokeDialogWindow(dialogData) {
 export async function showDialog({
     title,
     content,
+    iconType,
     buttons = [{ value: true, i18n: 'alert.confirm', primary: true }],
     closeValue = true,
     afterClose
@@ -21,6 +22,7 @@ export async function showDialog({
     const value = await invokeDialogWindow({
         title,
         content: normalizeDialogContent(content),
+        iconType,
         buttons,
         closeValue
     });
@@ -46,6 +48,7 @@ export function showConfirmDialog(title, content) {
     return showDialog({
         title,
         content,
+        iconType: 'warning',
         buttons: [
             { value: false, i18n: 'alert.no' },
             { value: true, i18n: 'alert.yes', primary: true }
@@ -58,6 +61,7 @@ export function showDontShowDialog(title, content) {
     return showDialog({
         title,
         content,
+        iconType: 'info',
         buttons: [
             { value: 'dont-show', i18n: 'alert.dont_show_again' },
             { value: true, i18n: 'alert.confirm', primary: true }
@@ -72,6 +76,7 @@ export async function showRestoreConflictDialog(prompt) {
     const response = await window.api.invoke('show-dialog-modal-window', {
         title: prompt.title,
         content: prompt.message,
+        iconType: 'warning',
         checkbox: { label: prompt.checkboxLabel },
         buttons: [
             { value: 'skip', text: skipLabel },
