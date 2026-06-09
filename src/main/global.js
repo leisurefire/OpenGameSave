@@ -57,7 +57,8 @@ let status = {
     exporting: false,
     importing: false,
     updating_backup: false,
-    updating_restore: false
+    updating_restore: false,
+    github_syncing: false
 }
 
 const showAuxiliaryWindow = (browserWindow) => {
@@ -70,7 +71,7 @@ const showAuxiliaryWindow = (browserWindow) => {
 };
 
 const createSettingsWindow = (showWhenReady = true) => {
-    let settings_window_size = [580, 760];
+    let settings_window_size = [620, 820];
     settingsWin = new BrowserWindow({
         width: settings_window_size[0],
         height: settings_window_size[1],
@@ -948,6 +949,8 @@ const loadSettings = () => {
         saveUninstalledGames: true,
         gameInstalls: 'uninitialized',
         pinnedGames: [],
+        blockedGames: [],
+        blockedGameTipDismissed: false,
         uninstalledGames: [],
         autoBackupGames: {},
         firstLaunchFullScanTipShown: !isFirstLaunch
@@ -987,6 +990,7 @@ function saveSettings(key, value) {
 
                     if (key === 'gameInstalls' || key === 'saveUninstalledGames') {
                         win.webContents.send('update-backup-table');
+                        win.webContents.send('update-restore-table');
                     }
 
                     if (key === 'language') {

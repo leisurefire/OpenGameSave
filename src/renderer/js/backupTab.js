@@ -1,5 +1,5 @@
 import { showAlert, showInfoModal, updateProgress, operationStartCheck } from './utility.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -85,6 +85,7 @@ async function populateBackupTable(data, iconMap) {
 
     const settings = await window.api.invoke('get-settings');
     const favoriteGamesWikiIds = settings.pinnedGames || [];
+    const blockedGamesWikiIds = settings.blockedGames || [];
     const selectedWikiIds = getSelectedWikiIds('backup');
 
     const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
@@ -148,6 +149,12 @@ async function populateBackupTable(data, iconMap) {
                 setIcon(row, 'favorite', true);
             }
 
+            // Check if blocked
+            if (blockedGamesWikiIds.includes(wikiId.toString())) {
+                row.dataset.blocked = 'true';
+                setIcon(row, 'blocked', true);
+            }
+
             // Check if any backup is permanent by looking at restore table data which has is_permanent
             const restoreGameData = window.restoreTableDataMap && window.restoreTableDataMap.get(wikiId);
             const hasPermamentBackup = restoreGameData && restoreGameData.backups && restoreGameData.backups.some(backup => backup.is_permanent);
@@ -168,6 +175,7 @@ async function populateBackupTable(data, iconMap) {
     appendRowsToTable(otherGames, false);
 
     setupSelectAllCheckbox('backup', selectAllCheckbox);
+    applyTableFilters('backup');
 }
 
 function setupBackupTabButtons() {

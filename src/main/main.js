@@ -21,6 +21,8 @@ const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = requ
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
 const { getGameDataForRestore, restoreGame } = require("./restore");
 const { startAutoBackup, stopAutoBackup, getAutoBackupState, restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
+const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } = require('./githubSync');
+
 
 function logFatalError(error) {
     const message = error && error.stack ? error.stack : String(error);
@@ -359,6 +361,11 @@ ipcMain.handle('open-url', async (event, url) => {
     await shell.openExternal(url);
 });
 
+function isDriveRoot(directoryPath) {
+    const parsedPath = path.parse(path.resolve(directoryPath));
+    return path.resolve(directoryPath) === parsedPath.root;
+}
+
 ipcMain.handle('open-backup-dialog', async () => {
     const focusedWindow = BrowserWindow.getFocusedWindow();
 
@@ -369,10 +376,29 @@ ipcMain.handle('open-backup-dialog', async () => {
     });
 
     if (result.filePaths.length > 0) {
-        return path.join(result.filePaths[0], 'OGS Backups');
+        const selectedPath = result.filePaths[0];
+        return isDriveRoot(selectedPath) ? path.join(selectedPath, 'OGS Backups') : selectedPath;
     }
 
     return null;
+});
+
+
+
+
+ipcMain.handle('open-directory', async (event, directoryPath) => {
+    if (!directoryPath || !fsOriginal.existsSync(directoryPath) || !fsOriginal.lstatSync(directoryPath).isDirectory()) {
+        return {
+            success: false,
+            message: i18next.t('alert.github_sync_repo_missing')
+        };
+    }
+
+    const errorMessage = await shell.openPath(directoryPath);
+    return {
+        success: !errorMessage,
+        message: errorMessage
+    };
 });
 
 ipcMain.handle('open-dialog', async () => {
@@ -603,6 +629,31 @@ ipcMain.handle('update-database', async () => {
     await updateDatabase();
     return;
 });
+
+ipcMain.handle('github-sync-status', async (event, syncPath) => {
+    return await checkGitSyncStatus(syncPath);
+});
+
+ipcMain.handle('github-sync-upload', async (event, syncPath) => {
+    updateStatus('github_syncing', true);
+    try {
+        return await uploadBackupsToGitHub(syncPath);
+    } finally {
+        updateStatus('github_syncing', false);
+    }
+});
+
+ipcMain.handle('github-sync-download', async (event, syncPath) => {
+    updateStatus('github_syncing', true);
+    try {
+        return await downloadBackupsFromGitHub(syncPath);
+    } finally {
+        updateStatus('github_syncing', false);
+        getMainWin().webContents.send('update-restore-table');
+        getMainWin().webContents.send('update-backup-table');
+    }
+});
+
 
 ipcMain.on('export-backups', (event, count, exportPath, wikiIds) => {
     exportBackups(count, exportPath, wikiIds);

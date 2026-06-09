@@ -181,6 +181,7 @@ export async function showAlert(type, message, modalContent) {
 // Info modal, showing either "ok" or "yesno" style
 export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
     return new Promise(async (resolve) => {
+        let isResolved = false;
         const modal = document.getElementById('modal-info');
         const modalOverlay = document.getElementById('modal-overlay');
         const modalTitleElement = document.getElementById('modal-info-title');
@@ -210,6 +211,13 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
             cleanupListeners();
         };
 
+        const finish = (value) => {
+            if (isResolved) return;
+            isResolved = true;
+            closeModal();
+            resolve(value);
+        };
+
         const cleanupListeners = () => {
             closeButton.onclick = null;
             noButton.onclick = null;
@@ -217,14 +225,17 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
         };
 
         const handleClose = () => {
-            closeModal();
-            resolve(style === 'yesno' ? false : true);
+            finish(style === 'yesno' || style === 'dontshow-ok' ? false : true);
         };
 
         if (style === 'yesno') {
             noButton.style.display = '';
             noButton.textContent = await window.i18n.translate('alert.no');
             confirmButton.textContent = await window.i18n.translate('alert.yes');
+        } else if (style === 'dontshow-ok') {
+            noButton.style.display = '';
+            noButton.textContent = await window.i18n.translate('alert.dont_show_again');
+            confirmButton.textContent = await window.i18n.translate('alert.confirm');
         } else {
             noButton.style.display = 'none';
             confirmButton.textContent = 'OK';
@@ -235,8 +246,8 @@ export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
         modalOverlay.classList.remove('hidden');
 
         closeButton.onclick = handleClose;
-        noButton.onclick = () => { closeModal(); resolve(false); };
-        confirmButton.onclick = () => { closeModal(); resolve(true); };
+        noButton.onclick = () => finish(style === 'dontshow-ok' ? 'dont-show' : false);
+        confirmButton.onclick = () => finish(true);
     });
 }
 
@@ -542,14 +553,15 @@ export function wrapNumberInput(input) {
 export async function operationStartCheck(operation) {
     const status = await window.api.invoke('get-status');
     const statusChecks = {
-        'backup': { restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
-        'scan-full': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
-        'restore': { restoring: 'alert.wait_for_restore', backuping: 'alert.wait_for_backup', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
-        'change-settings': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
-        'save-custom': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
-        'update-db': { updating_db: 'alert.wait_for_updating_db', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup' },
-        'export': { exporting: 'alert.wait_for_export', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
-        'import': { importing: 'alert.wait_for_import', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'backup': { restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', github_syncing: 'alert.wait_for_github_sync' },
+        'scan-full': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', github_syncing: 'alert.wait_for_github_sync' },
+        'restore': { restoring: 'alert.wait_for_restore', backuping: 'alert.wait_for_backup', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', github_syncing: 'alert.wait_for_github_sync' },
+        'change-settings': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', github_syncing: 'alert.wait_for_github_sync' },
+        'save-custom': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', github_syncing: 'alert.wait_for_github_sync' },
+        'update-db': { updating_db: 'alert.wait_for_updating_db', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', github_syncing: 'alert.wait_for_github_sync' },
+        'export': { exporting: 'alert.wait_for_export', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', github_syncing: 'alert.wait_for_github_sync' },
+        'import': { importing: 'alert.wait_for_import', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', github_syncing: 'alert.wait_for_github_sync' },
+        'github-sync': { github_syncing: 'alert.wait_for_github_sync', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
     };
 
     const alerts = statusChecks[operation];

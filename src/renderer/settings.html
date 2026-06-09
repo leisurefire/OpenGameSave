@@ -12,7 +12,7 @@
 <body class="mica-effect p-7 h-screen overflow-hidden flex flex-col items-center">
     <div id="alert-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
-    <form class="max-w-md w-full mb-0 space-y-5">
+    <form class="max-w-lg w-full mb-0 space-y-5 overflow-y-auto pr-2 pb-1 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
         <!-- Language selection -->
         <div>
             <label for="language" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.language">Language</label>
@@ -20,15 +20,6 @@
                 <option value="en_US">English</option>
                 <option value="zh_CN">中文</option>
             </select>
-        </div>
-
-        <!-- Backup save path selection -->
-        <div>
-            <label for="backup-path" class="block mb-2 text-sm font-semibold opacity-80" data-i18n="settings.backupPath">Backup Save Path</label>
-            <div class="flex gap-2">
-                <input type="text" id="backup-path" readonly class="flex-1">
-                <button type="button" id="select-path" class="home-action-button px-4 py-2"><i class="fa-solid fa-ellipsis"></i></button>
-            </div>
         </div>
 
         <!-- Max number of backups per game -->
@@ -61,7 +52,7 @@
                 <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> <span data-i18n="settings.autoDetect">AUTO DETECT</span>
             </button>
 
-            <div id="game-paths-container" class="space-y-2"></div>
+            <div id="game-paths-container" class="space-y-2 max-h-80 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"></div>
 
             <button type="button" id="add-new-path" class="w-full mt-4 py-2 border border-dashed border-white/20 rounded-lg hover:border-xbox-green hover:text-xbox-green transition-all text-sm">
                 <i class="fa-solid fa-plus mr-2"></i> <span data-i18n="settings.addPath">Add Path</span>

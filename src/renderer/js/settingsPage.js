@@ -1,4 +1,4 @@
-import { updateTranslations, showAlert, operationStartCheck, wrapNumberInput } from './utility.js';
+import { updateTranslations, showAlert, wrapNumberInput } from './utility.js';
 
 window.api.receive('apply-language', async () => {
     const settings = await window.api.invoke('get-settings');
@@ -11,8 +11,6 @@ window.api.receive('apply-language', async () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     const languageSelect = document.getElementById('language');
-    const backupPathInput = document.getElementById('backup-path');
-    const backupPathButton = document.getElementById('select-path');
     const maxBackupsInput = document.getElementById('max-backups');
     const autoAppUpdateCheckbox = document.getElementById('auto-app-update');
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
@@ -27,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.api.invoke('get-settings').then(async (settings) => {
         if (settings) {
             languageSelect.value = settings.language;
-            backupPathInput.value = settings.backupPath;
             maxBackupsInput.value = settings.maxBackups;
             autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
@@ -67,18 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
             window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
         }
 
-        const newBackupPath = backupPathInput.value.trim();
-        if (previousSettings.backupPath.trim() !== newBackupPath) {
-            // Migration is a heavy operation, check start check
-            const start = await operationStartCheck('change-settings');
-            if (start) {
-                window.api.send('migrate-backups', newBackupPath);
-            } else {
-                // Revert UI if migration blocked
-                backupPathInput.value = previousSettings.backupPath;
-            }
-        }
-
         window.api.send('save-settings', 'maxBackups', maxBackupsInput.value);
         window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
         window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
@@ -101,14 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
             languageSelect.value = previousLanguage;
         } finally {
             languageSelect.disabled = false;
-        }
-    });
-
-    backupPathButton.addEventListener('click', async () => {
-        const result = await window.api.invoke('open-backup-dialog');
-        if (result) {
-            backupPathInput.value = result;
-            autoSave();
         }
     });
 

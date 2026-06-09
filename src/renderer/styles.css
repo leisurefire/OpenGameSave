@@ -159,6 +159,25 @@ table tr:hover {
     background-color: rgba(255, 255, 255, 0.03);
 }
 
+button,
+a,
+label,
+input[type="checkbox"],
+input[type="radio"],
+select,
+.dropdown-menu-button,
+.home-action-button,
+.primary-button,
+[role="tab"],
+[data-home-action] {
+    cursor: pointer;
+}
+
+button:disabled,
+.cursor-not-allowed {
+    cursor: not-allowed !important;
+}
+
 button {
     border-radius: var(--radius-win) !important;
 }

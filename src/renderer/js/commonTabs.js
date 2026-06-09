@@ -1,4 +1,4 @@
-import { showAlert, updateTranslations } from './utility.js';
+import { showAlert, showInfoModal, updateTranslations } from './utility.js';
 import { showManageBackupsModal, showAutoBackupModal } from './modalDisplay.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,6 +50,7 @@ function initializeTabs() {
     const tabElements = [
         { id: 'backup', triggerEl: document.querySelector('#backup-tab'), targetEl: document.querySelector('#backup') },
         { id: 'restore', triggerEl: document.querySelector('#restore-tab'), targetEl: document.querySelector('#restore') },
+        { id: 'sync', triggerEl: document.querySelector('#sync-tab'), targetEl: document.querySelector('#sync') },
     ];
 
     const options = {
@@ -64,7 +65,7 @@ function initializeTabs() {
             showTab(defaultTab, tabElements, options);
         }
 
-        tabElements.forEach(tab => {
+        tabElements.filter(tab => tab.triggerEl && tab.targetEl).forEach(tab => {
             tab.triggerEl.addEventListener('click', async () => {
                 const contentEl = document.getElementById(`${tab.id}-content`);
                 if (contentEl) {
@@ -78,7 +79,7 @@ function initializeTabs() {
 
 // Function to handle tab switching logic
 function showTab(tab, tabElements, options) {
-    tabElements.forEach(t => {
+    tabElements.filter(t => t.triggerEl && t.targetEl).forEach(t => {
         if (t.id === tab.id) {
             t.triggerEl.classList.add(...options.activeClasses.split(' '));
             t.triggerEl.classList.remove(...options.inactiveClasses.split(' '));
@@ -158,25 +159,35 @@ export function hideLoadingIndicator(tabName) {
     }
 }
 
-// Function to set up the search and favorites filters for the table
+// Function to set up the search, favorites, and blocked filters for the table
 function setupSearchFilter(tabName) {
     const searchInput = document.getElementById(`${tabName}-search`);
     const favoritesButton = document.getElementById(`${tabName}-favorites-only`);
+    const blockedButton = document.getElementById(`${tabName}-blocked-only`);
     const tableBody = document.querySelector(`#${tabName} tbody`);
+    const selectAllCheckbox = document.getElementById(`${tabName}-checkbox-all-search`);
 
     const applyFilters = () => {
         const filter = searchInput.value.toLowerCase();
         const favoritesOnly = favoritesButton?.dataset.favoritesActive === 'true';
+        const blockedOnly = blockedButton?.dataset.blockedActive === 'true';
         const rows = tableBody.querySelectorAll('tr');
 
         rows.forEach(row => {
             const gameNameCell = row.querySelector('th[scope="row"]');
             const gameName = gameNameCell ? gameNameCell.textContent.toLowerCase() : '';
             const isFavorite = !row.querySelector('span[data-icon="favorite"].hidden');
+            const isBlocked = row.dataset.blocked === 'true';
             const matchesSearch = gameName.includes(filter);
             const matchesFavorite = !favoritesOnly || isFavorite;
-            row.style.display = matchesSearch && matchesFavorite ? '' : 'none';
+            const matchesBlocked = blockedOnly ? isBlocked : !isBlocked;
+            row.style.display = matchesSearch && matchesFavorite && matchesBlocked ? '' : 'none';
         });
+
+        if (selectAllCheckbox) {
+            updateSelectAllCheckbox(selectAllCheckbox, tableBody);
+        }
+        updateSelectedCountAndSize(tabName);
     };
 
     searchInput.addEventListener('input', applyFilters);
@@ -191,6 +202,25 @@ function setupSearchFilter(tabName) {
             applyFilters();
         });
     }
+
+    if (blockedButton) {
+        blockedButton.addEventListener('click', () => {
+            const isActive = blockedButton.dataset.blockedActive === 'true';
+            blockedButton.dataset.blockedActive = (!isActive).toString();
+            blockedButton.classList.toggle('text-yellow-400', !isActive);
+            blockedButton.classList.toggle('opacity-100', !isActive);
+            blockedButton.classList.toggle('opacity-70', isActive);
+            applyFilters();
+        });
+    }
+}
+
+export function applyTableFilters(tabName) {
+    document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
+}
+
+export function isBlockedViewActive(tabName) {
+    return document.getElementById(`${tabName}-blocked-only`)?.dataset.blockedActive === 'true';
 }
 
 export function setIcon(row, iconName, show) {
@@ -225,7 +255,8 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
                         <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
-            <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
+                        <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
+                        <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
@@ -257,7 +288,8 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
                         <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
-            <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
+                        <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
+                        <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
@@ -337,6 +369,12 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
             setIcon(row, 'favorite', true);
         }
 
+        const blockedGamesWikiIds = settings.blockedGames || [];
+        if (blockedGamesWikiIds.includes(wikiId.toString())) {
+            row.dataset.blocked = 'true';
+            setIcon(row, 'blocked', true);
+        }
+
         // Check if auto backup is active
         const autoBackupState = await window.api.invoke('get-auto-backup-state');
         if (autoBackupState[wikiId.toString()]) {
@@ -384,6 +422,8 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
             }
         }
     }
+
+    applyTableFilters(tabName);
 }
 
 // Helper function to remove a game row from a tab's table and clean up its data map
@@ -415,6 +455,35 @@ window.api.receive('execute-menu-action', async (action, data) => {
         window.api.send('save-settings', 'pinnedGames', Array.from(favorite_games_wiki_ids));
         removeGameFromFavorites('backup', wikiId);
         removeGameFromFavorites('restore', wikiId);
+    } else if (action === 'block-game') {
+        const wikiId = data;
+        const settings = await window.api.invoke('get-settings');
+        if (!settings.blockedGameTipDismissed) {
+            const tipResult = await showInfoModal(
+                await window.i18n.translate('main.block_game'),
+                await window.i18n.translate('alert.blocked_game_tip'),
+                'dontshow-ok'
+            );
+            if (tipResult === false) {
+                return;
+            }
+            if (tipResult === 'dont-show') {
+                window.api.send('save-settings', 'blockedGameTipDismissed', true);
+            }
+        }
+        let blocked_games_wiki_ids = new Set(settings.blockedGames || []);
+        blocked_games_wiki_ids.add(wikiId);
+        window.api.send('save-settings', 'blockedGames', Array.from(blocked_games_wiki_ids));
+        updateGameBlockedState('backup', wikiId, true);
+        updateGameBlockedState('restore', wikiId, true);
+    } else if (action === 'unblock-game') {
+        const wikiId = data;
+        const settings = await window.api.invoke('get-settings');
+        let blocked_games_wiki_ids = new Set(settings.blockedGames || []);
+        blocked_games_wiki_ids.delete(wikiId);
+        window.api.send('save-settings', 'blockedGames', Array.from(blocked_games_wiki_ids));
+        updateGameBlockedState('backup', wikiId, false);
+        updateGameBlockedState('restore', wikiId, false);
     } else if (action === 'open-wiki') {
         if (data && data !== 'none') window.api.invoke('open-url', data);
         else showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
@@ -459,7 +528,8 @@ function setDropDownAction() {
             const tabName = button.closest('#backup, #restore, #custom')?.id || 'backup';
 
             const settings = await window.api.invoke('get-settings');
-            const isFavorite = settings.pinnedGames.includes(wikiPageId.toString());
+            const isFavorite = (settings.pinnedGames || []).includes(wikiPageId.toString());
+            const isBlocked = (settings.blockedGames || []).includes(wikiPageId.toString());
             const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : "none";
 
             const menuItems = [
@@ -467,6 +537,12 @@ function setDropDownAction() {
                     label: await window.i18n.translate(isFavorite ? 'main.remove_favorite' : 'main.add_favorite'),
                     icon: isFavorite ? 'fa-solid fa-heart-crack' : 'fa-solid fa-heart',
                     action: isFavorite ? 'unfavorite' : 'add-favorite',
+                    data: wikiPageId
+                },
+                {
+                    label: await window.i18n.translate(isBlocked ? 'main.unblock_game' : 'main.block_game'),
+                    icon: isBlocked ? 'fa-solid fa-eye' : 'fa-solid fa-ban',
+                    action: isBlocked ? 'unblock-game' : 'block-game',
                     data: wikiPageId
                 },
                 {
@@ -584,6 +660,19 @@ async function removeGameFromFavorites(tabName, wikiId) {
         }
 
         document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
+        updateSelectedCountAndSize(tabName);
+    }
+}
+
+function updateGameBlockedState(tabName, wikiId, blocked) {
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    const row = tableBody?.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+
+    if (row) {
+        row.dataset.blocked = blocked.toString();
+        setIcon(row, 'blocked', blocked);
+        applyTableFilters(tabName);
+        updateSelectedCountAndSize(tabName);
     }
 }
 
@@ -593,7 +682,9 @@ export async function updateSelectedCountAndSize(tabName) {
     const totalSizeWidget = document.querySelector(`#${tabName}-selected-size`);
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const selectedWikiIds = getSelectedWikiIds(tabName);
-    const total_games_count = tableBody.querySelectorAll('.row-checkbox').length;
+    const visibleRows = Array.from(tableBody.querySelectorAll('tr'))
+        .filter(row => row.style.display !== 'none');
+    const total_games_count = visibleRows.length;
 
     let total_size = 0;
     let total_selected = 0;
@@ -601,6 +692,9 @@ export async function updateSelectedCountAndSize(tabName) {
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
 
     selectedWikiIds.forEach(wikiId => {
+        const row = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+        if (!row || row.style.display === 'none') return;
+
         const gameData = dataMap.get(wikiId);
         if (gameData) {
             total_size += gameData.backup_size;
@@ -624,7 +718,8 @@ export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
     // Handle the "Select All" checkbox change
     selectAllCheckbox.addEventListener('change', function () {
         const isChecked = this.checked;
-        const rowCheckboxes = tableBody.querySelectorAll('.row-checkbox');
+        const rowCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
+            .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
         rowCheckboxes.forEach(checkbox => {
             checkbox.checked = isChecked;
         });
@@ -644,9 +739,10 @@ export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
 
 // Function to update the "Select All" checkbox state
 function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
-    const rowCheckboxes = tableContainer.querySelectorAll('.row-checkbox');
-    const allChecked = Array.from(rowCheckboxes).every(checkbox => checkbox.checked);
-    const anyChecked = Array.from(rowCheckboxes).some(checkbox => checkbox.checked);
+    const rowCheckboxes = Array.from(tableContainer.querySelectorAll('.row-checkbox'))
+        .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
+    const allChecked = rowCheckboxes.length > 0 && rowCheckboxes.every(checkbox => checkbox.checked);
+    const anyChecked = rowCheckboxes.some(checkbox => checkbox.checked);
     selectAllCheckbox.checked = allChecked;
     selectAllCheckbox.indeterminate = !allChecked && anyChecked;
 }
@@ -654,8 +750,10 @@ function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
 export function getSelectedWikiIds(tabName) {
     const table = document.querySelector(`#${tabName}`);
     const selectedRows = table.querySelectorAll('.row-checkbox:checked');
-    return Array.from(selectedRows).map(checkbox => {
-        const row = checkbox.closest('tr');
-        return row.getAttribute('data-wiki-id').trim();
-    });
+    return Array.from(selectedRows)
+        .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none')
+        .map(checkbox => {
+            const row = checkbox.closest('tr');
+            return row.getAttribute('data-wiki-id').trim();
+        });
 }

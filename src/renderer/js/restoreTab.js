@@ -1,5 +1,5 @@
 import { showAlert, showInfoModal, updateProgress, operationStartCheck } from './utility.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
@@ -38,6 +38,7 @@ async function populateRestoreTable(data) {
 
     const settings = await window.api.invoke('get-settings');
     const favoriteGamesWikiIds = settings.pinnedGames || [];
+    const blockedGamesWikiIds = settings.blockedGames || [];
     const selectedWikiIds = getSelectedWikiIds('restore');
 
     tableBody.innerHTML = '';
@@ -98,6 +99,12 @@ async function populateRestoreTable(data) {
                 setIcon(row, 'favorite', true);
             }
 
+            // Check if blocked
+            if (blockedGamesWikiIds.includes(wikiId.toString())) {
+                row.dataset.blocked = 'true';
+                setIcon(row, 'blocked', true);
+            }
+
             // Check if any backup is permanent
             const hasPermamentBackup = game.backups.some(backup => backup.is_permanent);
             if (hasPermamentBackup) {
@@ -117,6 +124,7 @@ async function populateRestoreTable(data) {
     appendRowsToTable(otherGames, false);
 
     setupSelectAllCheckbox('restore', selectAllCheckbox);
+    applyTableFilters('restore');
 }
 
 function setupRestoreButton() {
