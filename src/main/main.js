@@ -14,7 +14,7 @@ const { pinyin } = require('pinyin');
 const {
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
-    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp, preloadAuxiliaryWindows
+    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
@@ -111,8 +111,8 @@ let isMenuOpen = false;
 
 const MENU_MIN_WIDTH = 196;
 const MENU_MAX_WIDTH = 376;
-const MENU_POSITION_OFFSET_X = 6;
-const MENU_POSITION_OFFSET_Y = 6;
+const MENU_POSITION_OFFSET_X = 2;
+const MENU_POSITION_OFFSET_Y = 2;
 const MENU_HIDDEN_BOUNDS = { x: -10000, y: -10000, width: 1, height: 1 };
 
 function detachMenuParentListeners() {
@@ -291,8 +291,6 @@ app.whenReady().then(async () => {
 
     await createMainWindow();
     getMainWin().webContents.once('did-finish-load', () => {
-        preloadAuxiliaryWindows();
-
         if (pendingGSMPath) {
             getMainWin().webContents.send('open-import-modal', pendingGSMPath);
             pendingGSMPath = null;
@@ -495,6 +493,18 @@ ipcMain.handle('get-icon-map', async () => {
     };
 });
 
+ipcMain.handle('get-local-save-data', async (event, wikiId) => {
+    const { games } = await getGameDataFromDB(false, wikiId);
+    return games && games.length > 0 ? games[0] : null;
+});
+
+ipcMain.on('run-scan-full', () => {
+    const mainWin = getMainWin();
+    if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send('run-scan-full');
+    }
+});
+
 ipcMain.handle('fetch-backup-table-data', async (event, ignoreUninstalled, wikiId = null) => {
     const { games, errors } = await getGameDataFromDB(ignoreUninstalled, wikiId);
 
@@ -507,6 +517,35 @@ ipcMain.handle('fetch-backup-table-data', async (event, ignoreUninstalled, wikiI
 
 ipcMain.on('update-backup-table', async (event) => {
     getMainWin().webContents.send('update-backup-table');
+});
+
+ipcMain.on('update-restore-table', async (event) => {
+    getMainWin().webContents.send('update-restore-table');
+});
+
+ipcMain.handle('get-main-selected-wiki-ids', async (event, tableId) => {
+    const mainWin = getMainWin();
+    if (!mainWin || mainWin.isDestroyed()) {
+        return [];
+    }
+
+    return await new Promise((resolve) => {
+        const requestId = randomUUID();
+        const timeout = setTimeout(() => {
+            ipcMain.removeListener('selected-wiki-ids-response', handleResponse);
+            resolve([]);
+        }, 3000);
+
+        const handleResponse = (responseEvent, responseId, wikiIds) => {
+            if (responseId !== requestId) return;
+            clearTimeout(timeout);
+            ipcMain.removeListener('selected-wiki-ids-response', handleResponse);
+            resolve(Array.isArray(wikiIds) ? wikiIds : []);
+        };
+
+        ipcMain.on('selected-wiki-ids-response', handleResponse);
+        mainWin.webContents.send('collect-selected-wiki-ids', requestId, tableId);
+    });
 });
 
 ipcMain.handle('backup-game', async (event, gameObj) => {

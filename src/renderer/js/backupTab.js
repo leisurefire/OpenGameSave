@@ -1,5 +1,5 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
-import { showConfirmDialog, showMessageDialog } from './dialog.js';
+import { showMessageDialog } from './dialog.js';
 import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
@@ -27,15 +27,9 @@ window.api.receive('update-backup-table', () => {
     updateBackupTable(true);
 });
 
-window.api.receive('scan-full', async () => {
+window.api.receive('run-scan-full', async () => {
     const start = await operationStartCheck('scan-full');
     if (start) {
-        const confirmed = await showConfirmDialog(
-            await window.i18n.translate('main.scan_full'),
-            await window.i18n.translate('alert.scan_full_may_take_minutes')
-        );
-        if (!confirmed) return;
-
         const iconMap = await window.api.invoke('get-icon-map');
         const fullScanGameData = await window.api.invoke('start-scan-full');
 

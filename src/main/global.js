@@ -5,6 +5,7 @@ const fsOriginal = require('original-fs');
 const os = require('os');
 const path = require('path');
 const { exec, spawn } = require('child_process');
+const { randomUUID } = require('crypto');
 
 const axios = require('axios');
 const fse = require('fs-extra');
@@ -16,11 +17,13 @@ const sevenBin = require('7zip-bin');
 
 
 let win;
-let settingsWin;
-let aboutWin;
 let settings;
 let writeQueue = Promise.resolve();
 let allowAuxiliaryWindowClose = false;
+const activeModalWindows = [];
+const modalWindowPages = new WeakMap();
+const modalWindowData = new WeakMap();
+const modalWindowLoadPromises = new WeakMap();
 
 const appVersion = "0.6.22 D.VA edition";
 const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
@@ -61,26 +64,212 @@ let status = {
     github_syncing: false
 }
 
-const showAuxiliaryWindow = (browserWindow) => {
+const dynamicModalPages = new Set(['export', 'import', 'account', 'auto-backup', 'manage-backups', 'local-save', 'scan-full', 'confirm', 'dialog']);
+
+const modalWindowDefinitions = {
+    settings: {
+        file: 'settings.html',
+        width: 620,
+        height: 820,
+        minWidth: 620,
+        minHeight: 820,
+        resizable: false,
+        icon: 'setting.ico'
+    },
+    about: {
+        file: 'about.html',
+        width: 480,
+        height: 380,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    export: {
+        file: 'modal.html',
+        width: 620,
+        height: 430,
+        minWidth: 620,
+        minHeight: 430,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    import: {
+        file: 'modal.html',
+        width: 620,
+        height: 260,
+        minWidth: 620,
+        minHeight: 260,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    account: {
+        file: 'modal.html',
+        width: 620,
+        height: 560,
+        minWidth: 620,
+        minHeight: 560,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    'auto-backup': {
+        file: 'modal.html',
+        width: 620,
+        height: 560,
+        minWidth: 620,
+        minHeight: 560,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    'manage-backups': {
+        file: 'modal.html',
+        width: 960,
+        height: 680,
+        minWidth: 960,
+        minHeight: 680,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    'local-save': {
+        file: 'modal.html',
+        width: 760,
+        height: 560,
+        minWidth: 760,
+        minHeight: 560,
+        resizable: true,
+        icon: 'logo.ico'
+    },
+    'scan-full': {
+        file: 'modal.html',
+        width: 560,
+        height: 300,
+        minWidth: 560,
+        minHeight: 300,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    confirm: {
+        file: 'modal.html',
+        width: 520,
+        height: 280,
+        minWidth: 520,
+        minHeight: 280,
+        resizable: false,
+        icon: 'logo.ico'
+    },
+    dialog: {
+        file: 'modal.html',
+        width: 680,
+        height: 460,
+        minWidth: 560,
+        minHeight: 280,
+        resizable: true,
+        icon: 'logo.ico'
+    }
+};
+
+const getTopModalOwner = () => {
+    for (let index = activeModalWindows.length - 1; index >= 0; index -= 1) {
+        const candidate = activeModalWindows[index];
+        if (candidate && !candidate.isDestroyed()) {
+            return candidate;
+        }
+    }
+
+    return win;
+};
+
+
+
+const registerActiveModalWindow = (browserWindow) => {
+    if (!browserWindow || browserWindow.isDestroyed() || activeModalWindows.includes(browserWindow)) {
+        return;
+    }
+
+    activeModalWindows.push(browserWindow);
+};
+
+const unregisterActiveModalWindow = (browserWindow) => {
+    const index = activeModalWindows.indexOf(browserWindow);
+    if (index === -1) {
+        return;
+    }
+
+    activeModalWindows.splice(index, 1);
+
+    const nextTop = getTopModalOwner();
+
+    if (nextTop && !nextTop.isDestroyed()) {
+        nextTop.focus();
+    }
+};
+
+const showModalWindow = (browserWindow) => {
     if (!browserWindow || browserWindow.isDestroyed()) {
         return;
     }
 
+    registerActiveModalWindow(browserWindow);
     browserWindow.show();
     browserWindow.focus();
 };
 
-const createSettingsWindow = (showWhenReady = true) => {
-    let settings_window_size = [620, 820];
-    settingsWin = new BrowserWindow({
-        width: settings_window_size[0],
-        height: settings_window_size[1],
-        minWidth: settings_window_size[0],
-        minHeight: settings_window_size[1],
-        resizable: false,
+const applyModalWindowDefinition = (browserWindow, definition) => {
+    browserWindow.setMinimumSize(definition.minWidth || definition.width, definition.minHeight || definition.height);
+    browserWindow.setSize(definition.width, definition.height, false);
+    browserWindow.setResizable(definition.resizable !== false);
+};
+
+
+
+const loadModalWindowPage = async (browserWindow, pageName, initialData = {}) => {
+    const definition = modalWindowDefinitions[pageName];
+    if (!definition) {
+        throw new Error(`Unknown modal window page: ${pageName}`);
+    }
+
+    // Do not run executeJavaScript() before loadFile(). On a newly-created
+    // hidden BrowserWindow, that can hang indefinitely and prevent the window
+    // from ever being shown when launched via npm start.
+    applyModalWindowDefinition(browserWindow, definition);
+    modalWindowPages.set(browserWindow, pageName);
+    modalWindowData.set(browserWindow, { ...initialData, modalType: pageName });
+    return browserWindow.loadFile(path.join(__dirname, `../renderer/${definition.file}`));
+};
+
+const startModalWindowLoad = (browserWindow, pageName, initialData = {}) => {
+    const previousLoad = modalWindowLoadPromises.get(browserWindow) || Promise.resolve();
+    const loadPromise = previousLoad
+        .catch(() => {
+            // Keep the per-window load queue moving even if an earlier preload
+            // was interrupted or failed.
+        })
+        .then(() => loadModalWindowPage(browserWindow, pageName, initialData))
+        .catch((error) => {
+            console.error(`Failed to load modal window page "${pageName}":`, error);
+            throw error;
+        });
+    modalWindowLoadPromises.set(browserWindow, loadPromise);
+    return loadPromise;
+};
+
+const waitForModalWindowLoad = async (browserWindow) => {
+    const loadPromise = modalWindowLoadPromises.get(browserWindow);
+    if (loadPromise) {
+        await loadPromise;
+    }
+};
+
+const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } = {}) => {
+    const definition = modalWindowDefinitions[pageName];
+    const parentWindow = getTopModalOwner();
+    const browserWindow = new BrowserWindow({
+        width: definition.width,
+        height: definition.height,
+        minWidth: definition.minWidth || definition.width,
+        minHeight: definition.minHeight || definition.height,
+        resizable: definition.resizable !== false,
         show: false,
-        icon: path.join(__dirname, "../assets/setting.ico"),
-        parent: win,
+        icon: path.join(__dirname, `../assets/${definition.icon}`),
+        parent: parentWindow && !parentWindow.isDestroyed() ? parentWindow : win,
         modal: true,
         ...windowVisualEffect,
         webPreferences: {
@@ -89,100 +278,122 @@ const createSettingsWindow = (showWhenReady = true) => {
         },
     });
 
-    applyWindowsMicaEffect(settingsWin);
+    applyWindowsMicaEffect(browserWindow);
+    browserWindow.setMenuBarVisibility(false);
+    startModalWindowLoad(browserWindow, pageName, initialData);
 
-    if (!app.isPackaged) {
-        settingsWin.webContents.openDevTools({ mode: "detach" });
-    }
-    settingsWin.setMenuBarVisibility(false);
-    settingsWin.loadFile(path.join(__dirname, "../renderer/settings.html"));
-
-    settingsWin.once('ready-to-show', () => {
+    browserWindow.once('ready-to-show', () => {
         if (showWhenReady) {
-            showAuxiliaryWindow(settingsWin);
+            showModalWindow(browserWindow);
         }
     });
 
-    settingsWin.on('close', (event) => {
-        if (!allowAuxiliaryWindowClose && settingsWin && !settingsWin.isDestroyed()) {
-            event.preventDefault();
-            settingsWin.hide();
-        }
+
+
+    browserWindow.on("closed", () => {
+        unregisterActiveModalWindow(browserWindow);
     });
 
-    settingsWin.on("closed", () => {
-        settingsWin = null;
+    return browserWindow;
+};
+
+const openModalWindow = async (pageName, initialData = {}) => {
+    const existingVisibleWindow = activeModalWindows.find((browserWindow) => {
+        return browserWindow && !browserWindow.isDestroyed() && modalWindowPages.get(browserWindow) === pageName;
+    });
+
+    if (existingVisibleWindow) {
+        if (dynamicModalPages.has(pageName)) {
+            await startModalWindowLoad(existingVisibleWindow, pageName, initialData);
+        } else {
+            await waitForModalWindowLoad(existingVisibleWindow);
+        }
+        existingVisibleWindow.focus();
+        return;
+    }
+
+    const modalWindow = createModalWindow(pageName, { showWhenReady: false, initialData });
+    await waitForModalWindowLoad(modalWindow);
+    showModalWindow(modalWindow);
+    modalWindow.moveTop();
+};
+
+const requestConfirmModalWindow = (prompt) => {
+    return new Promise((resolve) => {
+        const requestId = randomUUID();
+        const confirmWindow = createModalWindow('confirm', {
+            showWhenReady: true,
+            initialData: {
+                requestId,
+                title: prompt?.title || '',
+                message: prompt?.message || '',
+                confirmText: prompt?.confirmText || '',
+                cancelText: prompt?.cancelText || ''
+            }
+        });
+        let resolved = false;
+
+        const finish = (value) => {
+            if (resolved) return;
+            resolved = true;
+            ipcMain.removeListener('modal-window-confirm-response', handleResponse);
+            if (confirmWindow && !confirmWindow.isDestroyed()) {
+                confirmWindow.close();
+            }
+            resolve(!!value);
+        };
+
+        const handleResponse = (event, responseId, value) => {
+            if (responseId !== requestId) return;
+            finish(value);
+        };
+
+        ipcMain.on('modal-window-confirm-response', handleResponse);
+        confirmWindow.on('closed', () => finish(false));
+    });
+};
+
+const requestDialogModalWindow = (dialogData = {}) => {
+    return new Promise((resolve) => {
+        const requestId = randomUUID();
+        const dialogWindow = createModalWindow('dialog', {
+            showWhenReady: true,
+            initialData: {
+                ...dialogData,
+                requestId
+            }
+        });
+        let resolved = false;
+
+        const finish = (value) => {
+            if (resolved) return;
+            resolved = true;
+            ipcMain.removeListener('modal-window-dialog-response', handleResponse);
+            if (dialogWindow && !dialogWindow.isDestroyed()) {
+                dialogWindow.close();
+            }
+            resolve(value);
+        };
+
+        const handleResponse = (event, responseId, value) => {
+            if (responseId !== requestId) return;
+            finish(value);
+        };
+
+        ipcMain.on('modal-window-dialog-response', handleResponse);
+        dialogWindow.on('closed', () => finish({ value: dialogData.closeValue ?? true, checked: false }));
     });
 };
 
 const openSettingsWindow = () => {
-    if (!settingsWin || settingsWin.isDestroyed()) {
-        createSettingsWindow(true);
-    } else {
-        showAuxiliaryWindow(settingsWin);
-    }
-};
-
-const createAboutWindow = (showWhenReady = true) => {
-    let about_window_size = [480, 380];
-    aboutWin = new BrowserWindow({
-        width: about_window_size[0],
-        height: about_window_size[1],
-        resizable: false,
-        show: false,
-        icon: path.join(__dirname, "../assets/logo.ico"),
-        parent: win,
-        modal: true,
-        ...windowVisualEffect,
-        webPreferences: {
-            preload: path.join(__dirname, "../preload/preload.js"),
-            sandbox: false,
-        },
-    });
-
-    applyWindowsMicaEffect(aboutWin);
-
-    if (!app.isPackaged) {
-        aboutWin.webContents.openDevTools({ mode: "detach" });
-    }
-    aboutWin.setMenuBarVisibility(false);
-    aboutWin.loadFile(path.join(__dirname, "../renderer/about.html"));
-
-    aboutWin.once('ready-to-show', () => {
-        if (showWhenReady) {
-            showAuxiliaryWindow(aboutWin);
-        }
-    });
-
-    aboutWin.on('close', (event) => {
-        if (!allowAuxiliaryWindowClose && aboutWin && !aboutWin.isDestroyed()) {
-            event.preventDefault();
-            aboutWin.hide();
-        }
-    });
-
-    aboutWin.on("closed", () => {
-        aboutWin = null;
-    });
+    openModalWindow('settings');
 };
 
 const openAboutWindow = () => {
-    if (!aboutWin || aboutWin.isDestroyed()) {
-        createAboutWindow(true);
-    } else {
-        showAuxiliaryWindow(aboutWin);
-    }
+    openModalWindow('about');
 };
 
-const preloadAuxiliaryWindows = () => {
-    if (!settingsWin || settingsWin.isDestroyed()) {
-        createSettingsWindow(false);
-    }
 
-    if (!aboutWin || aboutWin.isDestroyed()) {
-        createAboutWindow(false);
-    }
-};
 
 // Menu settings
 const initializeMenu = () => {
@@ -199,13 +410,13 @@ const initializeMenu = () => {
                 {
                     label: i18next.t("main.view_account_ids"),
                     click() {
-                        win.webContents.send("view_account_ids");
+                        openModalWindow('account');
                     },
                 },
                 {
                     label: i18next.t("main.scan_full"),
                     click() {
-                        win.webContents.send("scan-full");
+                        openModalWindow('scan-full');
                     },
                 },
                 {
@@ -219,13 +430,13 @@ const initializeMenu = () => {
         {
             label: i18next.t("main.export"),
             click() {
-                win.webContents.send("open-export-modal");
+                openModalWindow('export');
             },
         },
         {
             label: i18next.t("main.import"),
             click() {
-                win.webContents.send("open-import-modal", "");
+                openModalWindow('import', { gsmPath: '' });
             },
         },
     ];
@@ -1046,19 +1257,52 @@ ipcMain.on('open-about-window', () => {
     openAboutWindow();
 });
 
+ipcMain.on('open-modal-window', (event, pageName, initialData = {}) => {
+    openModalWindow(pageName, initialData);
+});
+
+ipcMain.on('close-current-modal-window', (event) => {
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    if (browserWindow && !browserWindow.isDestroyed()) {
+        browserWindow.close();
+    }
+});
+
+ipcMain.on('show-main-alert', (event, type, message, detailContent) => {
+    if (win && !win.isDestroyed()) {
+        win.webContents.send('show-alert', type, message, detailContent);
+    }
+});
+
+ipcMain.handle('show-confirm-modal-window', async (event, prompt) => {
+    return await requestConfirmModalWindow(prompt);
+});
+
+ipcMain.handle('show-dialog-modal-window', async (event, dialogData) => {
+    return await requestDialogModalWindow(dialogData);
+});
+
+ipcMain.handle('get-modal-window-data', (event) => {
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    return modalWindowData.get(browserWindow) || {};
+});
+
 ipcMain.on('view-account-ids', () => {
-    win.webContents.send("view_account_ids");
+    openModalWindow('account');
 });
 
 ipcMain.on('scan-full', () => {
-    win.webContents.send("scan-full");
+    openModalWindow('scan-full');
 });
 
 module.exports = {
     createMainWindow,
     getMainWin: () => win,
-    getSettingsWin: () => settingsWin,
-    preloadAuxiliaryWindows,
+    getSettingsWin: () => {
+        return activeModalWindows.find((browserWindow) => {
+            return browserWindow && !browserWindow.isDestroyed() && modalWindowPages.get(browserWindow) === 'settings';
+        }) || null;
+    },
     getStatus: () => status,
     updateStatus,
 

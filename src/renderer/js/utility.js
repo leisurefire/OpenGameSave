@@ -1,4 +1,3 @@
-import { showConfirmDialog, showDialog, showLegacyInfoDialog } from './dialog.js';
 import { showToast } from './toast.js';
 
 window.api.receive('show-alert', (type, message, modalContent) => {
@@ -23,6 +22,15 @@ window.api.receive('view_account_ids', () => {
 
 window.api.receive('menu-hidden', () => {
     window.activeMenuTrigger = null;
+});
+
+window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
+    const table = document.querySelector(`#${tableId}`);
+    const selectedRows = table ? table.querySelectorAll('.row-checkbox:checked') : [];
+    const wikiIds = Array.from(selectedRows)
+        .map(checkbox => checkbox.closest('tr')?.getAttribute('data-wiki-id')?.trim())
+        .filter(Boolean);
+    window.api.send('selected-wiki-ids-response', requestId, wikiIds);
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -125,138 +133,15 @@ export function showAlert(type, message, modalContent) {
     return showToast(type, message, modalContent);
 }
 
-// Backward-compatible alias for the new Dialog API.
-export function showInfoModal(modalTitle, modalContent, style = 'ok') {
-    return showLegacyInfoDialog(modalTitle, modalContent, style);
-}
 
-export async function confirmBrowseLocalSave(resolvedPaths) {
-    const folderCount = resolvedPaths.filter(pathObj => pathObj.type !== 'reg').length;
-    const hasRegistry = resolvedPaths.some(pathObj => pathObj.type === 'reg');
 
-    if (!hasRegistry && folderCount <= 1) return true;
-
-    let message;
-    if (folderCount > 0 && hasRegistry) {
-        message = await window.i18n.translate('alert.confirm_open_folders_and_reg', { count: folderCount });
-    } else if (hasRegistry) {
-        message = await window.i18n.translate('alert.confirm_open_reg');
-    } else {
-        message = await window.i18n.translate('alert.confirm_open_folders', { count: folderCount });
-    }
-
-    return await showConfirmDialog(await window.i18n.translate('main.browse_local_save'), message);
-}
-
-// Export modal
+// Standalone modal windows
 function showExportModal() {
-    const modal = document.getElementById('modal-export');
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalExportCountInput = document.getElementById('modal-export-count');
-    const modalExportPathInput = document.getElementById('modal-export-path');
-    const modalExportPathSelectButton = document.getElementById('modal-export-select-path');
-
-    if (!modalOverlay.classList.contains('hidden')) return;
-
-    wrapNumberInput(modalExportCountInput);
-
-    window.api.invoke('get-settings').then((settings) => {
-        if (settings) {
-            modalExportCountInput.max = settings.maxBackups;
-            modalExportPathInput.value = settings.exportPath;
-        }
-    });
-
-    if (!modal.dataset.listenerAdded) {
-        modalExportPathSelectButton.addEventListener('click', async () => {
-            const result = await window.api.invoke('select-path', 'folder');
-            if (result) modalExportPathInput.value = result;
-        });
-        modal.dataset.listenerAdded = true;
-    }
-
-    modal.classList.add('flex');
-    modal.classList.remove('hidden');
-    modalOverlay.classList.remove('hidden');
-
-    document.getElementById('modal-export-close').onclick = closeExportModal;
-    document.getElementById('modal-export-confirm').onclick = exportConfirm;
+    window.api.send('open-modal-window', 'export');
 }
 
-async function exportConfirm() {
-    const start = await operationStartCheck('export');
-    if (start) {
-        const count = document.getElementById('modal-export-count').value;
-        const exportPath = document.getElementById('modal-export-path').value;
-        const scope = document.querySelector('input[name="export-scope"]:checked').value;
-
-        let wikiIds = null;
-        if (scope !== 'all') {
-            const table = document.querySelector(`#${scope}`);
-            const selectedRows = table.querySelectorAll('.row-checkbox:checked');
-            wikiIds = Array.from(selectedRows).map(checkbox => checkbox.closest('tr').getAttribute('data-wiki-id').trim());
-            if (wikiIds.length === 0) {
-                showAlert('warning', await window.i18n.translate('alert.no_games_selected'));
-                closeExportModal();
-                return;
-            }
-        }
-        window.api.send("export-backups", count, exportPath, wikiIds);
-    }
-    closeExportModal();
-}
-
-function closeExportModal() {
-    const modal = document.getElementById('modal-export');
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalExportPathInput = document.getElementById('modal-export-path');
-    window.api.send('save-settings', 'exportPath', modalExportPathInput.value);
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    modalOverlay.classList.add('hidden');
-}
-
-// Import modal
-function showImportModal(gsmPath) {
-    const modal = document.getElementById('modal-import');
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalImportPathInput = document.getElementById('modal-import-path');
-    const modalImportPathSelectButton = document.getElementById('modal-import-select-path');
-
-    if (!modalOverlay.classList.contains('hidden')) return;
-
-    if (gsmPath) modalImportPathInput.value = gsmPath;
-    if (!modal.dataset.listenerAdded) {
-        modalImportPathSelectButton.onclick = async () => {
-            const result = await window.api.invoke('select-path', 'gsmr');
-            if (result) modalImportPathInput.value = result;
-        };
-        modal.dataset.listenerAdded = true;
-    }
-
-    modal.classList.add('flex');
-    modal.classList.remove('hidden');
-    modalOverlay.classList.remove('hidden');
-
-    document.getElementById('modal-import-close').onclick = closeImportModal;
-    document.getElementById('modal-import-confirm').onclick = importConfirm;
-}
-
-async function importConfirm() {
-    const start = await operationStartCheck('import');
-    if (start) {
-        const importPath = document.getElementById('modal-import-path').value;
-        window.api.send("import-backups", importPath);
-    }
-    closeImportModal();
-}
-
-function closeImportModal() {
-    const modal = document.getElementById('modal-import');
-    const modalOverlay = document.getElementById('modal-overlay');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    modalOverlay.classList.add('hidden');
+function showImportModal(gsmPath = '') {
+    window.api.send('open-modal-window', 'import', { gsmPath });
 }
 
 export function updateProgress(progressId, progressTitle, percentage) {
@@ -289,104 +174,8 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (progressPercentage) progressPercentage.innerText = `${percentage}%`;
 }
 
-async function showAccountModal() {
-    const modalOverlay = document.getElementById('modal-overlay');
-    if (!modalOverlay.classList.contains('hidden')) return;
-
-    try {
-        const [accountData, settings] = await Promise.all([
-            window.api.invoke('get-account-data'),
-            window.api.invoke('get-settings')
-        ]);
-
-        const isBackupAllAccounts = settings.backupAllAccounts || false;
-        const platformKeys = {
-            steamId64: 'alert.steam_user_id64',
-            steamId3: 'alert.steam_user_id3',
-            ubisoftId: 'alert.ubisoft_user_id',
-            epicId: 'alert.epic_user_id',
-            xboxId: 'alert.xbox_user_id',
-            rockStarId: 'alert.rockstar_user_id'
-        };
-
-        const labels = {
-            title: await window.i18n.translate('main.view_account_ids'),
-            detectedAccounts: await window.i18n.translate('alert.detected_accounts'),
-            noAccountsDetected: await window.i18n.translate('alert.no_accounts_detected'),
-            backupScope: await window.i18n.translate('alert.backup_scope'),
-            currentAccountOnly: await window.i18n.translate('alert.current_account_only'),
-            allAccounts: await window.i18n.translate('alert.all_accounts'),
-            accountBackupNote: await window.i18n.translate('alert.account_backup_note'),
-            confirm: await window.i18n.translate('alert.confirm')
-        };
-
-        let accountRows = '';
-        if (accountData && Object.keys(accountData).length > 0) {
-            for (const [platform, id] of Object.entries(accountData)) {
-                if (id && id !== 'N/A' && id !== null) {
-                    const platformLabel = await window.i18n.translate(platformKeys[platform] || platform);
-                    accountRows += `
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm font-semibold opacity-70 text-content">${platformLabel}</span>
-                            <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-xbox-green">${id}</code>
-                        </div>
-                    `;
-                }
-            }
-        }
-
-        if (!accountRows) {
-            accountRows = `<p class="text-sm opacity-40 text-center py-4 text-content">${labels.noAccountsDetected}</p>`;
-        }
-
-        const contentHTML = `
-            <div class="space-y-6">
-                <div>
-                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content">${labels.detectedAccounts}</h4>
-                    <div class="surface-effect p-4 space-y-3">
-                        ${accountRows}
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content">${labels.backupScope}</h4>
-                    <div class="space-y-3">
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                            <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content">${labels.currentAccountOnly}</span>
-                        </label>
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                            <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content">${labels.allAccounts}</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="p-4 bg-xbox-green/10 border border-xbox-green/20 rounded-xl">
-                    <p class="text-xs font-bold text-xbox-green leading-relaxed">
-                        <i class="fa-solid fa-circle-info mr-1"></i> <span>${labels.accountBackupNote}</span>
-                    </p>
-                </div>
-            </div>
-        `;
-
-        const confirmed = await showDialog({
-            title: labels.title,
-            content: (contentElement) => {
-                contentElement.innerHTML = contentHTML;
-            },
-            buttons: [{ value: true, text: labels.confirm, primary: true }],
-            closeValue: false
-        });
-
-        if (confirmed) {
-            const isAllAccountsSelected = document.getElementById('backup-scope-all').checked;
-            window.api.send('save-settings', 'backupAllAccounts', isAllAccountsSelected);
-            window.api.send('update-backup-table');
-        }
-    } catch (err) {
-        console.error('Error fetching account data:', err);
-    }
+function showAccountModal() {
+    window.api.send('open-modal-window', 'account');
 }
 
 

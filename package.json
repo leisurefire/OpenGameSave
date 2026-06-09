@@ -8,7 +8,7 @@
     "tailwind:watch": "npx tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --watch",
     "clean": "rimraf dist/out",
     "ensure:sqlite3": "node scripts/ensure-sqlite3-binary.js",
-    "start": "npm run clean && npm run tailwind:build && concurrently -k -s first -n \"TAILWIND,RENDERER,MAIN,ELECTRON\" \"npm:tailwind:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js && electron .\"",
+    "start": "npm run clean && npm run tailwind:build && concurrently -k -s first -n \"TAILWIND,RENDERER,MAIN,ELECTRON\" \"npm:tailwind:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js dist/out/renderer/index.html dist/out/renderer/modal.html && electron .\"",
     "build": "npm run ensure:sqlite3 && npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",

@@ -1,6 +1,5 @@
-import { confirmBrowseLocalSave, showAlert, updateTranslations } from './utility.js';
+import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog } from './dialog.js';
-import { showManageBackupsModal, showAutoBackupModal } from './modalDisplay.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     updateTranslations(document);
@@ -261,13 +260,13 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
-        <td class="p-4 truncate opacity-80">
+        <td class="p-4 truncate opacity-80 text-center align-middle">
             ${platformIcons}
         </td>
-        <td class="p-4 truncate opacity-80 backup-size">
+        <td class="p-4 truncate opacity-80 text-center align-middle backup-size">
             ${backupSize}
         </td>
-        <td class="p-4 truncate opacity-60 newest-backup-time">
+        <td class="p-4 truncate opacity-60 text-center align-middle newest-backup-time">
             ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
@@ -294,13 +293,13 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
             ${gameTitle}
         </th>
-        <td class="p-4 truncate opacity-80 backup-count">
+        <td class="p-4 truncate opacity-80 text-center align-middle backup-count">
             ${backupCount}
         </td>
-        <td class="p-4 truncate opacity-80 backup-size">
+        <td class="p-4 truncate opacity-80 text-center align-middle backup-size">
             ${backupSize}
         </td>
-        <td class="p-4 truncate opacity-60 newest-backup-time">
+        <td class="p-4 truncate opacity-60 text-center align-middle newest-backup-time">
             ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
@@ -488,20 +487,11 @@ window.api.receive('execute-menu-action', async (action, data) => {
         if (data && data !== 'none') window.api.invoke('open-url', data);
         else showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
     } else if (action === 'open-save-folder') {
-        const gameData = window.backupTableDataMap && window.backupTableDataMap.get(data);
-        const resolvedPaths = gameData?.resolved_paths;
-        if (!gameData || !resolvedPaths || resolvedPaths.length === 0) {
-            showAlert('warning', await window.i18n.translate('alert.no_local_save_found'));
-        } else {
-            const confirmed = await confirmBrowseLocalSave(resolvedPaths);
-            if (!confirmed) return;
-
-            window.api.send('browse-local-save', resolvedPaths);
-        }
+        window.api.send('open-modal-window', 'local-save', { wikiId: data });
     } else if (action === 'manage-backups') {
-        showManageBackupsModal(data);
+        window.api.send('open-modal-window', 'manage-backups', { wikiId: data });
     } else if (action === 'auto-backup') {
-        showAutoBackupModal(data);
+        window.api.send('open-modal-window', 'auto-backup', { wikiId: data });
     } else if (action === 'settings') {
         window.api.send('open-settings-window');
     } else if (action === 'view-account-ids') {

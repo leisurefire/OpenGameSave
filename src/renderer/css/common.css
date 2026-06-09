@@ -1,0 +1,133 @@
+/* Shared window styles used by the main window and auxiliary modal windows. */
+body,
+html {
+    background: transparent !important;
+    font-family: var(--font-sans);
+    color: #ffffff;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+}
+
+.mica-effect {
+    backdrop-filter: blur(40px) saturate(150%);
+    background-color: rgba(20, 20, 20, 0.88);
+}
+
+.surface-effect {
+    backdrop-filter: blur(25px) saturate(120%);
+    background-color: var(--color-win-surface);
+    border: 1px solid var(--color-win-border);
+    border-radius: var(--radius-win);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.floating-surface {
+    backdrop-filter: blur(40px) saturate(140%);
+    background-color: rgba(32, 32, 32, 0.72);
+    border: 1px solid var(--color-win-border-bright);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-win);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-xbox-green-bright);
+    background-clip: content-box;
+}
+
+button,
+a,
+label,
+input[type="checkbox"],
+input[type="radio"],
+select,
+.dropdown-menu-button,
+.home-action-button,
+.primary-button,
+[role="tab"],
+[data-home-action] {
+    cursor: pointer;
+}
+
+button:disabled,
+.cursor-not-allowed {
+    cursor: not-allowed !important;
+}
+
+button {
+    border-radius: var(--radius-win) !important;
+}
+
+.home-action-button {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-win-border);
+    color: rgba(255, 255, 255, 0.9);
+    transition: background-color 0.1s ease, border-color 0.1s ease;
+    border-radius: var(--radius-win);
+}
+
+.home-action-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.primary-button {
+    background: var(--color-xbox-green-bright);
+    color: #000;
+    font-weight: 600;
+    border-radius: var(--radius-win);
+    border: 1px solid transparent;
+    transition: background-color 0.1s ease;
+}
+
+.primary-button:hover {
+    background: var(--color-xbox-green-fluorescent);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.primary-button:active {
+    opacity: 0.8;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--color-win-border) !important;
+    border-radius: var(--radius-win) !important;
+    color: #ffffff !important;
+    min-height: 38px;
+    padding: 8px 12px;
+    transition: all 0.1s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+    border-color: var(--color-xbox-green-bright) !important;
+    outline: none;
+    background: rgba(0, 0, 0, 0.4) !important;
+}
+
+.text-xbox-green {
+    color: var(--color-xbox-green-bright);
+}
+
+.bg-xbox-green {
+    background-color: var(--color-xbox-green-bright);
+}

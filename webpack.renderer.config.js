@@ -23,6 +23,7 @@ module.exports = {
         index: './src/renderer/index.entry.js',
         settings: './src/renderer/settings.entry.js',
         about: './src/renderer/about.entry.js',
+        modal: './src/renderer/modal.entry.js',
         menu: './src/renderer/menu.entry.js',
     },
     output: {
@@ -68,6 +69,12 @@ module.exports = {
             template: './src/renderer/about.html',
             filename: 'about.html',
             chunks: ['about'],
+            minify: htmlMinifyOptions,
+        }),
+        new HtmlWebpackPlugin({
+            template: './src/renderer/modal.html',
+            filename: 'modal.html',
+            chunks: ['modal'],
             minify: htmlMinifyOptions,
         }),
         new HtmlWebpackPlugin({

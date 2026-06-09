@@ -16,113 +16,6 @@
         <div id="alert-container"></div>
     </div>
 
-    <!-- Modal Overlay -->
-    <div id="modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-fadeIn"></div>
-
-    <!-- Modals (Simplified and Styled) -->
-    <div id="modal-info" tabindex="-1" aria-hidden="true"
-        class="hidden animate-fadeInShift overflow-x-hidden fixed inset-0 z-50 flex justify-center items-center p-4">
-        <div class="modal-container w-full max-w-2xl max-h-full flex flex-col">
-            <div class="flex items-center justify-between p-5 border-b border-white/10">
-                <h3 id="modal-info-title" class="text-xl font-bold text-xbox-green"></h3>
-                <button type="button" id="modal-info-close" class="text-white/60 hover:text-white transition-colors">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
-            <div class="p-6 modal-body-scroll space-y-4">
-                <p id="modal-info-content" class="text-white/80 leading-relaxed"></p>
-            </div>
-            <div class="p-5 border-t border-white/10 flex justify-end gap-3">
-                <button type="button" id="modal-info-no" class="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors" style="display: none;">No</button>
-                <button type="button" id="modal-info-confirm" class="primary-button px-8 py-2">Ok</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Other modals (Export, Import, Manage, AutoBackup) follow similar styling in JS or keep IDs -->
-    <!-- I will keep the IDs consistent so JS doesn't break -->
-    <div id="modal-export" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
-        <div class="modal-container w-full max-w-2xl p-6">
-            <h3 class="text-xl font-bold text-xbox-green mb-6" data-i18n="alert.export_backups">Export Backups</h3>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_scope">Export scope</label>
-                    <div class="space-y-2">
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                            <input type="radio" name="export-scope" value="all" checked class="accent-xbox-green">
-                            <span class="group-hover:text-xbox-green transition-colors" data-i18n="alert.export_all_games">All games</span>
-                        </label>
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                            <input type="radio" name="export-scope" value="backup" class="accent-xbox-green">
-                            <span class="group-hover:text-xbox-green transition-colors" data-i18n="alert.export_selected_backup">Selected games from backup</span>
-                        </label>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_count">Number of exports per game</label>
-                    <input type="number" id="modal-export-count" value="1" min="1" class="w-full">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.export_path">Export path</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="modal-export-path" readonly class="flex-1">
-                        <button id="modal-export-select-path" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">...</button>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-8 flex justify-end gap-3">
-                <button id="modal-export-close" class="px-6 py-2">Cancel</button>
-                <button id="modal-export-confirm" class="primary-button px-8 py-2" data-i18n="main.export">Export</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Import Modal -->
-    <div id="modal-import" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
-        <div class="modal-container w-full max-w-2xl p-6">
-            <h3 class="text-xl font-bold text-xbox-green mb-6" data-i18n="alert.import_backups">Import Backups</h3>
-            <div class="space-y-4">
-                <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="alert.gsmr_path">GSM file path</label>
-                <div class="flex gap-2">
-                    <input type="text" id="modal-import-path" readonly class="flex-1">
-                    <button id="modal-import-select-path" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">...</button>
-                </div>
-            </div>
-            <div class="mt-8 flex justify-end gap-3">
-                <button id="modal-import-close" class="px-6 py-2">Cancel</button>
-                <button id="modal-import-confirm" class="primary-button px-8 py-2" data-i18n="main.import">Import</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Manage Backups Modal -->
-    <div id="modal-manage-backups" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
-        <div class="modal-container w-full max-w-4xl max-h-[85vh] flex flex-col p-6">
-            <div class="flex justify-between items-start mb-6">
-                <div>
-                    <h3 id="modal-manage-backups-title" class="text-2xl font-bold text-xbox-green"></h3>
-                    <div id="modal-manage-backups-header-info" class="text-sm opacity-60 mt-1"></div>
-                </div>
-                <button id="modal-manage-backups-close" class="p-2 opacity-60 hover:opacity-100"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </div>
-            <div id="modal-manage-backups-content" class="flex-1 overflow-y-auto"></div>
-        </div>
-    </div>
-
-    <!-- Auto Backup Modal -->
-    <div id="modal-auto-backup" class="hidden animate-fadeInShift fixed inset-0 z-50 flex justify-center items-center p-4">
-        <div class="modal-container w-full max-w-lg p-6">
-            <h3 id="modal-auto-backup-title" class="text-xl font-bold text-xbox-green mb-6 flex items-center gap-2"></h3>
-            <div id="modal-auto-backup-content" class="space-y-4"></div>
-            <div class="mt-8 flex justify-end gap-3">
-                <button id="modal-auto-backup-close" class="px-6 py-2">Cancel</button>
-                <button id="modal-auto-backup-confirm" class="primary-button px-8 py-2">Confirm</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Navigation Header -->
     <header class="flex items-center justify-between mb-6 pb-2">
                 <nav class="flex gap-1" id="main-tab" role="tablist">
@@ -212,10 +105,10 @@
                             <tr>
                                 <th class="w-12 p-4"><input id="backup-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
-                                <th class="p-4" data-i18n="main.supported_plats">Platforms</th>
-                                <th class="p-4" data-i18n="main.backup_size">Size</th>
-                                <th class="p-4" data-i18n="main.newest_backup_time">Last Backup</th>
-                                <th class="p-4 text-center" data-i18n="main.more">Actions</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.supported_plats">Platforms</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.backup_size">Size</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.newest_backup_time">Last Backup</th>
+                                <th class="p-4 text-center"></th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -272,10 +165,10 @@
                             <tr>
                                 <th class="w-12 p-4"><input id="restore-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
-                                <th class="p-4" data-i18n="main.backup_count">Backups</th>
-                                <th class="p-4" data-i18n="main.restore_size">Size</th>
-                                <th class="p-4" data-i18n="main.newest_backup_time">Last Backup</th>
-                                <th class="p-4 text-center" data-i18n="main.more">Actions</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.backup_count">Backups</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.restore_size">Size</th>
+                                <th class="p-4 text-center align-middle" data-i18n="main.newest_backup_time">Last Backup</th>
+                                <th class="p-4 text-center"></th>
                             </tr>
                         </thead>
                         <tbody></tbody>

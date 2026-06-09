@@ -1,5 +1,5 @@
 import "../../node_modules/@fortawesome/fontawesome-free/css/all.min.css"
 import "./tailwind-output.css"
 import "./css/common.css"
-import "./css/about.css"
-import "./js/aboutPage.js"
+import "./css/modal-window.css"
+import "./js/modalWindowPage.js"
