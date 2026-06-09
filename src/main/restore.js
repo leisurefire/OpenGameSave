@@ -1,4 +1,6 @@
-const { BrowserWindow, dialog } = require('electron');
+const { BrowserWindow, ipcMain } = require('electron');
+
+const { randomUUID } = require('crypto');
 
 const { exec } = require('child_process');
 const fsOriginal = require('original-fs');
@@ -226,6 +228,25 @@ async function restoreGame(gameObj, userActionForAll) {
     }
 }
 
+async function requestRestoreConflictDecision(prompt) {
+    const targetWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    if (!targetWindow || targetWindow.isDestroyed()) {
+        return { choice: 'skip', doForAll: false };
+    }
+
+    return new Promise((resolve) => {
+        const requestId = randomUUID();
+        const handleResponse = (event, responseId, response) => {
+            if (responseId !== requestId) return;
+            ipcMain.removeListener('restore-conflict-response', handleResponse);
+            resolve(response || { choice: 'skip', doForAll: false });
+        };
+
+        ipcMain.on('restore-conflict-response', handleResponse);
+        targetWindow.webContents.send('restore-conflict-prompt', requestId, prompt);
+    });
+}
+
 async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
     let latestSourceModTime = new Date(0);
     let latestDestModTime = new Date(0);
@@ -249,24 +270,17 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
             return { skip: userActionForAll === 'skip', actionForAll: userActionForAll };
         }
 
-        // Show the dialog to ask the user whether to replace or skip
-        const response = await dialog.showMessageBox(BrowserWindow.getFocusedWindow(), {
-            type: 'question',
-            buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
+        const response = await requestRestoreConflictDecision({
             title: i18next.t('alert.save_conflict'),
             message: `${i18next.t('alert.save_conflict_detected', { game: gameDisplayName })}\n\n` +
                 `${i18next.t('alert.machine_save_date', { machineTime: moment(latestDestModTime).format('YYYY-MM-DD HH:mm') })}\n` +
                 `${i18next.t('alert.backup_save_date', { backupTime: moment(latestSourceModTime).format('YYYY-MM-DD HH:mm') })}\n\n` +
                 `${i18next.t('alert.overwrite_prompt')}`,
-            checkboxLabel: i18next.t('alert.do_this_for_all'),
-            defaultId: 1, // Default to 'Skip'
-            cancelId: 1,
-            noLink: true,
-            modal: true
+            checkboxLabel: i18next.t('alert.do_this_for_all')
         });
 
-        const userChoice = response.response === 0 ? 'replace' : 'skip';
-        const doForAll = response.checkboxChecked;
+        const userChoice = response.choice === 'replace' ? 'replace' : 'skip';
+        const doForAll = response.doForAll;
 
         return {
             skip: userChoice === 'skip',

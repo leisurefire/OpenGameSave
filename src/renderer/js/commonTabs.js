@@ -1,4 +1,5 @@
-import { showAlert, showInfoModal, updateTranslations } from './utility.js';
+import { confirmBrowseLocalSave, showAlert, updateTranslations } from './utility.js';
+import { showDontShowDialog } from './dialog.js';
 import { showManageBackupsModal, showAutoBackupModal } from './modalDisplay.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -459,10 +460,9 @@ window.api.receive('execute-menu-action', async (action, data) => {
         const wikiId = data;
         const settings = await window.api.invoke('get-settings');
         if (!settings.blockedGameTipDismissed) {
-            const tipResult = await showInfoModal(
+            const tipResult = await showDontShowDialog(
                 await window.i18n.translate('main.block_game'),
-                await window.i18n.translate('alert.blocked_game_tip'),
-                'dontshow-ok'
+                await window.i18n.translate('alert.blocked_game_tip')
             );
             if (tipResult === false) {
                 return;
@@ -493,6 +493,9 @@ window.api.receive('execute-menu-action', async (action, data) => {
         if (!gameData || !resolvedPaths || resolvedPaths.length === 0) {
             showAlert('warning', await window.i18n.translate('alert.no_local_save_found'));
         } else {
+            const confirmed = await confirmBrowseLocalSave(resolvedPaths);
+            if (!confirmed) return;
+
             window.api.send('browse-local-save', resolvedPaths);
         }
     } else if (action === 'manage-backups') {

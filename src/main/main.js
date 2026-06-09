@@ -9,7 +9,6 @@ const path = require('path');
 const fse = require('fs-extra');
 const i18next = require('i18next');
 const Backend = require('i18next-fs-backend');
-const moment = require('moment');
 const { pinyin } = require('pinyin');
 
 const {
@@ -528,31 +527,11 @@ ipcMain.handle('restore-game', async (event, gameObj, userActionForAll) => {
     return await restoreGame(gameObj, userActionForAll);
 });
 
-ipcMain.handle('confirm-delete-backup', async (event, wikiId, backupDate) => {
+ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
     try {
         const backupPath = path.join(getSettings().backupPath, wikiId.toString(), backupDate);
-        const formattedDate = moment(backupDate, 'YYYY-MM-DD_HH-mm').format('YYYY/MM/DD HH:mm');
-
-        const confirmTitle = i18next.t('alert.confirm_delete_backup_title');
-        const baseMessage = i18next.t('alert.confirm_delete_backup_message');
-        const confirmMessage = baseMessage.replace('{{backup_date}}', formattedDate);
-
-        const response = await dialog.showMessageBox(getMainWin(), {
-            type: 'warning',
-            title: confirmTitle,
-            message: confirmMessage,
-            buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
-            defaultId: 1,
-            cancelId: 1
-        });
-
-        // If user clicked "Yes"
-        if (response.response === 0) {
-            fsOriginal.rmSync(backupPath, { recursive: true, force: true });
-            return true;
-        }
-
-        return false;
+        fsOriginal.rmSync(backupPath, { recursive: true, force: true });
+        return true;
 
     } catch (error) {
         console.error(`Error deleting backup ${backupDate} for id ${wikiId}:`, error.message);
@@ -595,7 +574,7 @@ ipcMain.on('browse-local-save', async (event, resolvedPaths) => {
     browseLocalSave(resolvedPaths);
 });
 
-ipcMain.handle('confirm-delete-local-save', async (event, resolvedPaths) => {
+ipcMain.handle('delete-local-save', async (event, resolvedPaths) => {
     return await deleteLocalSave(resolvedPaths);
 });
 

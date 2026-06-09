@@ -1,8 +1,38 @@
-import { showAlert, showInfoModal, updateProgress, operationStartCheck } from './utility.js';
+import { showAlert, updateProgress, operationStartCheck } from './utility.js';
+import { showMessageDialog, showDialog } from './dialog.js';
 import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
+
+window.api.receive('restore-conflict-prompt', async (requestId, prompt) => {
+    const replaceLabel = await window.i18n.translate('alert.yes');
+    const skipLabel = await window.i18n.translate('alert.no');
+    const result = await showDialog({
+        title: prompt.title,
+        content: (contentElement) => {
+            contentElement.innerHTML = `
+                <div class="space-y-4">
+                    <p class="text-sm opacity-80 leading-relaxed whitespace-pre-line">${prompt.message}</p>
+                    <label class="flex items-center gap-3 cursor-pointer group pt-2">
+                        <input id="restore-conflict-do-all" type="checkbox" class="accent-xbox-green w-5 h-5">
+                        <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${prompt.checkboxLabel}</span>
+                    </label>
+                </div>
+            `;
+        },
+        buttons: [
+            { value: 'skip', text: skipLabel },
+            { value: 'replace', text: replaceLabel, primary: true }
+        ],
+        closeValue: 'skip'
+    });
+
+    window.api.send('restore-conflict-response', requestId, {
+        choice: result,
+        doForAll: document.getElementById('restore-conflict-do-all')?.checked || false
+    });
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     setupRestoreButton();
@@ -249,7 +279,7 @@ export function showRestoreSummary(restoreCount, restoreFailed, errors, restoreS
                 });
                 document.getElementById('restore-summary-total-failed').textContent = failed_message;
                 document.getElementById('restore-failed-learn-more').addEventListener('click', () => {
-                    showInfoModal(failed_message, [errors]);
+                    showMessageDialog(failed_message, [errors]);
                 });
                 restoreFailedContainer.classList.remove('hidden');
             } else {

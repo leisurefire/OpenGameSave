@@ -1,4 +1,5 @@
-import { showAlert, showInfoModal, updateProgress, operationStartCheck } from './utility.js';
+import { showAlert, updateProgress, operationStartCheck } from './utility.js';
+import { showConfirmDialog, showMessageDialog } from './dialog.js';
 import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
@@ -14,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await updateBackupTable(true);
 
     if (!settings.firstLaunchFullScanTipShown) {
-        showInfoModal(
+        showMessageDialog(
             await window.i18n.translate('main.scan_full'),
             await window.i18n.translate('alert.first_launch_full_scan_tip')
         );
@@ -29,10 +30,9 @@ window.api.receive('update-backup-table', () => {
 window.api.receive('scan-full', async () => {
     const start = await operationStartCheck('scan-full');
     if (start) {
-        const confirmed = await showInfoModal(
+        const confirmed = await showConfirmDialog(
             await window.i18n.translate('main.scan_full'),
-            await window.i18n.translate('alert.scan_full_may_take_minutes'),
-            'yesno'
+            await window.i18n.translate('alert.scan_full_may_take_minutes')
         );
         if (!confirmed) return;
 
@@ -300,7 +300,7 @@ function showBackupSummary(backupCount, backupFailed, errors, backupSize) {
                 });
                 document.getElementById('backup-summary-total-failed').textContent = failed_message;
                 document.getElementById('backup-failed-learn-more').addEventListener('click', () => {
-                    showInfoModal(failed_message, [errors]);
+                    showMessageDialog(failed_message, [errors]);
                 });
                 backupFailedContainer.classList.remove('hidden');
             } else {

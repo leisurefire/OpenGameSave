@@ -766,46 +766,14 @@ async function browseLocalSave(resolvedPaths) {
             return;
         }
 
-        // 2. Open a single directory directly. Prompt only when multiple
-        // directories or any registry key will be opened.
-        const shouldPrompt = hasRegistry || folders.length > 1;
-        let canOpen = true;
-
-        if (shouldPrompt) {
-            let message = '';
-            if (folders.length > 0 && hasRegistry) {
-                message = i18next.t('alert.confirm_open_folders_and_reg', {
-                    count: folders.length
-                });
-            } else if (hasRegistry) {
-                message = i18next.t('alert.confirm_open_reg');
-            } else {
-                message = i18next.t('alert.confirm_open_folders', {
-                    count: folders.length
-                });
-            }
-
-            const response = await dialog.showMessageBox(win, {
-                type: 'question',
-                title: i18next.t('main.browse_local_save'),
-                message: message,
-                buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
-                defaultId: 0,
-                cancelId: 1
-            });
-            canOpen = response.response === 0;
+        // Open directories
+        for (const folder of folders) {
+            await shell.openPath(folder);
         }
 
-        if (canOpen) {
-            // Open directories
-            for (const folder of folders) {
-                await shell.openPath(folder);
-            }
-
-            // Open Registry
-            if (hasRegistry && registryKeyToOpen) {
-                await openRegistryAtKey(registryKeyToOpen);
-            }
+        // Open Registry
+        if (hasRegistry && registryKeyToOpen) {
+            await openRegistryAtKey(registryKeyToOpen);
         }
 
     } catch (error) {
@@ -815,49 +783,34 @@ async function browseLocalSave(resolvedPaths) {
 
 async function deleteLocalSave(resolvedPaths) {
     try {
-        // 1. Ask for confirmation
-        const response = await dialog.showMessageBox(win, {
-            type: 'warning',
-            title: i18next.t('main.delete_local_save'),
-            message: i18next.t('alert.confirm_delete_local_save_message'),
-            buttons: [i18next.t('alert.yes'), i18next.t('alert.no')],
-            defaultId: 1,
-            cancelId: 1
-        });
+        let success = true;
 
-        // 2. Delete paths if confirmed
-        if (response.response === 0) {
-            let success = true;
-
-            for (const pathObj of resolvedPaths) {
-                // Case A: Registry
-                if (pathObj.type === 'reg') {
-                    if (pathObj.resolved) {
-                        const regResult = await deleteRegistryKey(pathObj.resolved);
-                        if (!regResult) success = false;
-                    }
+        for (const pathObj of resolvedPaths) {
+            // Case A: Registry
+            if (pathObj.type === 'reg') {
+                if (pathObj.resolved) {
+                    const regResult = await deleteRegistryKey(pathObj.resolved);
+                    if (!regResult) success = false;
                 }
-                // Case B: Files/Folders
-                else {
-                    const fullPath = pathObj.resolved;
-                    if (fullPath && fsOriginal.existsSync(fullPath)) {
-                        try {
-                            fsOriginal.rmSync(fullPath, { recursive: true, force: true });
-                        } catch (err) {
-                            console.error(`Failed to delete file path: ${fullPath}`, err);
-                            success = false;
-                        }
+            }
+            // Case B: Files/Folders
+            else {
+                const fullPath = pathObj.resolved;
+                if (fullPath && fsOriginal.existsSync(fullPath)) {
+                    try {
+                        fsOriginal.rmSync(fullPath, { recursive: true, force: true });
+                    } catch (err) {
+                        console.error(`Failed to delete file path: ${fullPath}`, err);
+                        success = false;
                     }
                 }
             }
-
-            if (!success) {
-                win.send('show-alert', 'error', i18next.t('alert.delete_partial_failure'));
-            }
-            return true;
         }
 
-        return false;
+        if (!success) {
+            win.send('show-alert', 'error', i18next.t('alert.delete_partial_failure'));
+        }
+        return true;
 
     } catch (error) {
         console.error('Error deleting local saves:', error);

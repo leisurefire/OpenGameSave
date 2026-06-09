@@ -1,4 +1,5 @@
-import { showAlert, updateProgress, operationStartCheck, wrapNumberInput } from './utility.js';
+import { confirmBrowseLocalSave, showAlert, updateProgress, operationStartCheck, wrapNumberInput } from './utility.js';
+import { showConfirmDialog } from './dialog.js';
 import { setIcon, formatSize, addOrUpdateTableRow, removeTableRow, updateSelectedCountAndSize } from './commonTabs.js';
 
 // Helper function for Backup Management Modal to update backup date display
@@ -39,6 +40,8 @@ function attachRenameButtonListener(renameBtn) {
         nameInput.select();
     });
 }
+
+
 
 export async function showManageBackupsModal(wikiId) {
     const gamesList = await window.api.invoke('fetch-restore-table-data', wikiId);
@@ -204,6 +207,9 @@ export async function showManageBackupsModal(wikiId) {
             showAlert('warning', await window.i18n.translate('alert.no_local_save_found'));
             return;
         }
+        const confirmed = await confirmBrowseLocalSave(resolvedPaths);
+        if (!confirmed) return;
+
         window.api.send('browse-local-save', resolvedPaths);
     });
 
@@ -220,7 +226,13 @@ export async function showManageBackupsModal(wikiId) {
             showAlert('warning', await window.i18n.translate('alert.no_local_save_found'));
             return;
         }
-        const success = await window.api.invoke('confirm-delete-local-save', resolvedPaths);
+        const confirmed = await showConfirmDialog(
+            await window.i18n.translate('main.delete_local_save'),
+            await window.i18n.translate('alert.confirm_delete_local_save_message')
+        );
+        if (!confirmed) return;
+
+        const success = await window.api.invoke('delete-local-save', resolvedPaths);
         if (success) {
             removeTableRow('backup', wikiId);
             showAlert('success', await window.i18n.translate('alert.local_save_deleted'));
@@ -291,7 +303,15 @@ export async function showManageBackupsModal(wikiId) {
             e.preventDefault();
             const backupDate = btn.dataset.backupDate;
             const row = btn.closest('tr');
-            const success = await window.api.invoke('confirm-delete-backup', wikiId, backupDate);
+            const formattedDate = backupDate.replace(/(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})/, (m, y, mo, d, h, mi) => `${y}/${mo.padStart(2, '0')}/${d.padStart(2, '0')} ${h.padStart(2, '0')}:${mi.padStart(2, '0')}`);
+            const confirmMessage = (await window.i18n.translate('alert.confirm_delete_backup_message')).replace('{{backup_date}}', formattedDate);
+            const confirmed = await showConfirmDialog(
+                await window.i18n.translate('alert.confirm_delete_backup_title'),
+                confirmMessage
+            );
+            if (!confirmed) return;
+
+            const success = await window.api.invoke('delete-backup', wikiId, backupDate);
             if (success) {
                 row.remove();
                 const countE = headerInfo.querySelector('.backup-count-value');

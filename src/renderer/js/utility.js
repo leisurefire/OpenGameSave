@@ -1,3 +1,6 @@
+import { showConfirmDialog, showDialog, showLegacyInfoDialog } from './dialog.js';
+import { showToast } from './toast.js';
+
 window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
 });
@@ -118,137 +121,31 @@ export async function updateTranslations(container) {
 }
 
 
-export async function showAlert(type, message, modalContent) {
-    const alertContainer = document.getElementById('alert-container');
-
-    const alertStyles = {
-        info: 'text-white border-white/10',
-        error: 'text-red-400 border-red-500/30',
-        success: 'text-xbox-green border-xbox-green/30',
-        warning: 'text-yellow-400 border-yellow-500/30',
-        modal: 'text-red-400 border-red-500/30',
-    };
-
-    const iconClass = {
-        info: 'fa-circle-info',
-        error: 'fa-circle-xmark',
-        success: 'fa-circle-check',
-        warning: 'fa-triangle-exclamation',
-        modal: 'fa-circle-question',
-    };
-
-    const alertElement = document.createElement('div');
-    alertElement.className = `flex items-center gap-4 p-4 rounded-xl border floating-surface shadow-2xl ${alertStyles[type]} animate-fadeInShift max-w-sm`;
-
-    alertElement.innerHTML = `
-        <i class="fa-solid ${iconClass[type]} text-xl"></i>
-        <div class="flex-1 text-sm font-bold leading-tight">
-            <span class="text-content">${message}</span>
-        </div>
-    `;
-
-    if (type === 'modal') {
-        const learnMoreBtn = document.createElement('button');
-        learnMoreBtn.className = 'text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity underline';
-        learnMoreBtn.setAttribute('data-i18n', 'alert.learn_more');
-        learnMoreBtn.innerHTML = '<span class="text-content"></span>';
-        learnMoreBtn.addEventListener('click', () => {
-            showInfoModal(message, modalContent);
-        });
-        alertElement.appendChild(learnMoreBtn);
-    } else {
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'p-1 opacity-40 hover:opacity-100 transition-opacity';
-        closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-        closeBtn.onclick = () => {
-            alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOut');
-            setTimeout(() => alertElement.remove(), 300);
-        };
-        alertElement.appendChild(closeBtn);
-    }
-
-    alertContainer.appendChild(alertElement);
-    updateTranslations(alertElement);
-
-    setTimeout(() => {
-        if (alertElement.parentNode) {
-            alertElement.classList.replace('animate-fadeInShift', 'animate-fadeOut');
-            setTimeout(() => alertElement.remove(), 300);
-        }
-    }, 5000);
+export function showAlert(type, message, modalContent) {
+    return showToast(type, message, modalContent);
 }
 
-// Info modal, showing either "ok" or "yesno" style
-export async function showInfoModal(modalTitle, modalContent, style = 'ok') {
-    return new Promise(async (resolve) => {
-        let isResolved = false;
-        const modal = document.getElementById('modal-info');
-        const modalOverlay = document.getElementById('modal-overlay');
-        const modalTitleElement = document.getElementById('modal-info-title');
-        const modalContentElement = document.getElementById('modal-info-content');
-        const closeButton = document.getElementById('modal-info-close');
-        const noButton = document.getElementById('modal-info-no');
-        const confirmButton = document.getElementById('modal-info-confirm');
+// Backward-compatible alias for the new Dialog API.
+export function showInfoModal(modalTitle, modalContent, style = 'ok') {
+    return showLegacyInfoDialog(modalTitle, modalContent, style);
+}
 
-        modalTitleElement.textContent = modalTitle;
+export async function confirmBrowseLocalSave(resolvedPaths) {
+    const folderCount = resolvedPaths.filter(pathObj => pathObj.type !== 'reg').length;
+    const hasRegistry = resolvedPaths.some(pathObj => pathObj.type === 'reg');
 
-        if (Array.isArray(modalContent)) {
-            modalContentElement.innerHTML = modalContent.map(item => {
-                if (Array.isArray(item)) {
-                    return `<ul class="space-y-2 py-2">${item.map(li => `<li class="flex gap-2 opacity-80 text-sm"><i class="fa-solid fa-caret-right text-xbox-green mt-1"></i>${li}</li>`).join('')}</ul>`;
-                }
-                return `<p class="text-sm opacity-80 leading-relaxed mb-2">${item}</p>`;
-            }).join('');
-        } else {
-            modalContentElement.textContent = modalContent;
-            modalContentElement.className = "text-sm opacity-80 leading-relaxed";
-        }
+    if (!hasRegistry && folderCount <= 1) return true;
 
-        const closeModal = () => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            modalOverlay.classList.add('hidden');
-            cleanupListeners();
-        };
+    let message;
+    if (folderCount > 0 && hasRegistry) {
+        message = await window.i18n.translate('alert.confirm_open_folders_and_reg', { count: folderCount });
+    } else if (hasRegistry) {
+        message = await window.i18n.translate('alert.confirm_open_reg');
+    } else {
+        message = await window.i18n.translate('alert.confirm_open_folders', { count: folderCount });
+    }
 
-        const finish = (value) => {
-            if (isResolved) return;
-            isResolved = true;
-            closeModal();
-            resolve(value);
-        };
-
-        const cleanupListeners = () => {
-            closeButton.onclick = null;
-            noButton.onclick = null;
-            confirmButton.onclick = null;
-        };
-
-        const handleClose = () => {
-            finish(style === 'yesno' || style === 'dontshow-ok' ? false : true);
-        };
-
-        if (style === 'yesno') {
-            noButton.style.display = '';
-            noButton.textContent = await window.i18n.translate('alert.no');
-            confirmButton.textContent = await window.i18n.translate('alert.yes');
-        } else if (style === 'dontshow-ok') {
-            noButton.style.display = '';
-            noButton.textContent = await window.i18n.translate('alert.dont_show_again');
-            confirmButton.textContent = await window.i18n.translate('alert.confirm');
-        } else {
-            noButton.style.display = 'none';
-            confirmButton.textContent = 'OK';
-        }
-
-        modal.classList.add('flex');
-        modal.classList.remove('hidden');
-        modalOverlay.classList.remove('hidden');
-
-        closeButton.onclick = handleClose;
-        noButton.onclick = () => finish(style === 'dontshow-ok' ? 'dont-show' : false);
-        confirmButton.onclick = () => finish(true);
-    });
+    return await showConfirmDialog(await window.i18n.translate('main.browse_local_save'), message);
 }
 
 // Export modal
@@ -392,117 +289,106 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (progressPercentage) progressPercentage.innerText = `${percentage}%`;
 }
 
-function showAccountModal() {
-    const modal = document.getElementById('modal-info');
+async function showAccountModal() {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalTitleElement = document.getElementById('modal-info-title');
-    const modalContentElement = document.getElementById('modal-info-content');
-    const closeButton = document.getElementById('modal-info-close');
-    const confirmButton = document.getElementById('modal-info-confirm');
-
     if (!modalOverlay.classList.contains('hidden')) return;
 
-    Promise.all([
-        window.api.invoke('get-account-data'),
-        window.api.invoke('get-settings')
-    ]).then(([accountData, settings]) => {
-        modalTitleElement.setAttribute('data-i18n', 'main.view_account_ids');
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'text-content';
-        modalTitleElement.appendChild(titleSpan);
+    try {
+        const [accountData, settings] = await Promise.all([
+            window.api.invoke('get-account-data'),
+            window.api.invoke('get-settings')
+        ]);
 
         const isBackupAllAccounts = settings.backupAllAccounts || false;
+        const platformKeys = {
+            steamId64: 'alert.steam_user_id64',
+            steamId3: 'alert.steam_user_id3',
+            ubisoftId: 'alert.ubisoft_user_id',
+            epicId: 'alert.epic_user_id',
+            xboxId: 'alert.xbox_user_id',
+            rockStarId: 'alert.rockstar_user_id'
+        };
 
-        let contentHTML = `
-            <div class="space-y-6">
-                <div>
-                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content" data-i18n="alert.detected_accounts"></h4>
-                    <div class="surface-effect p-4 space-y-3">
-        `;
+        const labels = {
+            title: await window.i18n.translate('main.view_account_ids'),
+            detectedAccounts: await window.i18n.translate('alert.detected_accounts'),
+            noAccountsDetected: await window.i18n.translate('alert.no_accounts_detected'),
+            backupScope: await window.i18n.translate('alert.backup_scope'),
+            currentAccountOnly: await window.i18n.translate('alert.current_account_only'),
+            allAccounts: await window.i18n.translate('alert.all_accounts'),
+            accountBackupNote: await window.i18n.translate('alert.account_backup_note'),
+            confirm: await window.i18n.translate('alert.confirm')
+        };
 
+        let accountRows = '';
         if (accountData && Object.keys(accountData).length > 0) {
             for (const [platform, id] of Object.entries(accountData)) {
                 if (id && id !== 'N/A' && id !== null) {
-                    const platformKeys = {
-                        steamId64: 'alert.steam_user_id64',
-                        steamId3: 'alert.steam_user_id3',
-                        ubisoftId: 'alert.ubisoft_user_id',
-                        epicId: 'alert.epic_user_id',
-                        xboxId: 'alert.xbox_user_id',
-                        rockStarId: 'alert.rockstar_user_id'
-                    };
-                    contentHTML += `
+                    const platformLabel = await window.i18n.translate(platformKeys[platform] || platform);
+                    accountRows += `
                         <div class="flex justify-between items-center">
-                            <span class="text-sm font-semibold opacity-70 text-content" data-i18n="${platformKeys[platform] || platform}"></span>
+                            <span class="text-sm font-semibold opacity-70 text-content">${platformLabel}</span>
                             <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-xbox-green">${id}</code>
                         </div>
                     `;
                 }
             }
-        } else {
-            contentHTML += `<p class="text-sm opacity-40 text-center py-4 text-content" data-i18n="alert.no_accounts_detected"></p>`;
         }
 
-        contentHTML += `
+        if (!accountRows) {
+            accountRows = `<p class="text-sm opacity-40 text-center py-4 text-content">${labels.noAccountsDetected}</p>`;
+        }
+
+        const contentHTML = `
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content">${labels.detectedAccounts}</h4>
+                    <div class="surface-effect p-4 space-y-3">
+                        ${accountRows}
                     </div>
                 </div>
 
                 <div>
-                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content" data-i18n="alert.backup_scope"></h4>
+                    <h4 class="text-xs font-black uppercase tracking-widest opacity-40 mb-3 text-content">${labels.backupScope}</h4>
                     <div class="space-y-3">
                         <label class="flex items-center gap-3 cursor-pointer group">
                             <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content" data-i18n="alert.current_account_only"></span>
+                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content">${labels.currentAccountOnly}</span>
                         </label>
                         <label class="flex items-center gap-3 cursor-pointer group">
                             <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content" data-i18n="alert.all_accounts"></span>
+                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100 text-content">${labels.allAccounts}</span>
                         </label>
                     </div>
                 </div>
 
                 <div class="p-4 bg-xbox-green/10 border border-xbox-green/20 rounded-xl">
                     <p class="text-xs font-bold text-xbox-green leading-relaxed">
-                        <i class="fa-solid fa-circle-info mr-1"></i> <span data-i18n="alert.account_backup_note"></span>
+                        <i class="fa-solid fa-circle-info mr-1"></i> <span>${labels.accountBackupNote}</span>
                     </p>
                 </div>
             </div>
         `;
 
-        modalContentElement.innerHTML = contentHTML;
+        const confirmed = await showDialog({
+            title: labels.title,
+            content: (contentElement) => {
+                contentElement.innerHTML = contentHTML;
+            },
+            buttons: [{ value: true, text: labels.confirm, primary: true }],
+            closeValue: false
+        });
 
-        const handleClose = () => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            modalOverlay.classList.add('hidden');
-        };
-
-        const handleConfirm = () => {
+        if (confirmed) {
             const isAllAccountsSelected = document.getElementById('backup-scope-all').checked;
             window.api.send('save-settings', 'backupAllAccounts', isAllAccountsSelected);
             window.api.send('update-backup-table');
-            handleClose();
-        };
-
-        confirmButton.setAttribute('data-i18n', 'alert.confirm');
-        confirmButton.className = 'primary-button px-8 py-2 text-content';
-
-        const nCloseB = closeButton.cloneNode(true);
-        closeButton.parentNode.replaceChild(nCloseB, closeButton);
-        nCloseB.onclick = handleClose;
-
-        const nConfirmB = confirmButton.cloneNode(true);
-        confirmButton.parentNode.replaceChild(nConfirmB, confirmButton);
-        nConfirmB.onclick = handleConfirm;
-
-        updateTranslations(modal);
-        modal.classList.add('flex');
-        modal.classList.remove('hidden');
-        modalOverlay.classList.remove('hidden');
-    }).catch(err => {
+        }
+    } catch (err) {
         console.error('Error fetching account data:', err);
-    });
+    }
 }
+
 
 export function wrapNumberInput(input) {
     if (!input || input.type !== 'number' || input.dataset.wrapped) return;
