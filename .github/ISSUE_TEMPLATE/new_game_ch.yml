@@ -1,0 +1,74 @@
+name: 添加新游戏
+description: 请求将一款游戏添加到数据库中
+title: "[添加游戏] "
+labels: ["game-request", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交新游戏申请！请尽量填写完整信息，以加快处理速度
+        ⚠️ **注意：** 部分盗版游戏使用和正版游戏不一致的路径，OGS 暂时不受理盗版游戏存档的路径。
+        
+        ---
+
+  - type: input
+    id: game_name
+    attributes:
+      label: 游戏名称
+      description: 游戏的完整官方名称（中/英文均可）
+      placeholder: "例：Overwatch / 守望先锋"
+    validations:
+      required: true
+
+  - type: input
+    id: store_page
+    attributes:
+      label: 游戏链接
+      description: 请考虑优先提供 PCGamingWiki 链接，如未收录可提供 Steam 等平台页面 URL
+      placeholder: "https://www.pcgamingwiki.com/wiki/Overwatch"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 游戏平台
+      description: 该游戏支持的平台
+      multiple: true
+      options:
+        - Steam
+        - GOG
+        - Epic
+        - EA
+        - Xbox
+        - Battle.net
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: save_location
+    attributes:
+      label: 存档文件位置
+      description: 游戏存档文件和注册表（如有）所在的路径，可以使用环境变量（如果 PCGamingWiki 中已包含准确路径则不需要填写）
+      placeholder: |
+        例：%USERPROFILE%\Documents\Overwatch\Settings\
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_notes
+    attributes:
+      label: 补充说明
+      description: 有助于支持该游戏的额外信息
+      placeholder: 可选填
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我确认现有数据库中，该游戏尚未被支持
+          required: true
+        - label: 我确认提供的存档路径（若已提供）是准确的
+          required: false

@@ -1,0 +1,75 @@
+name: Add New Game
+description: Request to add a new game to the database
+title: "[Add Game] "
+labels: ["game-request", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a new game request! Please provide as much information as possible to speed up the process.
+        
+        ⚠️ **Note:** Some cracked/pirated games use different save paths than legitimate copies. OGS currently does not accept save paths for pirated games.
+        
+        ---
+
+  - type: input
+    id: game_name
+    attributes:
+      label: Game Name
+      description: The full official name of the game.
+      placeholder: "e.g., Overwatch"
+    validations:
+      required: true
+
+  - type: input
+    id: store_page
+    attributes:
+      label: Game Link
+      description: Please prioritize providing a PCGamingWiki link. If unavailable, a Steam or other storefront URL is acceptable.
+      placeholder: "https://www.pcgamingwiki.com/wiki/Overwatch"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Game Platform
+      description: Platforms supported by this game.
+      multiple: true
+      options:
+        - Steam
+        - GOG
+        - Epic
+        - EA
+        - Xbox
+        - Battle.net
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: save_location
+    attributes:
+      label: Save File Location
+      description: The directory path where game save files and registry entries (if any) are located. Environment variables are supported. (Leave blank if the exact path is already documented in the provided PCGamingWiki link).
+      placeholder: |
+        e.g., %USERPROFILE%\Documents\Overwatch\Settings\
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_notes
+    attributes:
+      label: Additional Notes
+      description: Any extra information that might help us support this game.
+      placeholder: Optional
+      
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Submission Checklist
+      options:
+        - label: I confirm that this game is not already supported in the existing database.
+          required: true
+        - label: I confirm that the provided save path (if any) is accurate.
+          required: false
