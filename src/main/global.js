@@ -269,6 +269,8 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
         minWidth: definition.minWidth || definition.width,
         minHeight: definition.minHeight || definition.height,
         resizable: definition.resizable !== false,
+        minimizable: definition.resizable !== false, // 禁用最小化按钮
+        maximizable: definition.resizable !== false, // 禁用最大化按钮
         show: false,
         icon: path.join(__dirname, `../assets/${definition.icon}`),
         parent: parentWindow && !parentWindow.isDestroyed() ? parentWindow : win,
