@@ -42,14 +42,24 @@ class ActionButton extends HTMLElement {
         this.shadowRoot.innerHTML = `
             <style>
                 :host {
-                    display: inline-block;
+                    display: inline-flex;
+                    align-self: stretch;
+                }
+
+                :host([style*="align-self:stretch"]),
+                :host([style*="align-self: stretch"]) {
+                    width: auto;
                 }
 
                 .btn-wrapper {
                     display: inline-flex;
                     align-items: center;
+                    justify-content: center;
                     gap: 0.375rem;
                     padding: 0.375rem 0.75rem;
+                    width: 100%;
+                    height: 100%;
+                    box-sizing: border-box;
                     font-size: 0.75rem;
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);

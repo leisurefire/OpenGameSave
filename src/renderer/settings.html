@@ -28,25 +28,25 @@
             <input type="number" id="max-backups" class="w-full" min="1" max="1000">
         </div>
 
-        <!-- Toggles -->
-        <div class="space-y-3 pt-1">
-            <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="auto-app-update" type="checkbox" class="accent-theme-accent w-5 h-5">
-                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_app_update">Check software update automatically</span>
-            </label>
-            <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="auto-db-update" type="checkbox" class="accent-theme-accent w-5 h-5">
-                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_db_update">Update database automatically</span>
-            </label>
-                        <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="save-uninstalled-games" type="checkbox" class="accent-theme-accent w-5 h-5">
-                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.save_uninstalled_games">Save and display uninstalled games</span>
-            </label>
-            <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="sync-accent-color" type="checkbox" class="accent-theme-accent w-5 h-5">
-                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.sync_accent_color">Sync theme color with system accent color</span>
-            </label>
-        </div>
+                <!-- Toggles -->
+                <div class="space-y-3 pt-1">
+                    <label class="flex items-center justify-between gap-3 cursor-pointer group">
+                        <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_app_update">Check software update automatically</span>
+                        <toggle-switch id="auto-app-update"></toggle-switch>
+                    </label>
+                    <label class="flex items-center justify-between gap-3 cursor-pointer group">
+                        <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_db_update">Update database automatically</span>
+                        <toggle-switch id="auto-db-update"></toggle-switch>
+                    </label>
+                    <label class="flex items-center justify-between gap-3 cursor-pointer group">
+                        <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.save_uninstalled_games">Save and display uninstalled games</span>
+                        <toggle-switch id="save-uninstalled-games"></toggle-switch>
+                    </label>
+                    <label class="flex items-center justify-between gap-3 cursor-pointer group">
+                        <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.sync_accent_color">Sync theme color with system accent color</span>
+                        <toggle-switch id="sync-accent-color"></toggle-switch>
+                    </label>
+                </div>
 
         <!-- Game Install Locations -->
         <fieldset class="surface-effect p-5 border border-white/10">

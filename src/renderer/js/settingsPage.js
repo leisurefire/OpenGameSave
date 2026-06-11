@@ -1,4 +1,6 @@
 import { updateTranslations, showAlert, wrapNumberInput, autoResizeWindow } from './utility.js';
+import './components/ToggleSwitch.js';
+import './components/ActionButton.js';
 
 // Guard: track whether DOMContentLoaded initialisation has finished.
 // If apply-language arrives before the page is ready (e.g. the user
@@ -30,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
     const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
+    // toggle-switch exposes .checked as a property, same interface as <input type="checkbox">
     const autoDetectButton = document.getElementById('auto-detect-paths');
     const gamePathsContainer = document.getElementById('game-paths-container');
     const addNewPathButton = document.getElementById('add-new-path');
@@ -45,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
             syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
+            // ToggleSwitch uses the same .checked property, so no extra logic needed.
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
                 settings.gameInstalls.forEach((installPath) => {
@@ -127,6 +131,8 @@ document.addEventListener('DOMContentLoaded', () => {
     [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
         el.addEventListener('change', autoSave);
     });
+    // ToggleSwitch dispatches a bubbling 'change' event, same as <input type="checkbox">,
+    // so the listeners registered above already handle all four toggles correctly.
 
     maxBackupsInput.addEventListener('input', function () {
         const value = parseInt(this.value, 10);
@@ -162,12 +168,12 @@ document.addEventListener('DOMContentLoaded', () => {
         newPath.innerHTML = `
             <input type="text" readonly value="${installPath}"
                 class="display-path grow text-xs font-mono" />
-            <button type="button" class="select-path home-action-button px-4 py-2">
+                        <button type="button" class="select-path home-action-button px-4 py-2">
                 <i class="fa-solid fa-ellipsis"></i>
             </button>
-            <button type="button" class="remove-path px-4 py-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                        <action-button class="remove-path" variant="danger" style="align-self:stretch">
                 <i class="fa-solid fa-trash-can"></i>
-            </button>
+            </action-button>
         `;
         gamePathsContainer.appendChild(newPath);
 
