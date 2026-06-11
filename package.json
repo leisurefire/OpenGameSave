@@ -43,6 +43,9 @@
   },
   "author": "leisurefire",
   "license": "GPL-3.0-only",
+  "overrides": {
+    "shell-quote": ">=1.8.4"
+  },
   "dependencies": {
     "7zip-bin": "^5.2.0",
     "axios": "^1.17.0",

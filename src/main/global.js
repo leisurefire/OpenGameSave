@@ -4,7 +4,7 @@ const fs = require('fs');
 const fsOriginal = require('original-fs');
 const os = require('os');
 const path = require('path');
-const { exec, spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { randomUUID } = require('crypto');
 
 const axios = require('axios');
@@ -926,18 +926,25 @@ async function importBackups(gsmPath) {
 async function openRegistryAtKey(keyPath) {
     // Set the "LastKey" preference in Regedit so it opens where we want
     const safeKey = keyPath.replace(/^HKEY_/, 'Computer\\HKEY_');
-    const setLastKeyCommand = `reg add "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit" /v "LastKey" /t REG_SZ /d "${safeKey}" /f`;
+    const args = [
+        'add',
+        'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit',
+        '/v', 'LastKey',
+        '/t', 'REG_SZ',
+        '/d', safeKey,
+        '/f'
+    ];
 
-    exec(setLastKeyCommand, (error) => {
-        const regedit = spawn('regedit.exe', [], { detached: true, stdio: 'ignore', shell: true });
+    execFile('reg.exe', args, (error) => {
+        const regedit = spawn('regedit.exe', [], { detached: true, stdio: 'ignore', shell: false });
         regedit.unref();
     });
 }
 
 function deleteRegistryKey(keyPath) {
     return new Promise((resolve, reject) => {
-        const cmd = `reg delete "${keyPath}" /f`;
-        exec(cmd, (error, stdout, stderr) => {
+        const args = ['delete', keyPath, '/f'];
+        execFile('reg.exe', args, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Failed to delete registry key: ${keyPath}`, stderr);
                 resolve(false);
