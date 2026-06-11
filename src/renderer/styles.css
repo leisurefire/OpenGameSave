@@ -6,21 +6,29 @@
 }
 
 @theme {
-    /* Windows 11 + Xbox Fluorescent Green Theme */
-    --color-xbox-green: #107C10;
-    --color-xbox-green-bright: #16c60c;
-    --color-xbox-green-fluorescent: #52ff4a;
+    /* Windows 11 System Accent Theme */
+    --system-accent: #16c60c;
+    --color-theme-accent: color-mix(in srgb, var(--system-accent) 70%, black);
+    --color-theme-accent-bright: var(--system-accent);
+    --color-theme-accent-fluorescent: color-mix(in srgb, var(--system-accent) 80%, white);
     
-    --color-win-bg: rgba(20, 20, 20, 0.6);
-    --color-win-surface: rgba(30, 30, 30, 0.1);
-    --color-win-surface-bright: rgba(50, 50, 50, 0.1);
+    /* Fluent Design Colors */
+    --color-win-bg: rgba(32, 32, 32, 0.7);
+    --color-win-surface: rgba(255, 255, 255, 0.05); /* Solid surface like layered backgrounds */
+    --color-win-surface-hover: rgba(255, 255, 255, 0.08);
+    --color-win-surface-active: rgba(255, 255, 255, 0.03);
+    --color-win-surface-bright: rgba(43, 43, 43, 0.9);
+    
     --color-win-border: rgba(255, 255, 255, 0.08);
-    --color-win-border-bright: rgba(255, 255, 255, 0.18);
+    --color-win-border-bright: rgba(255, 255, 255, 0.16);
+    --color-win-border-focus: var(--color-theme-accent-bright);
     
+    /* Fluent Typography */
     --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     
-    --radius-win: 8px;
-    --radius-win-sm: 8px;
+    /* Fluent Corner Radius */
+    --radius-win: 8px; /* Top level windows, modals, large surfaces */
+    --radius-win-sm: 4px; /* Buttons, inputs, small controls */
 
     --animate-fadeIn: fadeIn 0.1s ease-out forwards;
     --animate-fadeOut: fadeOut 0.1s ease-in forwards;

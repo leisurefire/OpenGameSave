@@ -245,13 +245,13 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
     row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
         <td class="p-4">
-            <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
+            <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
                         <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
                         <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
                         <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
+            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
             ${gameTitle}
         </th>
         <td class="p-4 truncate opacity-80 text-center align-middle">
@@ -264,7 +264,7 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
             ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
-            <button class="dropdown-menu-button p-2 hover:text-xbox-green transition-colors" type="button">
+            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
                 <i class="fa-solid fa-ellipsis-vertical"></i>
             </button>
         </td>
@@ -278,13 +278,13 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
     row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
         <td class="p-4">
-            <input type="checkbox" class="row-checkbox w-4 h-4 accent-xbox-green">
+            <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
         </td>
         <th scope="row" class="p-4 font-bold text-white truncate">
                         <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
                         <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
                         <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-xbox-green mr-2"></i></span>
+            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
             ${gameTitle}
         </th>
         <td class="p-4 truncate opacity-80 text-center align-middle backup-count">
@@ -297,7 +297,7 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
             ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
-            <button class="dropdown-menu-button p-2 hover:text-xbox-green transition-colors" type="button">
+            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
                 <i class="fa-solid fa-ellipsis-vertical"></i>
             </button>
         </td>

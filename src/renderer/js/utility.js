@@ -150,14 +150,14 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
         progressElement.id = progressId;
-        progressElement.className = "ml-auto p-4 mb-2 rounded-xl border floating-surface animate-fadeIn w-72 shadow-2xl";
+        progressElement.className = "ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl";
         progressElement.innerHTML = `
-            <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-xbox-green">
+            <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent">
                 <span>${progressTitle}</span>
                 <span id="${progressId}-percentage">0%</span>
             </div>
             <div class="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                <div id="${progressId}-bar" class="bg-xbox-green w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
+                <div id="${progressId}-bar" class="bg-theme-accent w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
             </div>
         `;
         progressContainer.appendChild(progressElement);
@@ -202,7 +202,7 @@ export function wrapNumberInput(input) {
 
     const controls = document.createElement('div');
     controls.className = 'absolute right-0 top-0 bottom-0 flex flex-col w-9 border-l border-white/10';
-    const btnClass = 'flex-1 flex items-center justify-center cursor-pointer text-white/40 hover:text-xbox-green hover:bg-white/5 transition-all';
+    const btnClass = 'flex-1 flex items-center justify-center cursor-pointer text-white/40 hover:text-theme-accent hover:bg-white/5 transition-all';
     controls.innerHTML = `
         <button type="button" tabindex="-1" data-action="increment" class="${btnClass} rounded-tr-lg">
             <i class="fa-solid fa-chevron-up text-[10px]"></i>

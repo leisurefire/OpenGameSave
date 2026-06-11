@@ -9,9 +9,12 @@
     </div>
     <script>
         window.api.receive('set-menu-items', (items) => {
-            const menu = document.getElementById('menu');
+                        const menu = document.getElementById('menu');
             const wrapper = document.getElementById('menu-content-wrapper');
             wrapper.innerHTML = '';
+            menu.style.animation = 'none';
+            menu.offsetHeight; // force reflow
+            menu.style.animation = '';
             items.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'menu-item';

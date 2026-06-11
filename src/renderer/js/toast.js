@@ -6,7 +6,7 @@ export async function showToast(type, message, detailContent) {
     const toastStyles = {
         info: 'text-white border-white/10',
         error: 'text-red-400 border-red-500/30',
-        success: 'text-xbox-green border-xbox-green/30',
+        success: 'text-theme-accent border-theme-accent/30',
         warning: 'text-yellow-400 border-yellow-500/30',
         dialog: 'text-red-400 border-red-500/30',
         modal: 'text-red-400 border-red-500/30',
@@ -23,7 +23,7 @@ export async function showToast(type, message, detailContent) {
 
     const toastType = type === 'modal' ? 'dialog' : type;
     const toastElement = document.createElement('div');
-    toastElement.className = `flex items-center gap-4 p-4 rounded-xl border floating-surface shadow-2xl ${toastStyles[toastType] || toastStyles.info} animate-fadeInShift max-w-sm`;
+    toastElement.className = `flex items-center gap-4 p-4 border rounded-lg shadow-2xl bg-[rgb(43,43,43)] ${toastStyles[toastType] || toastStyles.info} animate-fadeInShift max-w-sm`;
 
     toastElement.innerHTML = `
         <i class="fa-solid ${iconClass[toastType] || iconClass.info} text-xl"></i>

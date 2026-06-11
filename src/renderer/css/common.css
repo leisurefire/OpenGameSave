@@ -9,11 +9,6 @@ html {
     height: 100vh;
 }
 
-.mica-effect {
-    backdrop-filter: blur(40px) saturate(150%);
-    background-color: rgba(20, 20, 20, 0.88);
-}
-
 .surface-effect {
     backdrop-filter: blur(25px) saturate(120%);
     background-color: var(--color-win-surface);
@@ -24,31 +19,38 @@ html {
 
 .floating-surface {
     backdrop-filter: blur(40px) saturate(140%);
-    background-color: rgba(32, 32, 32, 0.72);
+    background-color: var(--color-win-surface-bright);
     border: 1px solid var(--color-win-border-bright);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.3);
     border-radius: var(--radius-win);
 }
 
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 14px;
+    height: 14px;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.02);
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 10px;
-    border: 2px solid transparent;
-    background-clip: content-box;
+    border: 4px solid transparent;
+    background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-xbox-green-bright);
-    background-clip: content-box;
+    background: rgba(255, 255, 255, 0.3);
+    border: 4px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.4);
+    border: 4px solid transparent;
+    background-clip: padding-box;
 }
 
 button,
@@ -68,37 +70,44 @@ select,
 button:disabled,
 .cursor-not-allowed {
     cursor: not-allowed !important;
+    opacity: 0.5;
 }
 
 button {
-    border-radius: var(--radius-win) !important;
+    border-radius: var(--radius-win-sm) !important;
 }
 
 .home-action-button {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--color-win-surface);
     border: 1px solid var(--color-win-border);
+    border-top: 1px solid var(--color-win-border-bright);
     color: rgba(255, 255, 255, 0.9);
     transition: background-color 0.1s ease, border-color 0.1s ease;
-    border-radius: var(--radius-win);
+    border-radius: var(--radius-win-sm);
 }
 
 .home-action-button:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-win-surface-hover);
+}
+
+.home-action-button:active {
+    background: var(--color-win-surface-active);
+    color: rgba(255, 255, 255, 0.7);
+    border-top: 1px solid var(--color-win-border);
 }
 
 .primary-button {
-    background: var(--color-xbox-green-bright);
+    background: var(--color-theme-accent-bright);
     color: #000;
     font-weight: 600;
-    border-radius: var(--radius-win);
+    border-radius: var(--radius-win-sm);
     border: 1px solid transparent;
-    transition: background-color 0.1s ease;
+    transition: background-color 0.1s ease, opacity 0.1s ease;
 }
 
 .primary-button:hover {
-    background: var(--color-xbox-green-fluorescent);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-theme-accent-fluorescent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .primary-button:active {
@@ -108,9 +117,10 @@ button {
 input[type="text"],
 input[type="number"],
 select {
-    background: rgba(0, 0, 0, 0.3) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
     border: 1px solid var(--color-win-border) !important;
-    border-radius: var(--radius-win) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+    border-radius: var(--radius-win-sm) !important;
     color: #ffffff !important;
     min-height: 38px;
     padding: 8px 12px;
@@ -119,15 +129,22 @@ select {
 
 input[type="text"]:focus,
 input[type="number"]:focus {
-    border-color: var(--color-xbox-green-bright) !important;
+    border-bottom-color: var(--color-theme-accent-bright) !important;
+    border-bottom-width: 2px !important;
+    background: rgba(30, 30, 30, 0.8) !important;
     outline: none;
-    background: rgba(0, 0, 0, 0.4) !important;
+    padding-bottom: 7px; /* Compensate for thicker border */
 }
 
-.text-xbox-green {
-    color: var(--color-xbox-green-bright);
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--color-theme-accent-bright);
 }
 
-.bg-xbox-green {
-    background-color: var(--color-xbox-green-bright);
+.text-theme-accent {
+    color: var(--color-theme-accent-bright);
+}
+
+.bg-theme-accent {
+    background-color: var(--color-theme-accent-bright);
 }

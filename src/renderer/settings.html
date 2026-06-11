@@ -31,22 +31,26 @@
         <!-- Toggles -->
         <div class="space-y-3 pt-1">
             <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="auto-app-update" type="checkbox" class="accent-xbox-green w-5 h-5">
+                <input id="auto-app-update" type="checkbox" class="accent-theme-accent w-5 h-5">
                 <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_app_update">Check software update automatically</span>
             </label>
             <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="auto-db-update" type="checkbox" class="accent-xbox-green w-5 h-5">
+                <input id="auto-db-update" type="checkbox" class="accent-theme-accent w-5 h-5">
                 <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.auto_db_update">Update database automatically</span>
             </label>
-            <label class="flex items-center gap-3 cursor-pointer group">
-                <input id="save-uninstalled-games" type="checkbox" class="accent-xbox-green w-5 h-5">
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                <input id="save-uninstalled-games" type="checkbox" class="accent-theme-accent w-5 h-5">
                 <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.save_uninstalled_games">Save and display uninstalled games</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input id="sync-accent-color" type="checkbox" class="accent-theme-accent w-5 h-5">
+                <span class="text-sm opacity-80 group-hover:opacity-100" data-i18n="settings.sync_accent_color">Sync theme color with system accent color</span>
             </label>
         </div>
 
         <!-- Game Install Locations -->
         <fieldset class="surface-effect p-5 border border-white/10">
-            <legend class="px-2 text-xs font-bold uppercase tracking-widest text-xbox-green" data-i18n="settings.installLocs">Install Locations</legend>
+            <legend class="px-2 text-xs font-bold uppercase tracking-widest text-theme-accent" data-i18n="settings.installLocs">Install Locations</legend>
             
             <button type="button" id="auto-detect-paths" class="primary-button px-6 py-2 mb-4 text-xs w-full">
                 <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> <span data-i18n="settings.autoDetect">AUTO DETECT</span>
@@ -54,7 +58,7 @@
 
             <div id="game-paths-container" class="space-y-2 max-h-80 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"></div>
 
-            <button type="button" id="add-new-path" class="w-full mt-4 py-2 border border-dashed border-white/20 rounded-lg hover:border-xbox-green hover:text-xbox-green transition-all text-sm">
+            <button type="button" id="add-new-path" class="w-full mt-4 py-2 border border-dashed border-white/20 rounded-lg hover:border-theme-accent hover:text-theme-accent transition-all text-sm">
                 <i class="fa-solid fa-plus mr-2"></i> <span data-i18n="settings.addPath">Add Path</span>
             </button>
         </fieldset>

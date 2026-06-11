@@ -28,9 +28,25 @@ body {
     max-width: 360px;
     flex-direction: column;
     overflow: hidden;
-    background: rgba(40, 40, 40, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
+    background: rgba(43, 43, 43, 1);
+    backdrop-filter: blur(45px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px; /* Fluent typical menu radius */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+    animation: menuExpand 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transform-origin: top;
+}
+
+@keyframes menuExpand {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 #menu-content-wrapper {
@@ -46,40 +62,38 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 14px;
+    padding: 8px 12px;
     color: rgba(255, 255, 255, 0.9);
     font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13px;
+    font-size: 14px; /* Fluent UI uses 14px for menus typically */
     font-weight: 400;
     text-align: left;
     cursor: pointer;
-    transition: none !important;
+    border-radius: 4px; /* Fluent UI items have 4px radius */
+    transition: background-color 0.1s ease;
 }
 
 .menu-item:hover {
     background-color: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+}
+
+.menu-item:active {
+    background-color: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .menu-item i {
     width: 16px;
     min-width: 16px;
     text-align: center;
-    opacity: 0.6;
+    opacity: 0.8;
     font-size: 14px;
-    transition: none !important;
-}
-
-.menu-item:hover i {
-    opacity: 1;
-    color: #ffffff;
 }
 
 .menu-item span {
     flex: 0 1 auto;
     min-width: 0;
     color: inherit;
-    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     text-align: left;
     white-space: nowrap;
 }

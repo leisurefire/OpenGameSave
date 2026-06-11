@@ -1113,6 +1113,7 @@ const loadSettings = () => {
         maxBackups: 5,
         autoAppUpdate: true,
         autoDbUpdate: false,
+        syncAccentColor: false,
         backupAllAccounts: false,
         saveUninstalledGames: true,
         gameInstalls: 'uninitialized',
@@ -1308,6 +1309,8 @@ ipcMain.on('scan-full', () => {
 });
 
 module.exports = {
+    windowVisualEffect,
+    applyWindowsMicaEffect,
     createMainWindow,
     getMainWin: () => win,
     getSettingsWin: () => {

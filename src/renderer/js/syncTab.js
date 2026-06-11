@@ -55,7 +55,7 @@ async function refreshGitHubSyncStatus() {
     const status = await window.api.invoke('github-sync-status', pathInput.value);
     statusMessage.textContent = status.message || '';
     statusMessage.className = status.isGitRepo && status.hasRemote
-        ? 'text-sm font-bold text-xbox-green'
+        ? 'text-sm font-bold text-theme-accent'
         : 'text-sm font-bold text-yellow-400';
 
     const remoteUrl = formatRemoteUrl(status.remoteUrl);
@@ -98,8 +98,8 @@ async function runGitHubSync(direction) {
         if (!document.getElementById(progressId)) {
             const progressElement = document.createElement('div');
             progressElement.id = progressId;
-            progressElement.className = 'ml-auto p-4 mb-2 rounded-xl border floating-surface animate-fadeIn w-72 shadow-2xl';
-            progressElement.innerHTML = `<div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-xbox-green"><span>${progressTitle}</span><span>Git</span></div><div class="text-xs opacity-60">${await window.i18n.translate('alert.github_sync_progress_hint')}</div>`;
+            progressElement.className = 'ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl';
+            progressElement.innerHTML = `<div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent"><span>${progressTitle}</span><span>Git</span></div><div class="text-xs opacity-60">${await window.i18n.translate('alert.github_sync_progress_hint')}</div>`;
             progressContainer.appendChild(progressElement);
         }
 

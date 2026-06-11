@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoAppUpdateCheckbox = document.getElementById('auto-app-update');
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
+    const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
     const autoDetectButton = document.getElementById('auto-detect-paths');
     const gamePathsContainer = document.getElementById('game-paths-container');
     const addNewPathButton = document.getElementById('add-new-path');
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
             autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
+            syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
                 settings.gameInstalls.forEach((installPath) => {
@@ -66,6 +68,11 @@ document.addEventListener('DOMContentLoaded', () => {
             window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
         }
 
+        if (previousSettings.syncAccentColor !== syncAccentColorCheckbox.checked) {
+            window.api.send('save-settings', 'syncAccentColor', syncAccentColorCheckbox.checked);
+            window.api.send('apply-accent-color-setting', syncAccentColorCheckbox.checked);
+        }
+
         window.api.send('save-settings', 'maxBackups', maxBackupsInput.value);
         window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
         window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
@@ -91,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox].forEach(el => {
+    [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
         el.addEventListener('change', autoSave);
     });
 

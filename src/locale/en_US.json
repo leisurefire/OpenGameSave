@@ -12,10 +12,10 @@
         "select_backup_path": "Select backup save path",
         "select_path": "Select a path",
         "save_settings": "Save Settings",
-        "save-settings-success": "Successfully saved settings",
         "auto_app_update": "Check software update automatically",
         "auto_db_update": "Update database automatically",
         "save_uninstalled_games": "Display uninstalled games (needs full database scan)",
+        "sync_accent_color": "Sync theme color with system accent color",
         "backup_scope_hint": "To configure backup scope, go to Options → View Account IDs"
     },
     "about": {

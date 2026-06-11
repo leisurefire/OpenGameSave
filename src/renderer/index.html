@@ -19,15 +19,15 @@
     <!-- Navigation Header -->
     <header class="flex items-center justify-between mb-6 pb-2">
                 <nav class="flex gap-1" id="main-tab" role="tablist">
-            <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.backup">
+            <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.backup">
                 <i class="fa-solid fa-shield-halved"></i>
                 <span class="text-content">Backup</span>
             </button>
-            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.restore">
+            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.restore">
                 <i class="fa-solid fa-clock-rotate-left"></i>
                 <span class="text-content">Restore</span>
             </button>
-            <button id="sync-tab" data-tabs-target="#sync" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-xbox-green opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.sync">
+            <button id="sync-tab" data-tabs-target="#sync" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.sync">
                 <i class="fa-solid fa-arrows-rotate"></i>
                 <span class="text-content">Sync</span>
             </button>
@@ -39,10 +39,10 @@
                     <i class="fa-solid fa-gear"></i> <span data-i18n="main.options">Options</span> <i class="fa-solid fa-chevron-down text-[10px]"></i>
                 </button>
                 <div id="home-options-menu" class="hidden absolute right-0 top-full mt-2 w-52 floating-surface overflow-hidden z-30">
-                    <a href="#" data-home-action="settings" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="settings.title">Settings</a>
-                    <a href="#" data-home-action="view-account-ids" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="main.view_account_ids">View Account IDs</a>
-                    <a href="#" data-home-action="scan-full" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="main.scan_full">Scan Full Database</a>
-                    <a href="#" data-home-action="about" class="block px-4 py-3 hover:bg-xbox-green hover:text-black transition-colors" data-i18n="about.title">About</a>
+                    <a href="#" data-home-action="settings" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="settings.title">Settings</a>
+                    <a href="#" data-home-action="view-account-ids" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="main.view_account_ids">View Account IDs</a>
+                    <a href="#" data-home-action="scan-full" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="main.scan_full">Scan Full Database</a>
+                    <a href="#" data-home-action="about" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="about.title">About</a>
                 </div>
             </div>
             <button id="home-import-button" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2">
@@ -53,7 +53,7 @@
                 <i class="fa-solid fa-file-export"></i>
                 <span data-i18n="main.export">Export</span>
             </button>
-            <button id="update-database" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2 text-xbox-green">
+            <button id="update-database" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2 text-theme-accent">
                 <i id="update-database-icon" class="fa-solid fa-rotate"></i>
                 <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
             </button>
@@ -66,13 +66,17 @@
         <section id="backup" role="tabpanel" class="hidden">
             <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
             
-            <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
+                        <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.backup_complete">BACKUP COMPLETE</h2>
-                <i class="fa-solid fa-circle-check text-xbox-green text-7xl mb-8"></i>
+                <i class="fa-solid fa-circle-check text-theme-accent text-7xl mb-8"></i>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="backup-summary-total-games"></p>
                     <p id="backup-summary-total-size"></p>
                     <p id="backup-summary-save-path" class="text-sm opacity-50"></p>
+                </div>
+                <div id="backup-summary-total-failed-container" class="hidden mt-4">
+                    <p id="backup-summary-total-failed" class="text-red-400 text-sm"></p>
+                    <button id="backup-failed-learn-more" class="text-xs text-theme-accent underline mt-1" data-i18n="main.learn_more">Learn more</button>
                 </div>
                 <button id="backup-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
@@ -103,7 +107,7 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr>
-                                <th class="w-12 p-4"><input id="backup-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
+                                <th class="w-12 p-4"><input id="backup-checkbox-all-search" type="checkbox" class="accent-theme-accent"></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.supported_plats">Platforms</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_size">Size</th>
@@ -127,12 +131,17 @@
         <section id="restore" role="tabpanel" class="hidden">
             <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
             
-            <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
+                        <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.restore_complete">RESTORE COMPLETE</h2>
-                <i class="fa-solid fa-circle-check text-xbox-green text-7xl mb-8"></i>
+                <i class="fa-solid fa-circle-check text-theme-accent text-7xl mb-8"></i>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="restore-summary-total-games"></p>
                     <p id="restore-summary-total-size"></p>
+                    <p id="restore-summary-save-path" class="text-sm opacity-50"></p>
+                </div>
+                <div id="restore-summary-total-failed-container" class="hidden mt-4">
+                    <p id="restore-summary-total-failed" class="text-red-400 text-sm"></p>
+                    <button id="restore-failed-learn-more" class="text-xs text-theme-accent underline mt-1" data-i18n="main.learn_more">Learn more</button>
                 </div>
                 <button id="restore-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
@@ -163,7 +172,7 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr>
-                                <th class="w-12 p-4"><input id="restore-checkbox-all-search" type="checkbox" class="accent-xbox-green"></th>
+                                <th class="w-12 p-4"><input id="restore-checkbox-all-search" type="checkbox" class="accent-theme-accent"></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_count">Backups</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.restore_size">Size</th>
@@ -220,7 +229,7 @@
                             <span class="text-xs opacity-60" data-i18n="main.github_sync_upload_hint">Commit local backups and push</span>
                         </button>
                         <button id="github-sync-download" class="home-action-button p-5 flex flex-col items-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-down text-2xl text-xbox-green"></i>
+                            <i class="fa-solid fa-cloud-arrow-down text-2xl text-theme-accent"></i>
                             <span class="font-bold" data-i18n="main.github_sync_download">Download Backups</span>
                             <span class="text-xs opacity-60" data-i18n="main.github_sync_download_hint">Pull Git backups into local storage</span>
                         </button>

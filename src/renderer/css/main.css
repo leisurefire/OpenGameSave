@@ -1,4 +1,5 @@
 /* Main-window-only styles. */
+@import './data-table.css';
 .scrollable-content {
     overflow-y: auto !important;
     height: 100%;
@@ -14,41 +15,17 @@
 }
 
 .modal-container {
-    background: rgba(32, 32, 32, 0.98);
+    background: var(--color-win-bg);
     backdrop-filter: blur(45px);
     border: 1px solid var(--color-win-border-bright);
     border-radius: var(--radius-win);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.4);
     overflow: hidden;
 }
 
 .modal-body-scroll {
     overflow-y: auto !important;
     max-height: 75vh;
-}
-
-table thead {
-    background: var(--color-win-surface-bright);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-table th {
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
-    color: rgba(255, 255, 255, 0.5);
-}
-
-table tr {
-    transition: background-color 0.1s ease;
-    backdrop-filter: blur(20px);
-}
-
-table tr:hover {
-    background-color: rgba(255, 255, 255, 0.03);
 }
 
 .search-field {
@@ -63,7 +40,7 @@ table tr:hover {
 input[type="text"].search-input {
     height: 38px;
     min-height: 38px;
-    border-radius: var(--radius-win) !important;
+    border-radius: var(--radius-win-sm) !important;
     padding: 8px 12px 8px 40px !important;
     line-height: 20px;
 }
@@ -72,11 +49,29 @@ input[type="text"].search-input::placeholder {
     color: rgba(255, 255, 255, 0.45);
 }
 
+/* Fluent Navigation Item Style */
 .tab-active {
-    background: rgba(22, 198, 12, 0.14) !important;
-    border: 1px solid rgba(22, 198, 12, 0.35) !important;
-    color: var(--color-xbox-green-bright) !important;
-    box-shadow: inset 0 0 0 1px rgba(82, 255, 74, 0.06), 0 0 18px rgba(22, 198, 12, 0.08);
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid transparent !important;
+    color: #ffffff !important;
+    position: relative;
+    border-radius: var(--radius-win-sm) !important;
+}
+
+.tab-active::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 25%;
+    bottom: 25%;
+    width: 3px;
+    background-color: var(--color-theme-accent-bright);
+    border-radius: 4px;
+}
+
+#main-tab button {
+    border-radius: var(--radius-win-sm) !important;
+    position: relative;
 }
 
 #main-tab button:not(.tab-active) {
@@ -84,5 +79,10 @@ input[type="text"].search-input::placeholder {
 }
 
 #main-tab button:hover:not(.tab-active) {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#main-tab button:active:not(.tab-active) {
+    background: rgba(255, 255, 255, 0.02);
+    color: rgba(255, 255, 255, 0.7);
 }

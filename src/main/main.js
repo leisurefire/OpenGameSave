@@ -1,4 +1,4 @@
-const { BrowserWindow, app, dialog, ipcMain, shell } = require('electron');
+const { BrowserWindow, app, dialog, ipcMain, shell, systemPreferences } = require('electron');
 
 const { randomUUID } = require('crypto');
 const fs = require('fs');
@@ -12,6 +12,7 @@ const Backend = require('i18next-fs-backend');
 const { pinyin } = require('pinyin');
 
 const {
+    windowVisualEffect, applyWindowsMicaEffect,
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
     moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp
@@ -184,7 +185,7 @@ function createMenuWindow() {
         skipTaskbar: true,
         resizable: false,
         type: 'toolbar',
-        hasShadow: false,
+        hasShadow: true,
         focusable: false, // Critical: Prevent stealing focus from main window
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),
@@ -332,6 +333,43 @@ const initializeI18next = (language) => {
 // ======================================================================
 // Listeners
 // ======================================================================
+
+function getSystemAccentColor() {
+    let accent = '16c60c'; // default fallback
+    try {
+        if (process.platform === 'win32' || process.platform === 'darwin') {
+            accent = systemPreferences.getAccentColor();
+        }
+    } catch (e) {
+        console.error('Failed to get accent color', e);
+    }
+    return `#${accent.substring(0, 6)}`;
+}
+
+systemPreferences.on('accent-color-changed', (event, newColor) => {
+    if (getSettings().syncAccentColor) {
+        const color = `#${newColor.substring(0, 6)}`;
+        BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+                win.webContents.send('accent-color-changed', color);
+            }
+        });
+    }
+});
+
+ipcMain.handle('get-accent-color', () => {
+    return getSystemAccentColor();
+});
+
+ipcMain.on('apply-accent-color-setting', (event, syncEnabled) => {
+    const color = syncEnabled ? getSystemAccentColor() : '#16c60c';
+    BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+            win.webContents.send('accent-color-changed', color);
+        }
+    });
+});
+
 ipcMain.handle("translate", async (event, key, options) => {
     return i18next.t(key, options);
 });

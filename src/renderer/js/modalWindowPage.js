@@ -1,5 +1,6 @@
 import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
+import './components/DataTable.js';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -65,12 +66,12 @@ async function renderExportModal(root) {
                     <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(exportScopeLabel)}</label>
                     <div class="space-y-2">
                         <label class="flex items-center gap-3 cursor-pointer group">
-                            <input type="radio" name="export-scope" value="all" checked class="accent-xbox-green">
-                            <span class="group-hover:text-xbox-green transition-colors">${escapeHtml(exportAllGamesLabel)}</span>
+                            <input type="radio" name="export-scope" value="all" checked class="accent-theme-accent">
+                            <span class="group-hover:text-theme-accent transition-colors">${escapeHtml(exportAllGamesLabel)}</span>
                         </label>
                         <label class="flex items-center gap-3 cursor-pointer group">
-                            <input type="radio" name="export-scope" value="backup" class="accent-xbox-green">
-                            <span class="group-hover:text-xbox-green transition-colors">${escapeHtml(exportSelectedBackupLabel)}</span>
+                            <input type="radio" name="export-scope" value="backup" class="accent-theme-accent">
+                            <span class="group-hover:text-theme-accent transition-colors">${escapeHtml(exportSelectedBackupLabel)}</span>
                         </label>
                     </div>
                 </div>
@@ -194,7 +195,7 @@ async function renderAccountModal(root) {
                 accountRows += `
                     <div class="flex justify-between items-center gap-4">
                         <span class="text-sm font-semibold opacity-70">${escapeHtml(platformLabel)}</span>
-                        <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-xbox-green break-all text-right">${escapeHtml(id)}</code>
+                        <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-theme-accent break-all text-right">${escapeHtml(id)}</code>
                     </div>
                 `;
             }
@@ -218,17 +219,17 @@ async function renderAccountModal(root) {
                     <h2 class="modal-section-title">${escapeHtml(labels.backupScope)}</h2>
                     <div class="space-y-3">
                         <label class="flex items-center gap-3 cursor-pointer group">
-                            <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                            <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
                             <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.currentAccountOnly)}</span>
                         </label>
                         <label class="flex items-center gap-3 cursor-pointer group">
-                            <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                            <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
                             <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.allAccounts)}</span>
                         </label>
                     </div>
                 </div>
-                <div class="p-4 bg-xbox-green/10 border border-xbox-green/20 rounded-xl">
-                    <p class="text-xs font-bold text-xbox-green leading-relaxed">
+                <div class="p-4 bg-theme-accent/10 border border-theme-accent/20 rounded-[var(--radius-win)]">
+                    <p class="text-xs font-bold text-theme-accent leading-relaxed">
                         <i class="fa-solid fa-circle-info mr-1"></i> <span>${escapeHtml(labels.accountBackupNote)}</span>
                     </p>
                 </div>
@@ -287,9 +288,9 @@ async function renderManageBackupsModal(root, initData) {
 
     const renderDateDisplay = (backup) => {
         const permanentIcon = backup.is_permanent ? '<i class="fa-solid fa-star text-yellow-500 mr-2"></i>' : '';
-        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-xbox-green transition-all ml-2" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-pencil"></i></button>` : '';
+        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-theme-accent transition-all ml-2" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-pencil"></i></button>` : '';
         if (backup.is_permanent && backup.custom_name) {
-            return `${permanentIcon}<div class="flex flex-col"><span class="backup-custom-name font-bold text-xbox-green">${escapeHtml(backup.custom_name)}</span><span class="text-xs opacity-50">${escapeHtml(formatBackupDate(backup.date))}</span></div>${renameIcon}`;
+            return `${permanentIcon}<div class="flex flex-col"><span class="backup-custom-name font-bold text-theme-accent">${escapeHtml(backup.custom_name)}</span><span class="text-xs opacity-50">${escapeHtml(formatBackupDate(backup.date))}</span></div>${renameIcon}`;
         }
         return `${permanentIcon}<span class="backup-date-text font-semibold ${backup.is_permanent ? '' : 'opacity-80'}">${escapeHtml(formatBackupDate(backup.date))}</span>${renameIcon}`;
     };
@@ -297,22 +298,22 @@ async function renderManageBackupsModal(root, initData) {
     const rowsHtml = [...(gameData.backups || [])]
         .sort((a, b) => (a.is_permanent !== b.is_permanent) ? b.is_permanent - a.is_permanent : b.date.localeCompare(a.date))
         .map(backup => `
-            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors" data-backup-date="${escapeHtml(backup.date)}" data-custom-name="${escapeHtml(backup.custom_name || '')}">
-                <td class="p-4">
+            <tr data-backup-date="${escapeHtml(backup.date)}" data-custom-name="${escapeHtml(backup.custom_name || '')}">
+                <td>
                     <div class="flex items-center">
                         <div class="rename-mode hidden items-center bg-black/40 rounded-lg border border-white/10 overflow-hidden">
                             <input type="text" class="backup-name-input px-3 py-1.5 bg-transparent border-0 text-sm focus:outline-none" placeholder="${escapeHtml(labels.enterBackupName)}" />
-                            <button type="button" class="confirm-rename-btn px-3 py-1.5 text-xbox-green hover:bg-xbox-green hover:text-black transition-colors"><i class="fa-solid fa-check"></i></button>
+                            <button type="button" class="confirm-rename-btn px-3 py-1.5 text-theme-accent hover:bg-theme-accent hover:text-black transition-colors"><i class="fa-solid fa-check"></i></button>
                         </div>
                         <div class="backup-date-display flex items-center">${renderDateDisplay(backup)}</div>
                     </div>
                 </td>
-                <td class="p-4 opacity-70 font-medium">${escapeHtml(formatSize(backup.backup_size))}</td>
-                <td class="p-4">
-                    <div class="flex justify-center gap-2">
-                        <button type="button" class="restore-backup-btn home-action-button px-3 py-1.5 text-xs font-bold flex items-center gap-1" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-arrow-left"></i> ${escapeHtml(labels.restore)}</button>
-                        <button type="button" class="permanent-backup-btn home-action-button px-3 py-1.5 text-xs font-bold flex items-center gap-1" data-backup-date="${escapeHtml(backup.date)}" data-is-permanent="${backup.is_permanent}"><i class="fa-solid fa-star"></i> ${escapeHtml(backup.is_permanent ? labels.removePermanent : labels.makePermanent)}</button>
-                        <button type="button" class="delete-backup-btn px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-trash"></i> ${escapeHtml(labels.delete)}</button>
+                <td style="opacity:0.7;font-weight:500">${escapeHtml(formatSize(backup.backup_size))}</td>
+                <td>
+                    <div style="display:flex;justify-content:center;gap:0.5rem">
+                        <button type="button" class="restore-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-arrow-left"></i> ${escapeHtml(labels.restore)}</button>
+                        <button type="button" class="permanent-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}" data-is-permanent="${backup.is_permanent}"><i class="fa-solid fa-star"></i> ${escapeHtml(backup.is_permanent ? labels.removePermanent : labels.makePermanent)}</button>
+                        <button type="button" class="delete-backup-btn btn-danger" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-trash"></i> ${escapeHtml(labels.delete)}</button>
                     </div>
                 </td>
             </tr>
@@ -322,25 +323,28 @@ async function renderManageBackupsModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="mb-6">
-                <h1 class="text-2xl font-bold text-xbox-green">${escapeHtml(gameTitle || labels.title)}</h1>
+                <h1 class="text-2xl font-bold text-theme-accent">${escapeHtml(gameTitle || labels.title)}</h1>
                 <div class="text-sm opacity-60 mt-1">
                     <p><span class="opacity-60">${escapeHtml(labels.newestBackup)}:</span> <span class="newest-backup-value font-bold">${escapeHtml(gameData.latest_backup || '-')}</span></p>
                     <p><span class="opacity-60">${escapeHtml(labels.backupCount)}:</span> <span class="backup-count-value font-bold">${escapeHtml((gameData.backups || []).length)}</span></p>
                 </div>
             </div>
-            <div class="modal-window-content">
-                <div class="table-container">
-                    <table class="w-full text-sm text-left">
-                        <thead><tr><th class="p-4">${escapeHtml(labels.backupTime)}</th><th class="p-4">${escapeHtml(labels.backupSize)}</th><th class="p-4 text-center">${escapeHtml(labels.action)}</th></tr></thead>
-                        <tbody>${rowsHtml}</tbody>
-                    </table>
-                </div>
+            <div class="modal-window-content" id="manage-backups-table-container">
             </div>
             <div class="modal-footer">
                 <button type="button" id="modal-open-backup-folder" class="home-action-button px-4 py-2 text-sm font-bold flex items-center gap-2"><i class="fa-solid fa-folder-open"></i> ${escapeHtml(labels.openBackupFolder)}</button>
             </div>
         </section>
     `;
+
+    const manageTable = document.createElement('data-table');
+    manageTable.setColumns([
+        { label: labels.backupTime },
+        { label: labels.backupSize },
+        { label: labels.action }
+    ]);
+    manageTable.appendRows(rowsHtml);
+    root.querySelector('#manage-backups-table-container').appendChild(manageTable);
 
     const refreshMainTables = () => {
         window.api.send('update-backup-table');
@@ -350,7 +354,7 @@ async function renderManageBackupsModal(root, initData) {
     document.getElementById('modal-open-backup-folder').addEventListener('click', () => window.api.send('open-backup-folder', wikiId));
 
     root.querySelectorAll('.delete-backup-btn').forEach(button => {
-        button.addEventListener('click', async () => {
+        button.onclick = async () => {
             const backupDate = button.dataset.backupDate;
             const confirmMessage = (await window.i18n.translate('alert.confirm_delete_backup_message')).replace('{{backup_date}}', formatBackupDate(backupDate));
             const confirmed = await requestConfirmModal(await window.i18n.translate('alert.confirm_delete_backup_title'), confirmMessage);
@@ -362,11 +366,11 @@ async function renderManageBackupsModal(root, initData) {
                 countElement.textContent = Math.max(0, parseInt(countElement.textContent, 10) - 1);
                 refreshMainTables();
             }
-        });
+        };
     });
 
     root.querySelectorAll('.permanent-backup-btn').forEach(button => {
-        button.addEventListener('click', async () => {
+        button.onclick = async () => {
             const backupDate = button.dataset.backupDate;
             const newIsPermanent = button.dataset.isPermanent !== 'true';
             const success = await window.api.invoke('update-backup-info', wikiId, backupDate, 'is_permanent', newIsPermanent);
@@ -374,22 +378,22 @@ async function renderManageBackupsModal(root, initData) {
                 refreshMainTables();
                 await renderManageBackupsModal(root, initData);
             }
-        });
+        };
     });
 
     root.querySelectorAll('.rename-backup-btn').forEach(button => {
-        button.addEventListener('click', () => {
+        button.onclick = () => {
             const row = button.closest('tr');
             row.querySelector('.rename-mode').classList.replace('hidden', 'flex');
             row.querySelector('.backup-date-display').classList.add('hidden');
             const input = row.querySelector('.backup-name-input');
             input.value = row.dataset.customName || '';
             input.focus();
-        });
+        };
     });
 
     root.querySelectorAll('.confirm-rename-btn').forEach(button => {
-        button.addEventListener('click', async () => {
+        button.onclick = async () => {
             const row = button.closest('tr');
             const backupDate = row.dataset.backupDate;
             const customName = row.querySelector('.backup-name-input').value.trim();
@@ -398,11 +402,11 @@ async function renderManageBackupsModal(root, initData) {
                 refreshMainTables();
                 await renderManageBackupsModal(root, initData);
             }
-        });
+        };
     });
 
     root.querySelectorAll('.restore-backup-btn').forEach(button => {
-        button.addEventListener('click', async () => {
+        button.onclick = async () => {
             const backupDate = button.dataset.backupDate;
             const start = await operationStartCheck('restore');
             if (!start) return;
@@ -415,8 +419,10 @@ async function renderManageBackupsModal(root, initData) {
             closeModalWindow();
             if (error) showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
             else showMainAlert('success', await window.i18n.translate('main.restore_complete'));
-        });
+        };
     });
+
+
 }
 
 async function renderAutoBackupModal(root, initData) {
@@ -452,8 +458,8 @@ async function renderAutoBackupModal(root, initData) {
             ? await window.i18n.translate('main.auto_backup_failures', { count: status.failCount })
             : '';
         statusHtml = `
-            <div class="mb-6 p-4 bg-xbox-green/10 border border-xbox-green/30 rounded-xl">
-                <p class="text-xbox-green font-bold flex items-center gap-2">
+            <div class="mb-6 p-4 bg-theme-accent/10 border border-theme-accent/30 rounded-[var(--radius-win)]">
+                <p class="text-theme-accent font-bold flex items-center gap-2">
                     <i class="fa-solid fa-circle-check"></i>
                     ${escapeHtml(labels.statusActive)} — ${escapeHtml(modeDisplay)}
                 </p>
@@ -463,7 +469,7 @@ async function renderAutoBackupModal(root, initData) {
         `;
     } else {
         statusHtml = `
-            <div class="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl">
+            <div class="mb-6 p-4 bg-white/5 border border-white/10 rounded-[var(--radius-win)]">
                 <p class="opacity-40 flex items-center gap-2">
                     <i class="fa-solid fa-circle-xmark"></i>
                     ${escapeHtml(labels.statusInactive)}
@@ -476,18 +482,18 @@ async function renderAutoBackupModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content">
-                <h1 class="text-xl font-bold text-xbox-green mb-6">${escapeHtml(gameTitle)}</h1>
+                <h1 class="text-xl font-bold text-theme-accent mb-6">${escapeHtml(gameTitle)}</h1>
                 ${statusHtml}
                 <div id="auto-backup-config" class="${isActive ? 'hidden' : 'space-y-6'}">
                     <div>
                         <label class="block mb-3 text-sm font-bold opacity-60 uppercase tracking-widest">${escapeHtml(labels.mode)}</label>
                         <div class="space-y-3">
                             <label class="flex items-center gap-3 cursor-pointer group">
-                                <input type="radio" name="auto-backup-mode" value="interval" ${currentMode === 'interval' ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                                <input type="radio" name="auto-backup-mode" value="interval" ${currentMode === 'interval' ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
                                 <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.modeInterval)}</span>
                             </label>
                             <label class="flex items-center gap-3 cursor-pointer group">
-                                <input type="radio" name="auto-backup-mode" value="watcher" ${currentMode === 'watcher' ? 'checked' : ''} class="accent-xbox-green w-5 h-5">
+                                <input type="radio" name="auto-backup-mode" value="watcher" ${currentMode === 'watcher' ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
                                 <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.modeWatcher)}</span>
                             </label>
                         </div>
@@ -562,7 +568,7 @@ async function renderLocalSaveModal(root, initData) {
         await setWindowTitle(title);
         root.innerHTML = `
             <section class="modal-window-panel">
-                <h1 class="text-xl font-bold text-xbox-green mb-6">${escapeHtml(title)}</h1>
+                <h1 class="text-xl font-bold text-theme-accent mb-6">${escapeHtml(title)}</h1>
                 <div class="modal-window-content">
                     <p class="text-sm opacity-60">${escapeHtml(await window.i18n.translate('alert.no_local_save_found'))}</p>
                 </div>
@@ -587,12 +593,12 @@ async function renderLocalSaveModal(root, initData) {
             ? labels.registry
             : (pathObj.type === 'file' ? labels.file : labels.folder);
         return `
-            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                <td class="p-4 font-bold opacity-70 whitespace-nowrap">${escapeHtml(typeLabel)}</td>
-                <td class="p-4 text-xs font-mono break-all opacity-80">${escapeHtml(pathObj.resolved || pathObj.path || '')}</td>
-                <td class="p-4 text-right">
-                    <button type="button" class="open-local-save-path-btn home-action-button px-3 py-1.5 text-xs font-bold" data-index="${index}">
-                        <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(labels.open)}
+            <tr>
+                <td style="font-weight:bold;opacity:0.7;white-space:nowrap">${escapeHtml(typeLabel)}</td>
+                <td style="font-size:0.75rem;font-family:monospace;word-break:break-all;opacity:0.8">${escapeHtml(pathObj.resolved || pathObj.path || '')}</td>
+                <td>
+                    <button type="button" class="open-local-save-path-btn btn-action" data-index="${index}">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escapeHtml(labels.open)}
                     </button>
                 </td>
             </tr>
@@ -603,20 +609,9 @@ async function renderLocalSaveModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="mb-6">
-                <h1 class="text-xl font-bold text-xbox-green">${escapeHtml(gameTitle)}</h1>
+                <h1 class="text-xl font-bold text-theme-accent">${escapeHtml(gameTitle)}</h1>
             </div>
-            <div class="modal-window-content">
-                <div class="table-container">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr>
-                                <th class="p-4">${escapeHtml(labels.type)}</th>
-                                <th class="p-4">${escapeHtml(labels.path)}</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
-                    </table>
-                </div>
+            <div class="modal-window-content" id="local-save-table-container">
             </div>
             <div class="modal-footer">
                 <button type="button" id="modal-delete-local-save" class="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2"><i class="fa-solid fa-trash"></i> ${escapeHtml(labels.deleteLocalSave)}</button>
@@ -624,11 +619,20 @@ async function renderLocalSaveModal(root, initData) {
         </section>
     `;
 
+    const localSaveTable = document.createElement('data-table');
+    localSaveTable.setColumns([
+        { label: labels.type },
+        { label: labels.path },
+        { label: null }
+    ]);
+    localSaveTable.appendRows(rowsHtml);
+    root.querySelector('#local-save-table-container').appendChild(localSaveTable);
+
     root.querySelectorAll('.open-local-save-path-btn').forEach(button => {
-        button.addEventListener('click', async () => {
+        button.onclick = () => {
             const pathObj = resolvedPaths[Number(button.dataset.index)];
             if (pathObj) window.api.send('browse-local-save', [pathObj]);
-        });
+        };
     });
 
     document.getElementById('modal-delete-local-save').addEventListener('click', async () => {
@@ -679,7 +683,7 @@ function renderDialogContent(content) {
     if (Array.isArray(content)) {
         return content.map(item => {
             if (Array.isArray(item)) {
-                return `<ul class="space-y-2 py-2">${item.map(line => `<li class="flex gap-2 opacity-80 text-sm"><i class="fa-solid fa-caret-right text-xbox-green mt-1"></i><span>${escapeHtml(line)}</span></li>`).join('')}</ul>`;
+                return `<ul class="space-y-2 py-2">${item.map(line => `<li class="flex gap-2 opacity-80 text-sm"><i class="fa-solid fa-caret-right text-theme-accent mt-1"></i><span>${escapeHtml(line)}</span></li>`).join('')}</ul>`;
             }
             return `<p class="text-sm opacity-80 leading-relaxed mb-2 whitespace-pre-line">${escapeHtml(item)}</p>`;
         }).join('');
@@ -709,7 +713,7 @@ async function renderDialogModal(root, initData) {
 
     const checkboxHtml = checkbox ? `
         <label class="flex items-center gap-3 cursor-pointer group pt-4">
-            <input id="modal-dialog-checkbox" type="checkbox" class="accent-xbox-green w-5 h-5">
+            <input id="modal-dialog-checkbox" type="checkbox" class="accent-theme-accent w-5 h-5">
             <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(checkbox.label || '')}</span>
         </label>
     ` : '';

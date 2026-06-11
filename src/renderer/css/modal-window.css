@@ -1,4 +1,5 @@
 /* Shared styles for standalone modal BrowserWindow pages. */
+@import './data-table.css';
 .modal-window-body {
     height: 100vh;
     overflow: hidden;
@@ -44,6 +45,8 @@
     margin-bottom: 0.75rem;
 }
 
+
+
 .modal-footer {
     display: flex;
     justify-content: flex-end;
@@ -53,11 +56,22 @@
 
 .secondary-button {
     padding: 0.5rem 1.5rem;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
     color: rgba(255, 255, 255, 0.9);
-    transition: background-color 0.1s ease;
+    border-radius: var(--radius-win-sm);
+    transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
 .secondary-button:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
 }
+
+.secondary-button:active {
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.7);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* .btn-action and .btn-danger are now fully managed by <action-button> Shadow DOM */
