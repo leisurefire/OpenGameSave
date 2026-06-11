@@ -113,10 +113,15 @@ async function applyAccentColor() {
   }
 }
 
+// Apply accent color as early as possible, before the window is shown,
+// to prevent a flash of the wrong color on modal windows (e.g. settings)
+// that are pre-loaded hidden and shown only after content is ready.
+const _earlyColorPromise = applyAccentColor();
+
+// Re-apply once the DOM is ready in case the variable was set before
+// the <html> element was available (edge case on very fast loads).
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', applyAccentColor);
-} else {
-  applyAccentColor();
+  document.addEventListener('DOMContentLoaded', () => _earlyColorPromise);
 }
 
 ipcRenderer.on('accent-color-changed', (event, color) => {

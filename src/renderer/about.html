@@ -1,46 +1,53 @@
-<!DOCTYPE html>
-<html lang="en">
+import { updateTranslations, autoResizeWindow } from './utility.js';
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://api.github.com;">
-    <title class="text-content" data-i18n="about.title">About</title>
-</head>
+window.api.receive('apply-language', async () => {
+    await updateTranslations(document);
+    autoResizeWindow();
+});
 
-<body class="mica-effect about-container select-none">
+document.addEventListener('DOMContentLoaded', async () => {
+    const latestVersionSpan = document.getElementById('latest-version');
+    const currentVersionSpan = document.getElementById('current-version');
+    const githubLink = document.getElementById('github-link');
+    const authorLink = document.getElementById('author-link');
+    const updateButton = document.getElementById('update-button');
 
-    <div class="flex items-center gap-6 w-full max-w-lg justify-center">
-        <img src="../assets/logo.png" alt="App Logo" class="w-20 rounded-2xl shadow-2xl">
-        <div class="text-left">
-            <h1 class="text-2xl font-black text-theme-accent tracking-tight" data-i18n="main.title">OpenGameSave</h1>
-            <div class="mt-1 space-y-0.5 opacity-60 text-xs">
-                <p><span data-i18n="about.current_version">Current version:</span> <span id="current-version" class="font-mono"></span></p>
-                <p><span data-i18n="about.latest_version">Latest version:</span> <span id="latest-version" class="font-mono" data-i18n="main.loading">Loading...</span></p>
-            </div>
-            <button id="update-button" class="hidden mt-3 primary-button px-4 py-1.5 text-[10px] font-bold" data-i18n="about.update">UPDATE NOW</button>
-        </div>
-    </div>
+    const fetchLatestVersion = async () => {
+        const currentVersion = await window.api.invoke('get-current-version');
+        currentVersionSpan.innerText = currentVersion;
 
-    <div class="surface-effect p-6 w-full max-w-md space-y-3">
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.github">GitHub</span>
-            <a id="github-link" class="text-theme-accent hover:underline cursor-pointer">leisurefire/OpenGameSave</a>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.developers">Developers</span>
-            <a id="author-link" class="text-theme-accent hover:underline cursor-pointer">leisurefire</a>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.former_developers">Former developers</span>
-            <span class="text-content">Yongcan Yang</span>
-        </p>
-    </div>
+        const failedMessage = await window.api.invoke('translate', 'about.load_failed');
+        const latestVersion = await window.api.invoke('get-latest-version');
 
-    <footer class="mt-8 text-[10px] opacity-30 font-medium tracking-widest uppercase">
-        <span>By Gamers. For Gamers.</span>
-    </footer>
+        if (latestVersion) {
+            latestVersionSpan.innerText = latestVersion;
+        } else {
+            latestVersionSpan.innerText = failedMessage;
+            latestVersionSpan.style.color = 'red';
+        }
 
-</body>
-</html>
+        if (latestVersion && latestVersion > currentVersion) {
+            currentVersionSpan.style.color = 'red';
+            latestVersionSpan.style.color = 'var(--gsm-green-soft)';
+
+            updateButton.classList.remove('hidden');
+            updateButton.addEventListener('click', () => {
+                window.api.send('update-app', latestVersion);
+            });
+            autoResizeWindow();
+        }
+    };
+
+        fetchLatestVersion();
+    await updateTranslations(document);
+    document.body.style.visibility = 'visible';
+    autoResizeWindow();
+
+    githubLink.addEventListener('click', async () => {
+        const repositoryUrl = await window.api.invoke('get-repository-url');
+        window.api.invoke('open-url', repositoryUrl);
+    });
+    authorLink.addEventListener('click', () => {
+        window.api.invoke('open-url', 'https://github.com/leisurefire');
+    });
+});

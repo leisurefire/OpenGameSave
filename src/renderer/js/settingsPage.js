@@ -1,6 +1,19 @@
 import { updateTranslations, showAlert, wrapNumberInput, autoResizeWindow } from './utility.js';
 
+// Guard: track whether DOMContentLoaded initialisation has finished.
+// If apply-language arrives before the page is ready (e.g. the user
+// changes language while this modal window is still loading), we defer
+// the update until initialisation completes rather than touching
+// potentially absent DOM elements.
+let _domReady = false;
+let _pendingLanguageUpdate = false;
+
 window.api.receive('apply-language', async () => {
+    if (!_domReady) {
+        // Will be handled at the end of the DOMContentLoaded block.
+        _pendingLanguageUpdate = true;
+        return;
+    }
     const settings = await window.api.invoke('get-settings');
     const languageSelect = document.getElementById('language');
     if (languageSelect && settings?.language) {
@@ -40,7 +53,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         await updateTranslations(document);
+        document.body.style.visibility = 'visible';
         autoResizeWindow();
+
+        // Mark DOM as ready, then flush any language update that arrived early.
+        _domReady = true;
+        if (_pendingLanguageUpdate) {
+            _pendingLanguageUpdate = false;
+            const latestSettings = await window.api.invoke('get-settings');
+            if (languageSelect && latestSettings?.language) {
+                languageSelect.value = latestSettings.language;
+            }
+            await updateTranslations(document);
+            autoResizeWindow();
+        }
     });
 
     // Auto-save function
