@@ -23,7 +23,7 @@ jobs:
       # 不传 GH_TOKEN，防止 electron-builder 自动创建 release
       # 需配合 electron-builder 配置 "publish": "never"
       - name: Run dist
-        run: npm run build && npx electron-builder --publish never
+        run: npm run build && npx electron-builder
 
       - name: Get next Beta number
         id: beta
