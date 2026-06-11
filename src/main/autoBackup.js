@@ -1,7 +1,7 @@
 const fsOriginal = require('original-fs');
 const chokidar = require('chokidar');
 const i18next = require('i18next');
-const moment = require('moment');
+const { format } = require('date-fns');
 
 const { getSettings, saveSettings, getMainWin } = require('./global');
 const { getGameDataFromDB, backupGame } = require('./backup');
@@ -186,7 +186,7 @@ async function performSilentBackup(wikiId) {
         if (!games || games.length === 0) {
             const errorMsg = i18next.t('alert.auto_backup_game_not_found');
             entry.logs.push({
-                timestamp: moment().format('YYYY/MM/DD HH:mm:ss'),
+                timestamp: format(new Date(), 'yyyy/MM/dd HH:mm:ss'),
                 success: false,
                 error: errorMsg
             });
@@ -201,7 +201,7 @@ async function performSilentBackup(wikiId) {
         const error = await backupGame(gameData);
 
         const logEntry = {
-            timestamp: moment().format('YYYY/MM/DD HH:mm:ss'),
+            timestamp: format(new Date(), 'yyyy/MM/dd HH:mm:ss'),
             success: !error,
             error: error || null
         };
@@ -220,7 +220,7 @@ async function performSilentBackup(wikiId) {
     } catch (error) {
         console.error(`Auto backup error for ${wikiId}:`, error.message);
         entry.logs.push({
-            timestamp: moment().format('YYYY/MM/DD HH:mm:ss'),
+            timestamp: format(new Date(), 'yyyy/MM/dd HH:mm:ss'),
             success: false,
             error: error.message
         });

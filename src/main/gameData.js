@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 
 const glob = require('glob');
-const moment = require('moment');
+const { setSeconds, setMilliseconds } = require('date-fns');
 const vdf = require('vdf-parser');
 const WinReg = require('winreg');
 const yaml = require('js-yaml');
@@ -482,7 +482,7 @@ function getLatestModificationTime(directory) {
                 }
             } else {
                 // Consider file modification time
-                const fileModTime = moment(fileStats.mtime).seconds(0).milliseconds(0).toDate();
+                const fileModTime = setMilliseconds(setSeconds(fileStats.mtime, 0), 0);
                 if (fileModTime > latestModTime) {
                     latestModTime = fileModTime;
                 }
@@ -491,7 +491,7 @@ function getLatestModificationTime(directory) {
         return latestModTime;
 
     } else {
-        return moment(stats.mtime).seconds(0).milliseconds(0).toDate();
+        return setMilliseconds(setSeconds(stats.mtime, 0), 0);
     }
 }
 

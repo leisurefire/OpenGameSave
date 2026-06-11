@@ -9,7 +9,7 @@ const path = require('path');
 const fse = require('fs-extra');
 const i18next = require('i18next');
 const Backend = require('i18next-fs-backend');
-const { pinyin } = require('pinyin');
+const { pinyin } = require('pinyin-pro');
 
 const {
     windowVisualEffect, applyWindowsMicaEffect,
@@ -491,7 +491,7 @@ ipcMain.handle('sort-games', (event, games) => {
         try {
             const isChinese = /[\u4e00-\u9fff]/.test(game.titleToSort);
             const titleToSort = isChinese
-                ? pinyin(game.titleToSort, { style: pinyin.STYLE_NORMAL }).join(' ')
+                ? pinyin(game.titleToSort, { toneType: 'none' })
                 : game.titleToSort.toLowerCase();
             return { ...game, titleToSort };
 

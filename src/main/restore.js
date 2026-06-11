@@ -9,7 +9,7 @@ const util = require('util');
 
 const fse = require('fs-extra');
 const i18next = require('i18next');
-const moment = require('moment');
+const { format, parse } = require('date-fns');
 
 const { getGameData, getLatestModificationTime } = require('./gameData');
 const {
@@ -88,7 +88,7 @@ async function fetchBackups(wikiIdFolderPath, wikiId, errors) {
 
         // Sort by date and get the latest
         const latestBackup = backups.sort((a, b) => b.date.localeCompare(a.date))[0];
-        const latestBackupFormatted = moment(latestBackup.date, 'YYYY-MM-DD_HH-mm').format('YYYY/MM/DD HH:mm');
+        const latestBackupFormatted = format(parse(latestBackup.date, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
 
         return {
             wiki_page_id: wikiId,
@@ -273,8 +273,8 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
         const response = await requestRestoreConflictDecision({
             title: i18next.t('alert.save_conflict'),
             message: `${i18next.t('alert.save_conflict_detected', { game: gameDisplayName })}\n\n` +
-                `${i18next.t('alert.machine_save_date', { machineTime: moment(latestDestModTime).format('YYYY-MM-DD HH:mm') })}\n` +
-                `${i18next.t('alert.backup_save_date', { backupTime: moment(latestSourceModTime).format('YYYY-MM-DD HH:mm') })}\n\n` +
+                `${i18next.t('alert.machine_save_date', { machineTime: format(latestDestModTime, 'yyyy-MM-dd HH:mm') })}\n` +
+                `${i18next.t('alert.backup_save_date', { backupTime: format(latestSourceModTime, 'yyyy-MM-dd HH:mm') })}\n\n` +
                 `${i18next.t('alert.overwrite_prompt')}`,
             checkboxLabel: i18next.t('alert.do_this_for_all')
         });

@@ -3,7 +3,7 @@ const path = require('path');
 
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const WebpackObfuscator = require('webpack-obfuscator');
+
 
 const isProduction = process.env.NODE_ENV === 'production';
 const htmlMinifyOptions = isProduction ? {
@@ -88,11 +88,6 @@ module.exports = {
             filename: 'css/[name].styles.css',
         }),
 
-        isProduction && new WebpackObfuscator({
-            compact: true,
-            selfDefending: true,
-            stringArray: true,
-            rotateStringArray: true,
-        }, []),
+
     ].filter(Boolean),
 };

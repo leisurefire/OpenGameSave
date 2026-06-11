@@ -5,7 +5,7 @@ const util = require('util');
 
 const fse = require('fs-extra');
 const i18next = require('i18next');
-const moment = require('moment');
+const { format } = require('date-fns');
 
 const { calculateDirectorySize, getSettings } = require('./global');
 
@@ -158,10 +158,10 @@ async function commitAndPush(repoRoot, setUpstream = false) {
     let committed = false;
 
     if (shortStatus.length > 0) {
-        await runGit(repoRoot, ['commit', '-m', `OpenGameSave backup ${moment().format('YYYY-MM-DD HH:mm')}`]);
+        await runGit(repoRoot, ['commit', '-m', `OpenGameSave backup ${format(new Date(), 'yyyy-MM-dd HH:mm')}`]);
         committed = true;
     } else if (setUpstream) {
-        await runGit(repoRoot, ['commit', '--allow-empty', '-m', `OpenGameSave backup ${moment().format('YYYY-MM-DD HH:mm')}`]);
+        await runGit(repoRoot, ['commit', '--allow-empty', '-m', `OpenGameSave backup ${format(new Date(), 'yyyy-MM-dd HH:mm')}`]);
         committed = true;
     }
 

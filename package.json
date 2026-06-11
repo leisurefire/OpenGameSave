@@ -9,7 +9,7 @@
     "clean": "rimraf dist/out",
     "ensure:sqlite3": "node scripts/ensure-sqlite3-binary.js",
     "start": "npm run clean && npm run tailwind:build && concurrently -k -s first -n \"TAILWIND,RENDERER,MAIN,ELECTRON\" \"npm:tailwind:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js dist/out/renderer/index.html dist/out/renderer/modal.html && electron .\"",
-    "build": "npm run ensure:sqlite3 && npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
+    "build": "npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "postinstall": "electron-builder install-app-deps"
@@ -45,19 +45,18 @@
   "license": "GPL-3.0-only",
   "dependencies": {
     "7zip-bin": "^5.2.0",
-    "axios": "^1.9.0",
-    "bytenode": "^1.5.7",
-    "chokidar": "^3.6.0",
+    "axios": "^1.17.0",
+    "sqlite3": "^6.0.1",
+    "chokidar": "^4.0.1",
     "fs-extra": "^11.2.0",
     "glob": "^11.0.2",
-    "i18next": "^23.12.2",
+    "i18next": "^25.3.2",
     "i18next-browser-languagedetector": "^8.0.0",
     "i18next-fs-backend": "^2.3.2",
     "js-yaml": "^4.1.0",
-    "moment": "^2.30.1",
+    "date-fns": "^4.1.0",
     "node-7z": "^3.0.0",
-    "pinyin": "^4.0.0-alpha.2",
-    "sqlite3": "^5.1.6",
+    "pinyin-pro": "^3.26.0",
     "vdf-parser": "^1.2.1",
     "winreg": "^1.2.5"
   },
@@ -66,15 +65,14 @@
     "@babel/preset-env": "^7.27.2",
     "@electron/rebuild": "^4.0.4",
     "@fortawesome/fontawesome-free": "^6.6.0",
-    "@herberttn/bytenode-webpack-plugin": "^2.3.1",
     "@tailwindcss/cli": "^4.1.8",
     "babel-loader": "^10.0.0",
     "concurrently": "^9.1.2",
     "copy-webpack-plugin": "^13.0.0",
     "cross-env": "^7.0.3",
     "css-loader": "^7.1.2",
-    "electron": "^42.3.3",
-    "electron-builder": "^24.13.3",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.11.1",
     "html-webpack-plugin": "^5.6.3",
     "mini-css-extract-plugin": "^2.9.2",
     "rimraf": "^6.0.1",
@@ -82,14 +80,12 @@
     "wait-on": "^8.0.3",
     "webpack": "^5.99.9",
     "webpack-cli": "^6.0.1",
-    "webpack-node-externals": "^3.0.0",
-    "webpack-obfuscator": "^3.5.1"
+    "webpack-node-externals": "^3.0.0"
   },
   "allowScripts": {
-    "electron@42.3.3": true,
+    "electron@42.4.0": true,
     "@parcel/watcher@2.5.1": true,
     "@tailwindcss/oxide@4.1.8": true,
-    "javascript-obfuscator@4.1.1": true,
-    "sqlite3@5.1.6": true
+    "sqlite3@6.0.1": true
   }
 }

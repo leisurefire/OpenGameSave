@@ -10,7 +10,7 @@ const { randomUUID } = require('crypto');
 const axios = require('axios');
 const fse = require('fs-extra');
 const i18next = require('i18next');
-const moment = require('moment');
+const { format, parse } = require('date-fns');
 const Seven = require('node-7z');
 const sevenBin = require('7zip-bin');
 
@@ -710,7 +710,7 @@ function getNewestBackup(wiki_page_id) {
         return b.localeCompare(a);
     })[0];
 
-    return moment(latestBackup, 'YYYY-MM-DD_HH-mm').format('YYYY/MM/DD HH:mm');
+    return format(parse(latestBackup, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
 }
 
 function updateStatus(statusKey, statusValue) {
@@ -797,7 +797,7 @@ async function exportBackups(count, exportPath, wikiIds = null) {
                 }
             }
 
-            const timestamp = moment().format('YYYY-MM-DD_HH-mm');
+            const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm');
             const finalFileName = `GSMBackup-${timestamp}.gsmr`;
             const finalDestPath = path.join(exportPath, finalFileName);
 

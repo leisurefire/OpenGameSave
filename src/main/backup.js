@@ -11,7 +11,7 @@ const axios = require('axios');
 const fse = require('fs-extra');
 const glob = require('glob');
 const i18next = require('i18next');
-const moment = require('moment');
+const { format } = require('date-fns');
 const sqlite3 = require('sqlite3');
 const WinReg = require('winreg');
 
@@ -152,68 +152,29 @@ async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
         return { games, errors };
     }
 
-    let stmtInstallFolder;
     const processedInstallPaths = new Set();
+    let stmtInstallFolder;
 
-    return new Promise(async (resolve, reject) => {
-        try {
-            // 1. Process installed games by folder name
-            stmtInstallFolder = db.prepare("SELECT * FROM games WHERE install_folder = ?");
-            const gameInstallPaths = getSettings().gameInstalls;
+    try {
+        // 1. Process installed games by folder name
+        stmtInstallFolder = db.prepare("SELECT * FROM games WHERE install_folder = ?");
+        const gameInstallPaths = getSettings().gameInstalls;
 
-            // Process database entries
-            if (gameInstallPaths.length > 0) {
-                for (const installPath of gameInstallPaths) {
-                    const directories = fsOriginal.readdirSync(installPath, { withFileTypes: true })
-                        .filter(dirent => dirent.isDirectory())
-                        .map(dirent => dirent.name);
+        // Process database entries
+        if (gameInstallPaths.length > 0) {
+            for (const installPath of gameInstallPaths) {
+                const directories = fsOriginal.readdirSync(installPath, { withFileTypes: true })
+                    .filter(dirent => dirent.isDirectory())
+                    .map(dirent => dirent.name);
 
-                    for (const dir of directories) {
-                        if (processedInstallPaths.has(dir)) continue;
-                        processedInstallPaths.add(dir);
+                for (const dir of directories) {
+                    if (processedInstallPaths.has(dir)) continue;
+                    processedInstallPaths.add(dir);
 
-                        const rows = await new Promise((resolve, reject) => {
-                            stmtInstallFolder.all(dir, (err, rows) => {
-                                if (err) {
-                                    reject(err);
-                                } else {
-                                    resolve(rows);
-                                }
-                            });
-                        });
-
-                        if (rows && rows.length > 0) {
-                            for (const row of rows) {
-                                try {
-                                    parseDbRow(row);
-                                    row.install_path = path.join(installPath, dir);
-                                    await processAndPushGame(row, games);
-
-                                } catch (err) {
-                                    console.error(`Error processing installed game ${getGameDisplayName(row)}: ${err.stack}`);
-                                    errors.push(`${i18next.t('alert.backup_process_error_db', { game_name: getGameDisplayName(row) })}: ${err.message}`);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            stmtInstallFolder.finalize();
-
-            // 2. Process uninstalled games by wiki id
-            if (!ignoreUninstalled && getSettings().saveUninstalledGames) {
-                const uninstalledWikiIds = getSettings().uninstalledGames || [];
-                const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
-                const remainingUninstalledWikiIds = uninstalledWikiIds.filter(id => !processedWikiIds.has(id));
-                if (JSON.stringify([...remainingUninstalledWikiIds].sort()) !== JSON.stringify([...uninstalledWikiIds].sort())) {
-                    saveSettings('uninstalledGames', remainingUninstalledWikiIds);
-                }
-
-                for (const wikiId of remainingUninstalledWikiIds) {
-                    const rows = await new Promise((res, rej) => {
-                        db.all("SELECT * FROM games WHERE wiki_page_id = ?", [wikiId], (err, rows) => {
-                            if (err) rej(err);
-                            else res(rows);
+                    const rows = await new Promise((resolve, reject) => {
+                        stmtInstallFolder.all(dir, (err, rows) => {
+                            if (err) reject(err);
+                            else resolve(rows);
                         });
                     });
 
@@ -221,29 +182,63 @@ async function getGameDataFromDB(ignoreUninstalled = false, wikiId = null) {
                         for (const row of rows) {
                             try {
                                 parseDbRow(row);
+                                row.install_path = path.join(installPath, dir);
                                 await processAndPushGame(row, games);
 
                             } catch (err) {
-                                console.error(`Error processing uninstalled game ${getGameDisplayName(row)}: ${err.stack}`);
+                                console.error(`Error processing installed game ${getGameDisplayName(row)}: ${err.stack}`);
                                 errors.push(`${i18next.t('alert.backup_process_error_db', { game_name: getGameDisplayName(row) })}: ${err.message}`);
                             }
                         }
                     }
                 }
             }
+        }
+        await new Promise((resolve) => stmtInstallFolder.finalize(resolve));
+        stmtInstallFolder = null;
 
-        } catch (error) {
-            console.error(`Error displaying backup table: ${error.stack}`);
-            errors.push(`${i18next.t('alert.backup_process_error_display')}: ${error.message}`);
-            if (stmtInstallFolder) {
-                stmtInstallFolder.finalize();
+        // 2. Process uninstalled games by wiki id
+        if (!ignoreUninstalled && getSettings().saveUninstalledGames) {
+            const uninstalledWikiIds = getSettings().uninstalledGames || [];
+            const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
+            const remainingUninstalledWikiIds = uninstalledWikiIds.filter(id => !processedWikiIds.has(id));
+            if (JSON.stringify([...remainingUninstalledWikiIds].sort()) !== JSON.stringify([...uninstalledWikiIds].sort())) {
+                saveSettings('uninstalledGames', remainingUninstalledWikiIds);
             }
 
-        } finally {
-            db.close();
-            resolve({ games, errors });
+            for (const wikiId of remainingUninstalledWikiIds) {
+                const rows = await new Promise((resolve, reject) => {
+                    db.all("SELECT * FROM games WHERE wiki_page_id = ?", [wikiId], (err, rows) => {
+                        if (err) reject(err);
+                        else resolve(rows);
+                    });
+                });
+
+                if (rows && rows.length > 0) {
+                    for (const row of rows) {
+                        try {
+                            parseDbRow(row);
+                            await processAndPushGame(row, games);
+
+                        } catch (err) {
+                            console.error(`Error processing uninstalled game ${getGameDisplayName(row)}: ${err.stack}`);
+                            errors.push(`${i18next.t('alert.backup_process_error_db', { game_name: getGameDisplayName(row) })}: ${err.message}`);
+                        }
+                    }
+                }
+            }
         }
-    });
+
+    } catch (error) {
+        console.error(`Error displaying backup table: ${error.stack}`);
+        errors.push(`${i18next.t('alert.backup_process_error_display')}: ${error.message}`);
+        if (stmtInstallFolder) {
+            stmtInstallFolder.finalize();
+        }
+    } finally {
+        db.close();
+    }
+    return { games, errors };
 }
 
 async function getAllGameDataFromDB() {
@@ -617,7 +612,7 @@ async function backupGame(gameObj) {
     const gameBackupPath = path.join(getSettings().backupPath, gameObj.wiki_page_id.toString());
 
     // Create a new backup instance folder based on the current date and time
-    const backupInstanceFolder = moment().format('YYYY-MM-DD_HH-mm');
+    const backupInstanceFolder = format(new Date(), 'yyyy-MM-dd_HH-mm');
     const backupInstancePath = path.join(gameBackupPath, backupInstanceFolder);
 
     try {
