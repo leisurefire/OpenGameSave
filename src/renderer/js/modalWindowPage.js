@@ -1,4 +1,5 @@
 import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
+import { createLoadingIndicator } from './loadingIndicator.js';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -39,12 +40,7 @@ async function setWindowTitle(title) {
 
 async function setModalLoading(root) {
     const loadingText = await window.i18n.translate('main.loading');
-    root.innerHTML = `
-        <div class="modal-loading-state">
-            <i class="fa-solid fa-spinner fa-spin text-2xl text-xbox-green"></i>
-            <span>${escapeHtml(loadingText)}</span>
-        </div>
-    `;
+    root.innerHTML = `<div class="modal-loading-state">${createLoadingIndicator(escapeHtml(loadingText))}</div>`;
 }
 
 async function requestConfirmModal(title, message) {
