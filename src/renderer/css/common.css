@@ -127,6 +127,11 @@ select {
     transition: all 0.1s ease;
 }
 
+select option {
+    background: rgba(30, 30, 30, 0.95);
+    color: #ffffff;
+}
+
 input[type="text"]:focus,
 input[type="number"]:focus {
     border-bottom-color: var(--color-theme-accent-bright) !important;
