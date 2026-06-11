@@ -1,0 +1,109 @@
+name: Publish Database Patch
+
+'on':
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '要上传补丁到的 Release Tag（留空则使用 latest）'
+        required: false
+        default: ''
+
+jobs:
+  generate-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 安装 sqlite3
+        run: npm install sqlite3
+
+      - name: 确定目标 Release Tag
+        id: resolve_tag
+        run: |
+          INPUT_TAG="${{ github.event.inputs.release_tag }}"
+          if [ -z "$INPUT_TAG" ]; then
+            RESOLVED_TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
+            if [ -z "$RESOLVED_TAG" ]; then
+              echo "错误：未找到任何 Release，请先创建一个 Release 或指定 release_tag 参数。"
+              exit 1
+            fi
+            echo "使用 latest release tag: $RESOLVED_TAG"
+          else
+            RESOLVED_TAG="$INPUT_TAG"
+            echo "使用指定 release tag: $RESOLVED_TAG"
+          fi
+          echo "tag=$RESOLVED_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: 尝试下载上一个 Release 的 database.db
+        id: download_old_db
+        run: |
+          ALL_TAGS=$(gh release list --json tagName -q '.[].tagName' 2>/dev/null || echo "")
+          CURRENT_TAG="${{ steps.resolve_tag.outputs.tag }}"
+
+          PREV_TAG=""
+          FOUND_CURRENT=false
+          while IFS= read -r tag; do
+            if [ "$FOUND_CURRENT" = "true" ]; then
+              PREV_TAG="$tag"
+              break
+            fi
+            if [ "$tag" = "$CURRENT_TAG" ]; then
+              FOUND_CURRENT=true
+            fi
+          done <<< "$ALL_TAGS"
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "找到上一个 release: $PREV_TAG，尝试下载 database.db"
+            gh release download "$PREV_TAG" --pattern "database.db" --output old_database.db 2>/dev/null && \
+              echo "old_db_exists=true" >> "$GITHUB_OUTPUT" || \
+              echo "old_db_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "未找到上一个 release（首次发布）"
+            echo "old_db_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 准备输出目录
+        run: mkdir -p dist
+
+      - name: 生成数据库补丁
+        run: |
+          OLD_DB_EXISTS="${{ steps.download_old_db.outputs.old_db_exists }}"
+          if [ "$OLD_DB_EXISTS" = "true" ]; then
+            echo "使用旧数据库生成差异补丁..."
+            node scripts/generate-db-patch.js \
+              --from old_database.db \
+              --to database/database.db \
+              --output dist/
+          else
+            echo "首次发布，将所有记录生成为初始补丁..."
+            node scripts/generate-db-patch.js \
+              --from "" \
+              --to database/database.db \
+              --output dist/
+          fi
+
+      - name: 列出生成的补丁文件
+        run: ls -lh dist/
+
+      - name: 上传补丁和数据库到 Release
+        run: |
+          TARGET_TAG="${{ steps.resolve_tag.outputs.tag }}"
+          echo "上传文件到 Release: $TARGET_TAG"
+
+          PATCH_FILES=$(ls dist/db_patch_v*.json 2>/dev/null || echo "")
+          if [ -z "$PATCH_FILES" ]; then
+            echo "错误：未找到任何补丁文件"
+            exit 1
+          fi
+
+          gh release upload "$TARGET_TAG" $PATCH_FILES database/database.db --clobber
+          echo "文件已成功上传到 Release $TARGET_TAG"
