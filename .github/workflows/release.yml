@@ -20,15 +20,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 不传 GH_TOKEN，防止 electron-builder 自动创建 release
+      # 需配合 electron-builder 配置 "publish": "never"
       - name: Run dist
         run: npm run dist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate tag name
-        id: tag
-        shell: bash
-        run: echo "TAG=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
       - name: Get next Beta number
         id: beta
@@ -36,17 +31,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取所有 release 标题，筛选出 "0.6.22 Beta 数字" 格式，取最大数字
-          LATEST_N=$(gh release list --limit 50 --json name \
-            --jq '[.[].name | select(test("0\.6\.22 Beta \\d+")) | capture("Beta (?<n>\\d+)").n | tonumber] | max // 0')
+          # 获取所有 release 标题，筛选 "0.6.22 Beta 数字" 格式，取最大序号
+          LATEST_N=$(gh release list --limit 200 --json name \
+            --jq '[.[].name | select(test("^0\\.6\\.22 Beta [0-9]+$")) | split(" ")[-1] | tonumber] | max // 0')
           echo "NEXT_N=$((LATEST_N + 1))" >> "$GITHUB_OUTPUT"
 
-      - name: Collect artifacts
-        id: artifacts
+          # 生成 tag：当天第一个不带序号，后续带 -1, -2, ...
+          BASE_DATE=$(date +'%Y%m%d')
+          if ! gh release view "$BASE_DATE" &>/dev/null; then
+            echo "TAG=$BASE_DATE" >> "$GITHUB_OUTPUT"
+          else
+            IDX=1
+            while gh release view "${BASE_DATE}-${IDX}" &>/dev/null; do
+              IDX=$((IDX + 1))
+            done
+            echo "TAG=${BASE_DATE}-${IDX}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # electron-builder 产物通常在 dist/ 目录下（排除子目录中的中间产物）
-          FILES=$(find dist -maxdepth 1 -type f \( \
+          TAG="${{ steps.beta.outputs.TAG }}"
+          TITLE="0.6.22 Beta ${{ steps.beta.outputs.NEXT_N }}"
+
+          # 用 mapfile 数组收集产物，避免文件名含空格时出错
+          mapfile -t FILES < <(find dist -maxdepth 1 -type f \( \
             -name "*.exe" -o \
             -name "*.msi" -o \
             -name "*.zip" -o \
@@ -57,23 +68,18 @@ jobs:
             -name "*.rpm" -o \
             -name "*.snap" -o \
             -name "*.blockmap" \
-          \) | tr '\n' ' ')
-          echo "FILES=$FILES" >> "$GITHUB_OUTPUT"
+          \))
 
-      - name: Create GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.tag.outputs.TAG }}"
-          TITLE="0.6.22 Beta ${{ steps.beta.outputs.NEXT_N }}"
-          FILES="${{ steps.artifacts.outputs.FILES }}"
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "Error: No artifact files found in dist/"
+            exit 1
+          fi
 
           echo "Creating release: $TITLE (tag: $TAG)"
-          echo "Uploading files: $FILES"
+          printf "Uploading: %s\n" "${FILES[@]}"
 
           gh release create "$TAG" \
             --title "$TITLE" \
-            --notes "Build date: $TAG" \
+            --notes "Build date: $(date +'%Y%m%d')" \
             --prerelease \
-            $FILES
+            "${FILES[@]}"
