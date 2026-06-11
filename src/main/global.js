@@ -82,7 +82,7 @@ const modalWindowDefinitions = {
         height: 380,
         minWidth: 620,
         minHeight: 250,
-        resizable: true,
+        resizable: false,
         icon: 'logo.ico'
     },
     export: {
@@ -292,7 +292,23 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
         }
     });
 
-
+    // Intercept close to hide first, then destroy after a short delay.
+    // This prevents the Mica material from flashing a white/black frame
+    // during the DWM teardown, which happens faster than Chromium's renderer
+    // can finish its own cleanup.
+    let _isClosing = false;
+    browserWindow.on('close', (e) => {
+        if (!_isClosing && !browserWindow.isDestroyed() && browserWindow.isVisible()) {
+            e.preventDefault();
+            _isClosing = true;
+            browserWindow.hide();
+            setTimeout(() => {
+                if (!browserWindow.isDestroyed()) {
+                    browserWindow.destroy();
+                }
+            }, 50);
+        }
+    });
 
     browserWindow.on("closed", () => {
         unregisterActiveModalWindow(browserWindow);

@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     fetchLatestVersion();
     await updateTranslations(document);
+    document.body.style.visibility = 'visible';
     autoResizeWindow();
 
     githubLink.addEventListener('click', async () => {
