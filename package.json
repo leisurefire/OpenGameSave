@@ -20,6 +20,7 @@
     "appId": "com.leisurefire.opengamesave",
     "productName": "OpenGameSave",
     "copyright": "Copyright © 2024-2026 leisurefire. Original work Copyright © 2024-2026 Yongcan Yang",
+    "publish": "never",
     "files": [
       "dist/out/**/*"
     ],
