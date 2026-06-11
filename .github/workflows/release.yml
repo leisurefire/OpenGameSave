@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run dist
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate tag name
+        id: tag
+        shell: bash
+        run: echo "TAG=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Get next Beta number
+        id: beta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 获取所有 release 标题，筛选出 "0.6.22 Beta 数字" 格式，取最大数字
+          LATEST_N=$(gh release list --limit 50 --json name \
+            --jq '[.[].name | select(test("0\.6\.22 Beta \\d+")) | capture("Beta (?<n>\\d+)").n | tonumber] | max // 0')
+          echo "NEXT_N=$((LATEST_N + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Collect artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          # electron-builder 产物通常在 dist/ 目录下（排除子目录中的中间产物）
+          FILES=$(find dist -maxdepth 1 -type f \( \
+            -name "*.exe" -o \
+            -name "*.msi" -o \
+            -name "*.zip" -o \
+            -name "*.7z" -o \
+            -name "*.dmg" -o \
+            -name "*.AppImage" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.snap" -o \
+            -name "*.blockmap" \
+          \) | tr '\n' ' ')
+          echo "FILES=$FILES" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.TAG }}"
+          TITLE="0.6.22 Beta ${{ steps.beta.outputs.NEXT_N }}"
+          FILES="${{ steps.artifacts.outputs.FILES }}"
+
+          echo "Creating release: $TITLE (tag: $TAG)"
+          echo "Uploading files: $FILES"
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "Build date: $TAG" \
+            --prerelease \
+            $FILES
