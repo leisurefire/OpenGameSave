@@ -3,7 +3,7 @@
 __pycache__
 /node_modules
 /dist
+/scripts
 *.ps1
 secret_config.js
 tailwind-output.css
-database-manager.js
