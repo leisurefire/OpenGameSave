@@ -558,21 +558,16 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const ubisoftPath = getGameData().ubisoftPath;
     const steamUid = getGameData().currentSteamUserId3;
     const ubisoftUid = getGameData().currentUbisoftUserId;
-    const xboxUid = getGameData().currentXboxUserId;
 
-    // 2. Apply context-aware replacements
+    // 2. Apply context-aware replacements for {{p|uid}}
+    // Note: {{p|xbox_uid}} requires no context-aware matching - it always maps to
+    // currentXboxUserId regardless of path prefix, and the full path pattern
+    // (including Game ID) is provided directly by the database.
     let contextAwarePath = basePath;
     contextAwarePath = applyContextReplacement(contextAwarePath, `${steamPath}/userdata/{{p|uid}}`, steamUid);
     contextAwarePath = applyContextReplacement(contextAwarePath, `${ubisoftPath}/savegames/{{p|uid}}`, ubisoftUid);
 
-    // Xbox PGS path context-aware replacement
-    // Convert {{p|xbox_uid}} to the actual Xbox UID pattern
-    if (xboxUid && contextAwarePath.toLowerCase().includes('{{p|xbox_uid}}')) {
-        const xboxPgsPattern = 'C:/XboxGames/GameSave/u_{{p|xbox_uid}}_16D460';
-        contextAwarePath = applyContextReplacement(contextAwarePath, xboxPgsPattern, xboxUid, 'xbox_uid');
-    }
-
-    // If all placeholders are context-aware, try glob directly
+    // If all {{p|uid}} placeholders are resolved, try glob directly
     if (!contextAwarePath.includes('{{p|uid}}') && !contextAwarePath.includes('{{p|xbox_uid}}')) {
         const result = tryGlobAndReturnPaths(contextAwarePath);
         return result || [];

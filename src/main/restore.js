@@ -305,12 +305,13 @@ function resolveTemplatedRestorePath(templatedPath, installFolder) {
         } else if (normalizedMatch === '{{p|uplay}}' || normalizedMatch === '{{p|ubisoftconnect}}') {
             return getGameData().ubisoftPath;
         } else if (normalizedMatch === '{{p|xbox_uid}}') {
-            // Xbox PGS save path: resolve to C:\XboxGames\GameSave\u_{xboxUid}_16D460
+            // Xbox UID placeholder: resolve to actual Xbox UID
             // Note: finalTemplate normally already contains the resolved path after backup,
             // but this handles edge cases where the raw placeholder appears.
+            // The full path pattern (including Game ID) is provided by the database.
             const xboxUid = getGameData().currentXboxUserId;
             if (xboxUid) {
-                return `C:\\XboxGames\\GameSave\\u_${xboxUid}_16D460`;
+                return xboxUid;
             }
             // If no Xbox UID found, return empty string to fail the absolute path check gracefully
             return '';
