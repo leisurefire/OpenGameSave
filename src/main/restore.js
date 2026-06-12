@@ -171,6 +171,9 @@ async function restoreGame(gameObj, userActionForAll) {
                     steamNotInstalled = true;
                 } else if (normalizedTemplate.includes('{{p|ubisoftconnect}}') || normalizedTemplate.includes('{{p|uplay}}')) {
                     ubisoftNotInstalled = true;
+                } else if (normalizedTemplate.includes('{{p|xbox_uid}}')) {
+                    // Xbox UID not found - this will be caught below
+                    console.warn(`Xbox UID not found for restore path: ${destinationPath}`);
                 }
 
                 console.warn(`Destination path is not absolute: ${destinationPath}`);
@@ -301,6 +304,16 @@ function resolveTemplatedRestorePath(templatedPath, installFolder) {
             return getGameData().steamPath;
         } else if (normalizedMatch === '{{p|uplay}}' || normalizedMatch === '{{p|ubisoftconnect}}') {
             return getGameData().ubisoftPath;
+        } else if (normalizedMatch === '{{p|xbox_uid}}') {
+            // Xbox PGS save path: resolve to C:\XboxGames\GameSave\u_{xboxUid}_16D460
+            // Note: finalTemplate normally already contains the resolved path after backup,
+            // but this handles edge cases where the raw placeholder appears.
+            const xboxUid = getGameData().currentXboxUserId;
+            if (xboxUid) {
+                return `C:\\XboxGames\\GameSave\\u_${xboxUid}_16D460`;
+            }
+            // If no Xbox UID found, return empty string to fail the absolute path check gracefully
+            return '';
         }
 
         return placeholder_mapping[normalizedMatch] || match;

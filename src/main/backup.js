@@ -424,6 +424,9 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
         } else if (normalizedMatch === '{{p|uid}}') {
             // Defer handling of {{p|uid}} - leave it as is
             return '{{p|uid}}';
+        } else if (normalizedMatch === '{{p|xbox_uid}}') {
+            // Defer handling of {{p|xbox_uid}} - leave it as is
+            return '{{p|xbox_uid}}';
         } else if (placeholder_mapping[normalizedMatch]) {
             replacement = placeholder_mapping[normalizedMatch];
         }
@@ -436,8 +439,11 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
         return replacement;
     });
 
-    // Final check for unresolved placeholders (except uid)
-    if (/\{\{p\|[^\}]+\}\}/i.test(basePath.toLowerCase().replace(/\{\{p\|uid\}\}/gi, ''))) {
+    // Final check for unresolved placeholders (except uid and xbox_uid)
+    const withoutUidPlaceholders = basePath.toLowerCase()
+        .replace(/\{\{p\|uid\}\}/gi, '')
+        .replace(/\{\{p\|xbox_uid\}\}/gi, '');
+    if (/\{\{p\|[^\}]+\}\}/i.test(withoutUidPlaceholders)) {
         console.warn(`Unresolved placeholder found in path: ${basePath}`);
         return [];
     }
@@ -505,8 +511,8 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         return null;
     }
 
-    // 1. If there's no uid placeholder, just handle wildcards
-    if (!basePath.includes('{{p|uid}}')) {
+    // 1. If there's no uid or xbox_uid placeholder, just handle wildcards
+    if (!basePath.includes('{{p|uid}}') && !basePath.includes('{{p|xbox_uid}}')) {
         // --- SMART DETECTION FOR SUBDIRECTORIES ---
         // Some PCGamingWiki paths only note the root (e.g. .../GameName/*.bin),
         // but Steam stores saves under a SteamID subdirectory. Try the
@@ -526,13 +532,15 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
 
     // For all accounts backup, skip context-aware and known UID matching, go directly to wildcards
     if (getSettings().backupAllAccounts) {
-        const wildcardPath = basePath.replace(/\{\{p\|uid\}\}/gi, '*');
+        const wildcardPath = basePath
+            .replace(/\{\{p\|uid\}\}/gi, '*')
+            .replace(/\{\{p\|xbox_uid\}\}/gi, '*');
         const result = tryGlobAndReturnPaths(wildcardPath);
         return result || [];
     }
 
     // Helper to apply context-aware UID replacement using regex
-    const applyContextReplacement = (pathStr, fullPattern, uidValue) => {
+    const applyContextReplacement = (pathStr, fullPattern, uidValue, placeholderName = 'uid') => {
         if (!fullPattern || !uidValue) return pathStr;
 
         const normalizedPattern = fullPattern.replace(/\\/g, '/');
@@ -541,7 +549,8 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         const escapedPattern = escapeRegExp(normalizedPattern);
         const regex = new RegExp(escapedPattern, 'gi');
 
-        const replacement = normalizedPattern.replace(/\{\{p\|uid\}\}/gi, uidValue);
+        const placeholderRegex = new RegExp(`\\{\\{p\\|${placeholderName}\\}\\}`, 'gi');
+        const replacement = normalizedPattern.replace(placeholderRegex, uidValue);
         return normalizedPath.replace(regex, replacement);
     };
 
@@ -549,21 +558,30 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const ubisoftPath = getGameData().ubisoftPath;
     const steamUid = getGameData().currentSteamUserId3;
     const ubisoftUid = getGameData().currentUbisoftUserId;
+    const xboxUid = getGameData().currentXboxUserId;
 
     // 2. Apply context-aware replacements
     let contextAwarePath = basePath;
     contextAwarePath = applyContextReplacement(contextAwarePath, `${steamPath}/userdata/{{p|uid}}`, steamUid);
     contextAwarePath = applyContextReplacement(contextAwarePath, `${ubisoftPath}/savegames/{{p|uid}}`, ubisoftUid);
 
-    // If both placeholders are context-aware, try glob directly
-    if (!contextAwarePath.includes('{{p|uid}}')) {
+    // Xbox PGS path context-aware replacement
+    // Convert {{p|xbox_uid}} to the actual Xbox UID pattern
+    if (xboxUid && contextAwarePath.toLowerCase().includes('{{p|xbox_uid}}')) {
+        const xboxPgsPattern = 'C:/XboxGames/GameSave/u_{{p|xbox_uid}}_16D460';
+        contextAwarePath = applyContextReplacement(contextAwarePath, xboxPgsPattern, xboxUid, 'xbox_uid');
+    }
+
+    // If all placeholders are context-aware, try glob directly
+    if (!contextAwarePath.includes('{{p|uid}}') && !contextAwarePath.includes('{{p|xbox_uid}}')) {
         const result = tryGlobAndReturnPaths(contextAwarePath);
         return result || [];
     }
 
-    // 3. Count and guess remaining {{p|uid}} placeholders
+    // 3. Count and guess remaining {{p|uid}} and {{p|xbox_uid}} placeholders
     const uidMatches = contextAwarePath.match(/\{\{p\|uid\}\}/gi);
-    const uidCount = uidMatches ? uidMatches.length : 0;
+    const xboxUidMatches = contextAwarePath.match(/\{\{p\|xbox_uid\}\}/gi);
+    const uidCount = (uidMatches ? uidMatches.length : 0) + (xboxUidMatches ? xboxUidMatches.length : 0);
 
     if (uidCount === 0) {
         return [];
@@ -575,9 +593,14 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     for (const uidCombo of uidCombinations) {
         let testPath = contextAwarePath;
 
-        // Replace each {{p|uid}} with the corresponding uid from the combination
+        // Replace each {{p|uid}} and {{p|xbox_uid}} with the corresponding uid from the combination
         let uidIndex = 0;
         testPath = testPath.replace(/\{\{p\|uid\}\}/gi, () => {
+            const uid = uidCombo[uidIndex];
+            uidIndex++;
+            return uid;
+        });
+        testPath = testPath.replace(/\{\{p\|xbox_uid\}\}/gi, () => {
             const uid = uidCombo[uidIndex];
             uidIndex++;
             return uid;
@@ -589,8 +612,10 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         }
     }
 
-    // 4. Final fallback: wildcard matching for uid
-    const wildcardPath = basePath.replace(/\{\{p\|uid\}\}/gi, '*');
+    // 4. Final fallback: wildcard matching for uid and xbox_uid
+    const wildcardPath = basePath
+        .replace(/\{\{p\|uid\}\}/gi, '*')
+        .replace(/\{\{p\|xbox_uid\}\}/gi, '*');
     const wildcardResolvedPaths = glob.sync(wildcardPath.replace(/\\/g, '/'));
 
     if (wildcardResolvedPaths.length === 0) {
