@@ -80,6 +80,7 @@ async function populateBackupTable(data, iconMap) {
     const settings = await window.api.invoke('get-settings');
     const favoriteGamesWikiIds = settings.pinnedGames || [];
     const blockedGamesWikiIds = settings.blockedGames || [];
+    const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
     const selectedWikiIds = getSelectedWikiIds('backup');
 
     const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
@@ -147,6 +148,11 @@ async function populateBackupTable(data, iconMap) {
             if (blockedGamesWikiIds.includes(wikiId.toString())) {
                 row.dataset.blocked = 'true';
                 setIcon(row, 'blocked', true);
+            }
+
+            // Check if uninstalled
+            if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
+                row.dataset.uninstalled = 'true';
             }
 
             // Check if any backup is permanent by looking at restore table data which has is_permanent

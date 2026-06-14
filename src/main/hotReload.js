@@ -24,6 +24,15 @@ function setupHotReload() {
         clearTimeout(reloadTimeout);
         reloadTimeout = setTimeout(() => {
             BrowserWindow.getAllWindows().forEach(window => {
+                // Skip the internal menu popup window — it is managed by the
+                // main process and must not be hot-reloaded. Reloading it
+                // destroys the 'set-menu-items' IPC listener registered in
+                // menu.html, which causes the menu to stop responding after
+                // any hot reload cycle.
+                const url = window.webContents.getURL();
+                if (url && url.includes('menu.html')) {
+                    return;
+                }
                 window.webContents.reloadIgnoringCache();
             });
         }, 300);

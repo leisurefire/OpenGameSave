@@ -153,11 +153,12 @@ export function hideLoadingIndicator(tabName) {
     }
 }
 
-// Function to set up the search, favorites, and blocked filters for the table
+// Function to set up the search, favorites, blocked, and uninstalled filters for the table
 function setupSearchFilter(tabName) {
     const searchInput = document.getElementById(`${tabName}-search`);
     const favoritesButton = document.getElementById(`${tabName}-favorites-only`);
     const blockedButton = document.getElementById(`${tabName}-blocked-only`);
+    const uninstalledButton = document.getElementById(`${tabName}-uninstalled-only`);
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const selectAllCheckbox = document.getElementById(`${tabName}-checkbox-all-search`);
 
@@ -165,6 +166,7 @@ function setupSearchFilter(tabName) {
         const filter = searchInput.value.toLowerCase();
         const favoritesOnly = favoritesButton?.dataset.favoritesActive === 'true';
         const blockedOnly = blockedButton?.dataset.blockedActive === 'true';
+        const uninstalledOnly = uninstalledButton?.dataset.uninstalledActive === 'true';
         const rows = tableBody.querySelectorAll('tr');
 
         rows.forEach(row => {
@@ -172,10 +174,12 @@ function setupSearchFilter(tabName) {
             const gameName = gameNameCell ? gameNameCell.textContent.toLowerCase() : '';
             const isFavorite = !row.querySelector('span[data-icon="favorite"].hidden');
             const isBlocked = row.dataset.blocked === 'true';
+            const isUninstalled = row.dataset.uninstalled === 'true';
             const matchesSearch = gameName.includes(filter);
             const matchesFavorite = !favoritesOnly || isFavorite;
             const matchesBlocked = blockedOnly ? isBlocked : !isBlocked;
-            row.style.display = matchesSearch && matchesFavorite && matchesBlocked ? '' : 'none';
+            const matchesUninstalled = !uninstalledOnly || isUninstalled;
+            row.style.display = matchesSearch && matchesFavorite && matchesBlocked && matchesUninstalled ? '' : 'none';
         });
 
         if (selectAllCheckbox) {
@@ -204,6 +208,17 @@ function setupSearchFilter(tabName) {
             blockedButton.classList.toggle('text-yellow-400', !isActive);
             blockedButton.classList.toggle('opacity-100', !isActive);
             blockedButton.classList.toggle('opacity-70', isActive);
+            applyFilters();
+        });
+    }
+
+    if (uninstalledButton) {
+        uninstalledButton.addEventListener('click', () => {
+            const isActive = uninstalledButton.dataset.uninstalledActive === 'true';
+            uninstalledButton.dataset.uninstalledActive = (!isActive).toString();
+            uninstalledButton.classList.toggle('text-blue-400', !isActive);
+            uninstalledButton.classList.toggle('opacity-100', !isActive);
+            uninstalledButton.classList.toggle('opacity-70', isActive);
             applyFilters();
         });
     }
@@ -367,6 +382,11 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
         if (blockedGamesWikiIds.includes(wikiId.toString())) {
             row.dataset.blocked = 'true';
             setIcon(row, 'blocked', true);
+        }
+
+        const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
+        if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
+            row.dataset.uninstalled = 'true';
         }
 
         // Check if auto backup is active

@@ -64,6 +64,7 @@
         "unblock_game": "Unblock",
         "blocked_only": "Blocked",
         "favorites_only": "Favorites",
+        "uninstalled_only": "Uninstalled",
         "search_for_games": "Search for games",
         "selected_games_count": "{{count}} of {{total}} games selected",
         "total_backup_size": "Total backup size: {{size}}",
