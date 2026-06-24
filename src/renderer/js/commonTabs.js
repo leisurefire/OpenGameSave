@@ -169,13 +169,27 @@ function setupSearchFilter(tabName) {
         const uninstalledOnly = uninstalledButton?.dataset.uninstalledActive === 'true';
         const rows = tableBody.querySelectorAll('tr');
 
+        const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
+
         rows.forEach(row => {
-            const gameNameCell = row.querySelector('th[scope="row"]');
-            const gameName = gameNameCell ? gameNameCell.textContent.toLowerCase() : '';
+            // Match against both English and Chinese names, regardless of the
+            // displayed language. Fall back to the visible cell text if the
+            // game data isn't available in the data map.
+            const gameData = dataMap && dataMap.get(row.getAttribute('data-wiki-id'));
+            const searchTargets = [];
+            if (gameData) {
+                if (gameData.title) searchTargets.push(gameData.title);
+                if (gameData.zh_CN) searchTargets.push(gameData.zh_CN);
+            }
+            if (searchTargets.length === 0) {
+                const gameNameCell = row.querySelector('th[scope="row"]');
+                if (gameNameCell) searchTargets.push(gameNameCell.textContent);
+            }
+
+            const matchesSearch = searchTargets.some(name => name.toLowerCase().includes(filter));
             const isFavorite = !row.querySelector('span[data-icon="favorite"].hidden');
             const isBlocked = row.dataset.blocked === 'true';
             const isUninstalled = row.dataset.uninstalled === 'true';
-            const matchesSearch = gameName.includes(filter);
             const matchesFavorite = !favoritesOnly || isFavorite;
             const matchesBlocked = blockedOnly ? isBlocked : !isBlocked;
             const matchesUninstalled = !uninstalledOnly || isUninstalled;
