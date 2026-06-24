@@ -162,6 +162,13 @@ function setupSearchFilter(tabName) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const selectAllCheckbox = document.getElementById(`${tabName}-checkbox-all-search`);
 
+    // Hide or show the uninstalled button based on settings
+    window.api.invoke('get-settings').then((settings) => {
+        if (uninstalledButton) {
+            uninstalledButton.classList.toggle('hidden', !settings.saveUninstalledGames);
+        }
+    });
+
     const applyFilters = () => {
         const filter = searchInput.value.toLowerCase();
         const favoritesOnly = favoritesButton?.dataset.favoritesActive === 'true';
@@ -240,6 +247,22 @@ function setupSearchFilter(tabName) {
 
 export function applyTableFilters(tabName) {
     document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
+}
+
+// Update the visibility of the "Uninstalled" filter button based on settings
+export async function updateUninstalledButtonVisibility(tabName) {
+    const uninstalledButton = document.getElementById(`${tabName}-uninstalled-only`);
+    if (uninstalledButton) {
+        const settings = await window.api.invoke('get-settings');
+        uninstalledButton.classList.toggle('hidden', !settings.saveUninstalledGames);
+        // If hiding the button, also deactivate the filter
+        if (!settings.saveUninstalledGames && uninstalledButton.dataset.uninstalledActive === 'true') {
+            uninstalledButton.dataset.uninstalledActive = 'false';
+            uninstalledButton.classList.remove('text-blue-400', 'opacity-100');
+            uninstalledButton.classList.add('opacity-70');
+            applyTableFilters(tabName);
+        }
+    }
 }
 
 export function isBlockedViewActive(tabName) {

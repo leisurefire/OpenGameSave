@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -64,6 +64,7 @@ export async function updateBackupTable(loader) {
     const gameData = await window.api.invoke('fetch-backup-table-data');
     await populateBackupTable(gameData, iconMap);
     updateSelectedCountAndSize('backup');
+    updateUninstalledButtonVisibility('backup');
 
     if (loader) {
         hideLoadingIndicator('backup');

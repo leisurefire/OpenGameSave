@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog, showRestoreConflictDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
@@ -28,6 +28,7 @@ async function updateRestoreTable(loader) {
     const gameData = await window.api.invoke('fetch-restore-table-data');
     await populateRestoreTable(gameData);
     updateSelectedCountAndSize('restore');
+    updateUninstalledButtonVisibility('restore');
 
     if (loader) {
         hideLoadingIndicator('restore');
