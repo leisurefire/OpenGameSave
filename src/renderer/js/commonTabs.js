@@ -583,13 +583,17 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
 // Helper function to remove a game row from a tab's table and clean up its data map
 export function removeTableRow(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
+    const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
+    if (!dataMap || !tableBody) {
+        return;
+    }
+
     if (!removeVirtualRow(tableBody, wikiId)) {
         const row = tableBody?.querySelector(`tr[data-wiki-id="${wikiId}"]`);
         if (row) {
             row.remove();
         }
     }
-    const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     dataMap.delete(wikiId);
     updateSelectedCountAndSize(tabName);
 }
@@ -935,6 +939,10 @@ function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
 
 export function getSelectedWikiIds(tabName) {
     const table = document.querySelector(`#${tabName}`);
+    if (!table) {
+        return [];
+    }
+
     const tableBody = table.querySelector('tbody');
     const virtualSelectedIds = getFilteredVirtualSelectedIds(tableBody);
     if (virtualSelectedIds.length > 0 || getVirtualState(tableBody)) {

@@ -52,23 +52,31 @@ function createBackupWorkerContext() {
 function runBackupWorkerTask(task, payload = {}, onMessage = null) {
     return new Promise((resolve, reject) => {
         const worker = new Worker(path.join(__dirname, 'backupWorker.js'));
+        let settled = false;
 
-        worker.once('error', reject);
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            worker.terminate().catch(() => { });
+            callback(value);
+        };
+
+        worker.once('error', (error) => {
+            finish(reject, error);
+        });
         worker.once('exit', (code) => {
-            if (code !== 0) {
-                reject(new Error(`Backup worker stopped with exit code ${code}`));
+            if (!settled && code !== 0) {
+                finish(reject, new Error(`Backup worker stopped with exit code ${code}`));
             }
         });
 
         worker.on('message', (message) => {
             if (message.type === 'done') {
-                worker.terminate().catch(() => { });
-                resolve(message.result);
+                finish(resolve, message.result);
             } else if (message.type === 'error') {
-                worker.terminate().catch(() => { });
                 const error = new Error(message.error?.message || 'Backup worker failed');
                 error.stack = message.error?.stack || error.stack;
-                reject(error);
+                finish(reject, error);
             } else if (typeof onMessage === 'function') {
                 onMessage(message);
             }
