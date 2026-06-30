@@ -29,6 +29,8 @@ class GameData {
 
         this.detectedGamePaths = [];
         this.detectedSteamGameIds = [];
+        this.initialized = false;
+        this.initializePromise = null;
     }
 
     getRegistryValue(hive, key, valueName) {
@@ -50,6 +52,21 @@ class GameData {
     }
 
     async initialize() {
+        if (this.initialized) {
+            return;
+        }
+
+        if (!this.initializePromise) {
+            this.initializePromise = this._initialize().catch((error) => {
+                this.initializePromise = null;
+                throw error;
+            });
+        }
+
+        return this.initializePromise;
+    }
+
+    async _initialize() {
         if (process.platform === 'win32') {
             // Query Steam install path
             this.steamPath = await this.getRegistryValue(
@@ -95,6 +112,8 @@ class GameData {
             'GOG user id: ' + this.currentGogUserId + '\n' +
             'EA user id: ' + this.currentEAUserId
         );
+
+        this.initialized = true;
     }
 
     async getCurrentUserIds() {

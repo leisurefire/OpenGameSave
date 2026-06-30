@@ -64,6 +64,57 @@ app.commandLine.appendSwitch("lang", "en");
 const gotTheLock = app.requestSingleInstanceLock();
 let pendingGSMPath = null;
 let isQuitting = false;
+let gameDataInitializationPromise = null;
+let iconMapCache = null;
+
+function startGameDataInitialization() {
+    if (!gameDataInitializationPromise) {
+        gameDataInitializationPromise = (async () => {
+            await initializeGameData();
+
+            if (getSettings().gameInstalls === 'uninitialized') {
+                await detectGamePaths();
+                await saveSettings('gameInstalls', getGameData().detectedGamePaths);
+            }
+
+            return getGameData();
+        })().catch((error) => {
+            gameDataInitializationPromise = null;
+            throw error;
+        });
+    }
+
+    return gameDataInitializationPromise;
+}
+
+async function ensureGameDataReady() {
+    return startGameDataInitialization();
+}
+
+function reportBackgroundStartupError(error) {
+    logFatalError(error);
+
+    const mainWin = getMainWin();
+    if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send('show-alert', 'modal', i18next.t('alert.backup_process_error_display'), error.message || String(error));
+    }
+}
+
+function getCachedIconMap() {
+    if (!iconMapCache) {
+        iconMapCache = {
+            'Steam': fs.readFileSync(path.join(__dirname, '../assets/steam.svg'), 'utf-8'),
+            'Ubisoft': fs.readFileSync(path.join(__dirname, '../assets/ubisoft.svg'), 'utf-8'),
+            'EA': fs.readFileSync(path.join(__dirname, '../assets/ea.svg'), 'utf-8'),
+            'Epic': fs.readFileSync(path.join(__dirname, '../assets/epic.svg'), 'utf-8'),
+            'GOG': fs.readFileSync(path.join(__dirname, '../assets/gog.svg'), 'utf-8'),
+            'Xbox': fs.readFileSync(path.join(__dirname, '../assets/xbox.svg'), 'utf-8'),
+            'Blizzard': fs.readFileSync(path.join(__dirname, '../assets/battlenet.svg'), 'utf-8'),
+        };
+    }
+
+    return iconMapCache;
+}
 
 if (!gotTheLock) {
     app.quit();
@@ -283,30 +334,30 @@ app.whenReady().then(async () => {
 
     loadSettings();
     await initializeI18next(getSettings().language);
-    await initializeGameData();
-
-    if (getSettings().gameInstalls === 'uninitialized') {
-        await detectGamePaths();
-        saveSettings('gameInstalls', getGameData().detectedGamePaths);
-    }
 
     await createMainWindow();
-    getMainWin().webContents.once('did-finish-load', () => {
+    const mainWin = getMainWin();
+    mainWin.webContents.once('did-finish-load', () => {
         if (pendingGSMPath) {
-            getMainWin().webContents.send('open-import-modal', pendingGSMPath);
+            mainWin.webContents.send('open-import-modal', pendingGSMPath);
             pendingGSMPath = null;
         }
+
+        createMenuWindow();
+        setTimeout(() => {
+            startGameDataInitialization()
+                .then(() => restoreAutoBackups())
+                .catch(reportBackgroundStartupError);
+        }, 500);
     });
 
-    createMenuWindow(); // Pre-load menu
     app.setAppUserModelId(i18next.t('main.title'));
 
     if (getSettings().autoAppUpdate) {
-        checkAppUpdate();
+        setTimeout(() => {
+            checkAppUpdate().catch(reportBackgroundStartupError);
+        }, 3000);
     }
-
-
-    await restoreAutoBackups();
 
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -388,6 +439,7 @@ ipcMain.handle("get-settings", () => {
 });
 
 ipcMain.handle("get-detected-game-paths", async () => {
+    await ensureGameDataReady();
     await detectGamePaths();
     return getGameData().detectedGamePaths;
 });
@@ -507,7 +559,8 @@ ipcMain.handle('sort-games', (event, games) => {
     });
 });
 
-ipcMain.handle('get-account-data', () => {
+ipcMain.handle('get-account-data', async () => {
+    await ensureGameDataReady();
     return getAllUserIds();
 });
 
@@ -520,18 +573,11 @@ ipcMain.handle('get-uuid', () => {
 });
 
 ipcMain.handle('get-icon-map', async () => {
-    return {
-        'Steam': fs.readFileSync(path.join(__dirname, '../assets/steam.svg'), 'utf-8'),
-        'Ubisoft': fs.readFileSync(path.join(__dirname, '../assets/ubisoft.svg'), 'utf-8'),
-        'EA': fs.readFileSync(path.join(__dirname, '../assets/ea.svg'), 'utf-8'),
-        'Epic': fs.readFileSync(path.join(__dirname, '../assets/epic.svg'), 'utf-8'),
-        'GOG': fs.readFileSync(path.join(__dirname, '../assets/gog.svg'), 'utf-8'),
-        'Xbox': fs.readFileSync(path.join(__dirname, '../assets/xbox.svg'), 'utf-8'),
-        'Blizzard': fs.readFileSync(path.join(__dirname, '../assets/battlenet.svg'), 'utf-8'),
-    };
+    return getCachedIconMap();
 });
 
 ipcMain.handle('get-local-save-data', async (event, wikiId) => {
+    await ensureGameDataReady();
     const { games } = await getGameDataFromDB(false, wikiId);
     return games && games.length > 0 ? games[0] : null;
 });
@@ -544,6 +590,7 @@ ipcMain.on('run-scan-full', () => {
 });
 
 ipcMain.handle('fetch-backup-table-data', async (event, ignoreUninstalled, wikiId = null) => {
+    await ensureGameDataReady();
     const { games, errors } = await getGameDataFromDB(ignoreUninstalled, wikiId);
 
     if (errors.length > 0) {
@@ -587,10 +634,12 @@ ipcMain.handle('get-main-selected-wiki-ids', async (event, tableId) => {
 });
 
 ipcMain.handle('backup-game', async (event, gameObj) => {
+    await ensureGameDataReady();
     return await backupGame(gameObj);
 });
 
 ipcMain.handle('fetch-restore-table-data', async (event, wikiId = null) => {
+    await ensureGameDataReady();
     const { games, errors } = await getGameDataForRestore(wikiId);
 
     if (errors.length > 0) {
@@ -601,6 +650,7 @@ ipcMain.handle('fetch-restore-table-data', async (event, wikiId = null) => {
 });
 
 ipcMain.handle('restore-game', async (event, gameObj, userActionForAll) => {
+    await ensureGameDataReady();
     return await restoreGame(gameObj, userActionForAll);
 });
 
@@ -720,6 +770,7 @@ ipcMain.on('import-backups', (event, gsmPath) => {
 });
 
 ipcMain.handle('start-scan-full', async () => {
+    await ensureGameDataReady();
     if (!getStatus().scanning_full) {
         const { games, errors } = await getAllGameDataFromDB();
 
@@ -737,6 +788,7 @@ ipcMain.on('update-app', (event, latest_version) => {
 
 // Auto backup IPC handlers
 ipcMain.handle('start-auto-backup', async (event, wikiId, mode, intervalMinutes) => {
+    await ensureGameDataReady();
     await startAutoBackup(wikiId, mode, intervalMinutes);
 });
 
