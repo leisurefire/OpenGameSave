@@ -727,10 +727,12 @@ function setDropDownAction() {
             ].filter(item => item.visible !== false);
 
             const rect = button.getBoundingClientRect();
+            const shouldOpenUp = rect.bottom + 260 > window.innerHeight && rect.top > 260;
             window.api.send('show-popup-menu', {
                 items: menuItems,
                 x: rect.right + 4,
-                y: rect.bottom + 8
+                y: shouldOpenUp ? rect.top - 8 : rect.bottom + 8,
+                direction: shouldOpenUp ? 'up' : 'down'
             });
             window.activeMenuTrigger = button;
             return;

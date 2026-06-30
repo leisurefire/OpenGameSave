@@ -57,9 +57,9 @@ function setupHomeActions() {
 
             const menuItems = [
                 {
-                    label: await window.i18n.translate('settings.title'),
-                    icon: 'fa-solid fa-gear',
-                    action: 'settings'
+                    label: await window.i18n.translate('main.scan_full'),
+                    icon: 'fa-solid fa-magnifying-glass-plus',
+                    action: 'scan-full'
                 },
                 {
                     label: await window.i18n.translate('main.view_account_ids'),
@@ -67,22 +67,23 @@ function setupHomeActions() {
                     action: 'view-account-ids'
                 },
                 {
-                    label: await window.i18n.translate('main.scan_full'),
-                    icon: 'fa-solid fa-magnifying-glass-plus',
-                    action: 'scan-full'
-                },
-                {
                     label: await window.i18n.translate('about.title'),
                     icon: 'fa-solid fa-circle-info',
                     action: 'about'
+                },
+                {
+                    label: await window.i18n.translate('settings.title'),
+                    icon: 'fa-solid fa-gear',
+                    action: 'settings'
                 }
             ];
 
             const rect = optionsButton.getBoundingClientRect();
             window.api.send('show-popup-menu', {
                 items: menuItems,
-                x: rect.right - 180, // Align right edge (MENU_WIDTH is 180)
-                y: rect.bottom + 8
+                x: rect.left,
+                y: rect.top - 8,
+                direction: 'up'
             });
             window.activeMenuTrigger = optionsButton;
         });

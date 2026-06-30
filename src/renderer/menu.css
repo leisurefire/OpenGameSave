@@ -34,14 +34,30 @@ body {
     border-radius: 8px; /* Fluent typical menu radius */
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     padding: 4px;
-    animation: menuExpand 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: menuExpandDown 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     transform-origin: top;
 }
 
-@keyframes menuExpand {
+.menu-container[data-direction="up"] {
+    animation-name: menuExpandUp;
+    transform-origin: bottom;
+}
+
+@keyframes menuExpandDown {
     from {
         opacity: 0;
         transform: scale(0.8) translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes menuExpandUp {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(8px);
     }
     to {
         opacity: 1;

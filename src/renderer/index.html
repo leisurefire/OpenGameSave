@@ -9,59 +9,53 @@
     <title class="text-content" data-i18n="main.title">OpenGameSave</title>
 </head>
 
-<body class="mica-effect p-6 pt-2 h-screen overflow-hidden">
+<body class="mica-effect h-screen overflow-hidden">
     <!-- Top right alerts and progresses -->
     <div class="fixed top-4 right-5 z-60 space-y-2">
         <div id="progress-container"></div>
         <div id="alert-container"></div>
     </div>
 
-    <!-- Navigation Header -->
-    <header class="flex items-center justify-between mb-6 pb-2">
-                <nav class="flex gap-1" id="main-tab" role="tablist">
-            <button id="backup-tab" data-tabs-target="#backup" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.backup">
-                <i class="fa-solid fa-shield-halved"></i>
-                <span class="text-content">Backup</span>
-            </button>
-            <button id="restore-tab" data-tabs-target="#restore" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.restore">
-                <i class="fa-solid fa-clock-rotate-left"></i>
-                <span class="text-content">Restore</span>
-            </button>
-            <button id="sync-tab" data-tabs-target="#sync" role="tab" class="px-6 py-3 font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-2" data-i18n="main.sync">
-                <i class="fa-solid fa-arrows-rotate"></i>
-                <span class="text-content">Sync</span>
-            </button>
-        </nav>
-
-        <div class="flex items-center gap-3">
-            <div class="relative">
-                <button id="home-options-button" class="home-action-button px-4 py-2 flex items-center gap-2 text-sm font-semibold">
-                    <i class="fa-solid fa-gear"></i> <span data-i18n="main.options">Options</span> <i class="fa-solid fa-chevron-down text-[10px]"></i>
+    <div class="app-shell">
+        <aside class="app-sidebar">
+            <nav class="sidebar-nav" id="main-tab" role="tablist">
+                <button id="backup-tab" data-tabs-target="#backup" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.backup">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span class="text-content">Backup</span>
                 </button>
-                <div id="home-options-menu" class="hidden absolute right-0 top-full mt-2 w-52 floating-surface overflow-hidden z-30">
-                    <a href="#" data-home-action="settings" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="settings.title">Settings</a>
-                    <a href="#" data-home-action="view-account-ids" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="main.view_account_ids">View Account IDs</a>
-                    <a href="#" data-home-action="scan-full" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="main.scan_full">Scan Full Database</a>
-                    <a href="#" data-home-action="about" class="block px-4 py-3 hover:bg-theme-accent hover:text-black transition-colors" data-i18n="about.title">About</a>
-                </div>
+                <button id="restore-tab" data-tabs-target="#restore" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.restore">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span class="text-content">Restore</span>
+                </button>
+                <button id="sync-tab" data-tabs-target="#sync" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.sync">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span class="text-content">Sync</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-actions">
+                <button id="home-import-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
+                    <i class="fa-solid fa-file-import"></i>
+                    <span data-i18n="main.import">Import</span>
+                </button>
+                <button id="home-export-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
+                    <i class="fa-solid fa-file-export"></i>
+                    <span data-i18n="main.export">Export</span>
+                </button>
+                <button id="home-options-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
+                    <i class="fa-solid fa-gear"></i>
+                    <span data-i18n="main.options">Options</span>
+                    <i class="fa-solid fa-chevron-up text-[10px] ml-auto"></i>
+                </button>
+                <button id="update-database" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3 text-theme-accent">
+                    <i id="update-database-icon" class="fa-solid fa-rotate"></i>
+                    <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
+                </button>
             </div>
-            <button id="home-import-button" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2">
-                <i class="fa-solid fa-file-import"></i>
-                <span data-i18n="main.import">Import</span>
-            </button>
-            <button id="home-export-button" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2">
-                <i class="fa-solid fa-file-export"></i>
-                <span data-i18n="main.export">Export</span>
-            </button>
-            <button id="update-database" class="home-action-button px-4 py-2 text-sm font-semibold flex items-center gap-2 text-theme-accent">
-                <i id="update-database-icon" class="fa-solid fa-rotate"></i>
-                <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
-            </button>
-        </div>
-    </header>
+        </aside>
 
     <!-- Main Content -->
-    <main id="main-tab-content">
+    <main id="main-tab-content" class="app-content">
         <!-- Tab 1: Backup -->
         <section id="backup" role="tabpanel" class="hidden">
             <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
@@ -107,7 +101,7 @@
                     </div>
                 </div>
 
-                <div class="table-container h-[calc(100vh-250px)]">
+                <div class="table-container h-[calc(100vh-170px)]">
                     <table class="w-full text-left">
                         <thead>
                             <tr>
@@ -176,7 +170,7 @@
                     </div>
                 </div>
 
-                <div class="table-container h-[calc(100vh-250px)]">
+                <div class="table-container h-[calc(100vh-170px)]">
                     <table class="w-full text-left">
                         <thead>
                             <tr>
@@ -246,6 +240,7 @@
             </div>
         </section>
     </main>
+    </div>
 </body>
 
 </html>

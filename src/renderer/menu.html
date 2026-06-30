@@ -8,10 +8,13 @@
         <div id="menu-content-wrapper"></div>
     </div>
     <script>
-        window.api.receive('set-menu-items', (items) => {
-                        const menu = document.getElementById('menu');
+        window.api.receive('set-menu-items', (payload) => {
+            const items = Array.isArray(payload) ? payload : payload.items;
+            const direction = Array.isArray(payload) ? 'down' : payload.direction || 'down';
+            const menu = document.getElementById('menu');
             const wrapper = document.getElementById('menu-content-wrapper');
             wrapper.innerHTML = '';
+            menu.dataset.direction = direction;
             menu.style.animation = 'none';
             menu.offsetHeight; // force reflow
             menu.style.animation = '';

@@ -319,7 +319,7 @@ function createMenuWindow() {
     });
 }
 
-ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
+ipcMain.on('show-popup-menu', (event, { items, x, y, direction = 'down' }) => {
     if (!menuWindow || menuWindow.isDestroyed()) createMenuWindow();
 
     const parentWindow = BrowserWindow.fromWebContents(event.sender);
@@ -340,16 +340,23 @@ ipcMain.on('show-popup-menu', (event, { items, x, y }) => {
     // Store target coordinates in a property so the resize event can use them
     menuWindow.targetScreenX = Math.round(winX + x + MENU_POSITION_OFFSET_X);
     menuWindow.targetScreenY = Math.round(winY + y + MENU_POSITION_OFFSET_Y);
+    menuWindow.menuDirection = direction === 'up' ? 'up' : 'down';
 
     if (menuWindow.webContents.isLoading()) {
         const targetMenuWindow = menuWindow;
         menuWindow.webContents.once('did-finish-load', () => {
             if (!targetMenuWindow.isDestroyed()) {
-                targetMenuWindow.webContents.send('set-menu-items', items);
+                targetMenuWindow.webContents.send('set-menu-items', {
+                    items,
+                    direction: targetMenuWindow.menuDirection
+                });
             }
         });
     } else {
-        menuWindow.webContents.send('set-menu-items', items);
+        menuWindow.webContents.send('set-menu-items', {
+            items,
+            direction: menuWindow.menuDirection
+        });
     }
 });
 
@@ -357,10 +364,13 @@ ipcMain.on('resize-and-show-menu', (event, size) => {
     if (menuWindow && !menuWindow.isDestroyed()) {
         const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
         const height = Math.ceil(size?.height || 0);
+        const y = menuWindow.menuDirection === 'up'
+            ? Math.round(menuWindow.targetScreenY - height)
+            : menuWindow.targetScreenY;
         isMenuOpen = true;
         menuWindow.setBounds({
             x: menuWindow.targetScreenX,
-            y: menuWindow.targetScreenY,
+            y,
             width,
             height
         }, false);
