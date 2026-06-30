@@ -199,7 +199,7 @@ function setupBackupTabButtons() {
         // Disable the button and change the appearance
         backupButton.disabled = true;
         backupButton.classList.add('cursor-not-allowed');
-        backupIcon.classList.remove('fa-arrow-right-long');
+        backupIcon.classList.remove('fa-bolt');
         backupIcon.innerHTML = spinner;
         backupButton.setAttribute('data-i18n', 'main.backup_in_progress');
         backupText.textContent = await window.i18n.translate('main.backup_in_progress');
@@ -211,7 +211,7 @@ function setupBackupTabButtons() {
         backupButton.disabled = false;
         backupButton.classList.remove('cursor-not-allowed');
         backupIcon.innerHTML = '';
-        backupIcon.classList.add('fa-arrow-right-long');
+        backupIcon.classList.add('fa-bolt');
         backupButton.setAttribute('data-i18n', 'main.backup_selected');
         backupText.textContent = await window.i18n.translate('main.backup_selected');
         window.api.send('update-status', 'backuping', false);
@@ -222,7 +222,7 @@ function setupBackupTabButtons() {
             window.api.send('update-status', 'updating_restore', true);
             backupButton.disabled = true;
             backupButton.classList.add('cursor-not-allowed');
-            backupIcon.classList.remove('fa-arrow-right-long');
+            backupIcon.classList.remove('fa-bolt');
             backupIcon.innerHTML = spinner;
             backupButton.setAttribute('data-i18n', 'main.updating_backup');
             backupText.textContent = await window.i18n.translate('main.updating_backup');
@@ -235,7 +235,7 @@ function setupBackupTabButtons() {
             backupButton.disabled = false;
             backupButton.classList.remove('cursor-not-allowed');
             backupIcon.innerHTML = '';
-            backupIcon.classList.add('fa-arrow-right-long');
+            backupIcon.classList.add('fa-bolt');
             backupButton.setAttribute('data-i18n', 'main.backup_selected');
             backupText.textContent = await window.i18n.translate('main.backup_selected');
             window.api.send('update-status', 'updating_backup', false);

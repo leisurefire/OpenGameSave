@@ -161,7 +161,7 @@ function setupRestoreButton() {
         // Disable the button and change the appearance
         restoreButton.disabled = true;
         restoreButton.classList.add('cursor-not-allowed');
-        restoreIcon.classList.remove('fa-arrow-right-long');
+        restoreIcon.classList.remove('fa-clock-rotate-left');
         restoreIcon.innerHTML = spinner;
         restoreButton.setAttribute('data-i18n', 'main.restore_in_progress');
         restoreText.textContent = await window.i18n.translate('main.restore_in_progress');
@@ -173,7 +173,7 @@ function setupRestoreButton() {
         restoreButton.disabled = false;
         restoreButton.classList.remove('cursor-not-allowed');
         restoreIcon.innerHTML = '';
-        restoreIcon.classList.add('fa-arrow-right-long');
+        restoreIcon.classList.add('fa-clock-rotate-left');
         restoreButton.setAttribute('data-i18n', 'main.restore_selected');
         restoreText.textContent = await window.i18n.translate('main.restore_selected');
         window.api.send('update-status', 'restoring', false);
@@ -183,7 +183,7 @@ function setupRestoreButton() {
             window.api.send('update-status', 'updating_backup', true);
             restoreButton.disabled = true;
             restoreButton.classList.add('cursor-not-allowed');
-            restoreIcon.classList.remove('fa-arrow-right-long');
+            restoreIcon.classList.remove('fa-clock-rotate-left');
             restoreIcon.innerHTML = spinner;
             restoreButton.setAttribute('data-i18n', 'main.updating_restore');
             restoreText.textContent = await window.i18n.translate('main.updating_restore');
@@ -195,7 +195,7 @@ function setupRestoreButton() {
             restoreButton.disabled = false;
             restoreButton.classList.remove('cursor-not-allowed');
             restoreIcon.innerHTML = '';
-            restoreIcon.classList.add('fa-arrow-right-long');
+            restoreIcon.classList.add('fa-clock-rotate-left');
             restoreButton.setAttribute('data-i18n', 'main.restore_selected');
             restoreText.textContent = await window.i18n.translate('main.restore_selected');
             window.api.send('update-status', 'updating_backup', false);

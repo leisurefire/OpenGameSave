@@ -81,8 +81,8 @@ function setupHomeActions() {
             const rect = optionsButton.getBoundingClientRect();
             window.api.send('show-popup-menu', {
                 items: menuItems,
-                x: rect.left,
-                y: rect.top - 8,
+                x: rect.left - 16,
+                y: rect.top + 32,
                 direction: 'up'
             });
             window.activeMenuTrigger = optionsButton;
@@ -267,7 +267,7 @@ export function autoResizeWindow() {
         setTimeout(() => {
             const originalHeight = document.body.style.height;
             const originalOverflow = document.body.style.overflow;
-            
+
             document.body.style.height = 'auto';
             document.body.style.overflow = 'visible';
 
@@ -285,7 +285,7 @@ export function autoResizeWindow() {
 
             document.body.style.height = originalHeight;
             document.body.style.overflow = originalOverflow;
-            
+
             if (targetContent) {
                 targetContent.style.height = originalTargetHeight;
                 targetContent.style.overflow = originalTargetOverflow;
