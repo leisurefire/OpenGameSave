@@ -15,7 +15,7 @@ const {
     windowVisualEffect, applyWindowsMicaEffect,
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
-    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, updateApp
+    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, isNewerAppVersion, updateApp
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
@@ -844,6 +844,10 @@ ipcMain.handle('get-repository-url', () => {
 
 ipcMain.handle('get-latest-version', () => {
     return getLatestVersion('OpenGameSave');
+});
+
+ipcMain.handle('is-newer-version', (event, candidateVersion, currentVersion) => {
+    return isNewerAppVersion(candidateVersion, currentVersion);
 });
 
 ipcMain.handle('update-database', async () => {

@@ -26,13 +26,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             latestVersionSpan.style.color = 'red';
         }
 
-        if (latestVersion && latestVersion > currentVersion) {
+        const updateAvailable = latestVersion
+            ? await window.api.invoke('is-newer-version', latestVersion, currentVersion)
+            : false;
+
+        if (updateAvailable) {
             currentVersionSpan.style.color = 'red';
             latestVersionSpan.style.color = 'var(--gsm-green-soft)';
 
             updateButton.classList.remove('hidden');
             updateButton.addEventListener('click', () => {
-                window.api.send('update-app', latestVersion);
+                window.api.send('update-app');
             });
             autoResizeWindow();
         }

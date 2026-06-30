@@ -63,6 +63,7 @@ const ALLOWED_INVOKE = new Set([
   'get-current-version',
   'get-repository-url',
   'get-latest-version',
+  'is-newer-version',
   'update-database',
   'github-sync-status',
   'github-sync-upload',

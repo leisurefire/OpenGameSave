@@ -25,8 +25,9 @@ const modalWindowPages = new WeakMap();
 const modalWindowData = new WeakMap();
 const modalWindowLoadPromises = new WeakMap();
 
-const appVersion = "0.6.22 D.VA edition";
+const appVersion = app.getVersion();
 const appRepositoryUrl = 'https://github.com/leisurefire/OpenGameSave';
+const appReleaseUrl = 'https://github.com/leisurefire/OpenGameSave/releases';
 const appRepositoryApiLatestReleaseUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 const supportedLanguages = new Set(['en_US', 'zh_CN']);
 const normalizeLanguage = (language) => supportedLanguages.has(language) ? language : 'en_US';
@@ -522,9 +523,9 @@ async function getLatestVersion(appName) {
             timeout: 15000 // 15 seconds
         });
 
-        const latestVersion = response.data?.tag_name || response.data?.name;
+        const latestVersion = normalizeAppVersion(response.data?.tag_name) || normalizeAppVersion(response.data?.name);
         if (latestVersion) {
-            return latestVersion.replace(/^v/i, '');
+            return latestVersion;
         } else {
             console.error(`Error: release version not found in GitHub response. Response: ${JSON.stringify(response.data)}`);
             return null;
@@ -535,12 +536,41 @@ async function getLatestVersion(appName) {
     }
 }
 
+function normalizeAppVersion(version) {
+    const match = String(version || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+    return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : null;
+}
+
+function compareAppVersions(left, right) {
+    const leftVersion = normalizeAppVersion(left);
+    const rightVersion = normalizeAppVersion(right);
+
+    if (!leftVersion || !rightVersion) {
+        return 0;
+    }
+
+    const leftParts = leftVersion.split('.').map(Number);
+    const rightParts = rightVersion.split('.').map(Number);
+
+    for (let index = 0; index < 3; index += 1) {
+        if (leftParts[index] !== rightParts[index]) {
+            return leftParts[index] - rightParts[index];
+        }
+    }
+
+    return 0;
+}
+
+function isNewerAppVersion(candidateVersion, currentVersion = appVersion) {
+    return compareAppVersions(candidateVersion, currentVersion) > 0;
+}
+
 
 async function checkAppUpdate() {
     try {
         const latestVersion = await getLatestVersion('OpenGameSave');
 
-        if (latestVersion > appVersion) {
+        if (latestVersion && isNewerAppVersion(latestVersion, appVersion)) {
             showNotification(
                 "app",
                 i18next.t('alert.update_available'),
@@ -624,21 +654,10 @@ function showBackgroundNotification(type, title, body) {
     }
 }
 
-function updateApp(latest_version) {
-    const updaterPath = './Updater.exe';
-    const s3Path = `OpenGameSave/OpenGameSave Setup ${latest_version}.exe`;
-    const args = ['--pid', process.pid, '--s3-path', s3Path, '--language', settings['language']];
-
-    try {
-        const updaterProcess = spawn(updaterPath, args, {
-            detached: true,
-            stdio: 'ignore',
-        });
-        updaterProcess.unref();
-
-    } catch (error) {
-        console.error('An error occurred while trying to spawn the updater process:', error);
-    }
+function updateApp() {
+    shell.openExternal(appReleaseUrl).catch((error) => {
+        console.error('An error occurred while opening the release page:', error);
+    });
 }
 
 function getGameDisplayName(gameObj) {
@@ -1347,6 +1366,7 @@ module.exports = {
     getCurrentVersion: () => appVersion,
     getRepositoryUrl: () => appRepositoryUrl,
     getLatestVersion,
+    isNewerAppVersion,
     checkAppUpdate,
     showBackgroundNotification,
     updateApp,

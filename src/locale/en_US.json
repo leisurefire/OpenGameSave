@@ -26,7 +26,7 @@
         "developers": "Developers & maintainers",
         "former_developers": "Former developers & maintainers",
         "load_failed": "Failed to load",
-        "update": "Update Now"
+        "update": "Download Update"
     },
     "main": {
         "title": "OpenGameSave",
@@ -173,7 +173,7 @@
         "github_sync_failed": "GitHub sync failed",
         "update_available": "Update Available",
         "new_version_found": "New Version Found: {{old_version}} ➜ {{new_version}}",
-        "new_version_found_text": "Would you like to update now?",
+        "new_version_found_text": "Open the GitHub Releases page in your browser and download the .exe installer to update?",
         "update_check_failed": "Update Check Failed",
         "update_check_failed_text": "Failed to check for software update. Navigate to 'Options' ➜ 'About' to check for updates manually.",
         "updating_database": "Updating database...",
