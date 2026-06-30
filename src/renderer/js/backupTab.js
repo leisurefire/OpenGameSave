@@ -1,11 +1,17 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, withTitleToSort, sortGamesForDisplay, appendRows } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
+let backupTabInitialized = false;
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializeBackupTab() {
+    if (backupTabInitialized) {
+        return;
+    }
+    backupTabInitialized = true;
+
     setupBackupTabButtons();
 
     const settings = await window.api.invoke('get-settings');
@@ -21,6 +27,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
         window.api.send('save-settings', 'firstLaunchFullScanTipShown', true);
     }
+}
+
+runWhenDomReady(() => {
+    initializeBackupTab().catch(console.error);
 });
 
 window.api.receive('update-backup-table', () => {
@@ -30,7 +40,6 @@ window.api.receive('update-backup-table', () => {
 window.api.receive('run-scan-full', async () => {
     const start = await operationStartCheck('scan-full');
     if (start) {
-        const iconMap = await window.api.invoke('get-icon-map');
         const fullScanGameData = await window.api.invoke('start-scan-full');
 
         if (fullScanGameData) {
@@ -45,8 +54,8 @@ window.api.receive('run-scan-full', async () => {
                 window.api.send('save-settings', 'uninstalledGames', uninstalledGameIds);
             }
 
-            normalScanGameData = await window.api.invoke('fetch-backup-table-data');
-            await populateBackupTable(normalScanGameData, iconMap);
+            const viewModel = await window.api.invoke('get-table-view-model', 'backup');
+            await populateBackupTable(viewModel);
             updateSelectedCountAndSize('backup');
             hideLoadingIndicator('backup');
             window.api.send('update-status', 'updating_backup', false);
@@ -60,9 +69,8 @@ export async function updateBackupTable(loader) {
         await showLoadingIndicator('backup');
     }
 
-    const iconMap = await window.api.invoke('get-icon-map');
-    const gameData = await window.api.invoke('fetch-backup-table-data');
-    await populateBackupTable(gameData, iconMap);
+    const viewModel = await window.api.invoke('get-table-view-model', 'backup');
+    await populateBackupTable(viewModel);
     updateSelectedCountAndSize('backup');
     updateUninstalledButtonVisibility('backup');
 
@@ -73,12 +81,12 @@ export async function updateBackupTable(loader) {
 }
 
 // Function to populate backup table
-async function populateBackupTable(data, iconMap) {
+async function populateBackupTable(viewModel) {
     const backupTable = document.querySelector('#backup');
     const tableBody = document.querySelector('#backup tbody');
     const selectAllCheckbox = backupTable.querySelector('#backup-checkbox-all-search');
 
-    const settings = await window.api.invoke('get-settings');
+    const { games: data, settings, iconMap, autoBackupState } = viewModel;
     const favoriteGamesWikiIds = settings.pinnedGames || [];
     const blockedGamesWikiIds = settings.blockedGames || [];
     const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
@@ -89,30 +97,23 @@ async function populateBackupTable(data, iconMap) {
     tableBody.innerHTML = '';
     backupTableDataMap.clear();
 
-    const gamesWithTitleToSort = await Promise.all(
-        data.map(async (game) => {
-            const titleToSort = settings.language === 'zh_CN'
-                ? game.zh_CN || game.title
-                : game.title;
-            return { ...game, titleToSort };
-        })
-    );
+    const gamesWithTitleToSort = data.map(game => withTitleToSort(game, settings));
 
     // Split and sort favorite and other games
-    const favoriteGames = await window.api.invoke(
-        'sort-games',
-        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
+    const favoriteGames = sortGamesForDisplay(
+        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
+        settings
     );
 
-    const otherGames = await window.api.invoke(
-        'sort-games',
-        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
+    const otherGames = sortGamesForDisplay(
+        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
+        settings
     );
 
     // Append rows to the table body
-    const autoBackupState = await window.api.invoke('get-auto-backup-state');
     const autoBackupSet = new Set(Object.keys(autoBackupState));
 
+    const rows = [];
     const appendRowsToTable = (games, isFavorite) => {
         games.forEach((game) => {
             const wikiId = game.wiki_page_id;
@@ -168,12 +169,13 @@ async function populateBackupTable(data, iconMap) {
                 setIcon(row, 'timer', true);
             }
 
-            tableBody.appendChild(row);
+            rows.push(row);
         });
     };
 
     appendRowsToTable(favoriteGames, true);
     appendRowsToTable(otherGames, false);
+    appendRows(tableBody, rows);
 
     setupSelectAllCheckbox('backup', selectAllCheckbox);
     applyTableFilters('backup');

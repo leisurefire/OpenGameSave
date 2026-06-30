@@ -29,6 +29,8 @@ module.exports = {
     output: {
         path: path.resolve(__dirname, 'dist/out/renderer'),
         filename: 'js/[name].bundle.js',
+        chunkFilename: 'js/[name].chunk.js',
+        globalObject: 'self',
     },
 
     module: {

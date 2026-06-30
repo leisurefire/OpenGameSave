@@ -66,6 +66,9 @@ let pendingGSMPath = null;
 let isQuitting = false;
 let gameDataInitializationPromise = null;
 let iconMapCache = null;
+let iconMapCachePromise = null;
+let startupIdleQueueStarted = false;
+const startupIdleTasks = [];
 
 function startGameDataInitialization() {
     if (!gameDataInitializationPromise) {
@@ -100,20 +103,69 @@ function reportBackgroundStartupError(error) {
     }
 }
 
-function getCachedIconMap() {
-    if (!iconMapCache) {
-        iconMapCache = {
-            'Steam': fs.readFileSync(path.join(__dirname, '../assets/steam.svg'), 'utf-8'),
-            'Ubisoft': fs.readFileSync(path.join(__dirname, '../assets/ubisoft.svg'), 'utf-8'),
-            'EA': fs.readFileSync(path.join(__dirname, '../assets/ea.svg'), 'utf-8'),
-            'Epic': fs.readFileSync(path.join(__dirname, '../assets/epic.svg'), 'utf-8'),
-            'GOG': fs.readFileSync(path.join(__dirname, '../assets/gog.svg'), 'utf-8'),
-            'Xbox': fs.readFileSync(path.join(__dirname, '../assets/xbox.svg'), 'utf-8'),
-            'Blizzard': fs.readFileSync(path.join(__dirname, '../assets/battlenet.svg'), 'utf-8'),
-        };
+async function getCachedIconMap() {
+    if (iconMapCache) {
+        return iconMapCache;
     }
 
-    return iconMapCache;
+    if (!iconMapCachePromise) {
+        const iconPaths = {
+            'Steam': path.join(__dirname, '../assets/steam.svg'),
+            'Ubisoft': path.join(__dirname, '../assets/ubisoft.svg'),
+            'EA': path.join(__dirname, '../assets/ea.svg'),
+            'Epic': path.join(__dirname, '../assets/epic.svg'),
+            'GOG': path.join(__dirname, '../assets/gog.svg'),
+            'Xbox': path.join(__dirname, '../assets/xbox.svg'),
+            'Blizzard': path.join(__dirname, '../assets/battlenet.svg'),
+        };
+
+        iconMapCachePromise = Promise.all(
+            Object.entries(iconPaths).map(async ([platform, iconPath]) => {
+                return [platform, await fs.promises.readFile(iconPath, 'utf-8')];
+            })
+        ).then((entries) => {
+            iconMapCache = Object.fromEntries(entries);
+            return iconMapCache;
+        }).catch((error) => {
+            iconMapCache = null;
+            iconMapCachePromise = null;
+            throw error;
+        });
+    }
+
+    return iconMapCachePromise;
+}
+
+function enqueueStartupIdleTask(name, task, delayMs = 0) {
+    startupIdleTasks.push({ name, task, delayMs });
+}
+
+function startStartupIdleQueue(initialDelayMs = 0) {
+    if (startupIdleQueueStarted) {
+        return;
+    }
+
+    startupIdleQueueStarted = true;
+
+    const runNext = () => {
+        const nextTask = startupIdleTasks.shift();
+        if (!nextTask) {
+            return;
+        }
+
+        setTimeout(async () => {
+            try {
+                await nextTask.task();
+            } catch (error) {
+                console.error(`Startup idle task failed: ${nextTask.name}`, error);
+                reportBackgroundStartupError(error);
+            } finally {
+                runNext();
+            }
+        }, nextTask.delayMs);
+    };
+
+    setTimeout(runNext, initialDelayMs);
 }
 
 if (!gotTheLock) {
@@ -343,21 +395,20 @@ app.whenReady().then(async () => {
             pendingGSMPath = null;
         }
 
-        createMenuWindow();
-        setTimeout(() => {
-            startGameDataInitialization()
-                .then(() => restoreAutoBackups())
-                .catch(reportBackgroundStartupError);
-        }, 500);
+        enqueueStartupIdleTask('preload-menu-window', () => createMenuWindow(), 150);
+        enqueueStartupIdleTask('initialize-game-data-and-auto-backup', async () => {
+            await startGameDataInitialization();
+            await restoreAutoBackups();
+        }, 350);
+
+        if (getSettings().autoAppUpdate) {
+            enqueueStartupIdleTask('check-app-update', () => checkAppUpdate(), 2500);
+        }
+
+        startStartupIdleQueue(250);
     });
 
     app.setAppUserModelId(i18next.t('main.title'));
-
-    if (getSettings().autoAppUpdate) {
-        setTimeout(() => {
-            checkAppUpdate().catch(reportBackgroundStartupError);
-        }, 3000);
-    }
 
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -474,7 +525,17 @@ ipcMain.handle('open-backup-dialog', async () => {
 
 
 ipcMain.handle('open-directory', async (event, directoryPath) => {
-    if (!directoryPath || !fsOriginal.existsSync(directoryPath) || !fsOriginal.lstatSync(directoryPath).isDirectory()) {
+    let isDirectory = false;
+    if (directoryPath) {
+        try {
+            const stats = await fsOriginal.promises.stat(directoryPath);
+            isDirectory = stats.isDirectory();
+        } catch (error) {
+            isDirectory = false;
+        }
+    }
+
+    if (!isDirectory) {
         return {
             success: false,
             message: i18next.t('alert.github_sync_repo_missing')
@@ -576,6 +637,40 @@ ipcMain.handle('get-icon-map', async () => {
     return getCachedIconMap();
 });
 
+ipcMain.handle('get-table-view-model', async (event, tableName, options = {}) => {
+    await ensureGameDataReady();
+
+    const wikiId = options?.wikiId || null;
+    const ignoreUninstalled = options?.ignoreUninstalled;
+    const settings = getSettings();
+    const autoBackupState = getAutoBackupState();
+    let games = [];
+    let errors = [];
+
+    if (tableName === 'backup') {
+        const result = await getGameDataFromDB(ignoreUninstalled, wikiId);
+        games = result.games;
+        errors = result.errors;
+    } else if (tableName === 'restore') {
+        const result = await getGameDataForRestore(wikiId);
+        games = result.games;
+        errors = result.errors;
+    } else {
+        throw new Error(`Unknown table view model: ${tableName}`);
+    }
+
+    if (errors.length > 0) {
+        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.backup_process_error_display'), errors);
+    }
+
+    return {
+        games,
+        settings,
+        autoBackupState,
+        iconMap: tableName === 'backup' ? await getCachedIconMap() : null
+    };
+});
+
 ipcMain.handle('get-local-save-data', async (event, wikiId) => {
     await ensureGameDataReady();
     const { games } = await getGameDataFromDB(false, wikiId);
@@ -657,7 +752,7 @@ ipcMain.handle('restore-game', async (event, gameObj, userActionForAll) => {
 ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
     try {
         const backupPath = path.join(getSettings().backupPath, wikiId.toString(), backupDate);
-        fsOriginal.rmSync(backupPath, { recursive: true, force: true });
+        await fsOriginal.promises.rm(backupPath, { recursive: true, force: true });
         return true;
 
     } catch (error) {
@@ -671,7 +766,9 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
     try {
         const configFilePath = path.join(getSettings().backupPath, wikiId.toString(), backupDate, 'backup_info.json');
 
-        if (!fsOriginal.existsSync(configFilePath)) {
+        try {
+            await fsOriginal.promises.access(configFilePath, fs.constants.F_OK);
+        } catch (error) {
             throw new Error('Backup config file not found');
         }
 
@@ -690,7 +787,15 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
 
 ipcMain.on('open-backup-folder', async (event, wikiId) => {
     const backupPath = path.join(getSettings().backupPath, wikiId.toString());
-    if (fsOriginal.existsSync(backupPath) && fsOriginal.readdirSync(backupPath).length > 0) {
+    let hasBackups = false;
+    try {
+        const entries = await fsOriginal.promises.readdir(backupPath);
+        hasBackups = entries.length > 0;
+    } catch (error) {
+        hasBackups = false;
+    }
+
+    if (hasBackups) {
         await shell.openPath(backupPath);
     } else {
         getMainWin().webContents.send('show-alert', 'warning', i18next.t('alert.no_backups_found'));

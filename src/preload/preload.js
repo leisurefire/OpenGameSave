@@ -49,6 +49,7 @@ const ALLOWED_INVOKE = new Set([
   'get-platform',
   'get-uuid',
   'get-icon-map',
+  'get-table-view-model',
   'get-local-save-data',
   'fetch-backup-table-data',
   'get-main-selected-wiki-ids',

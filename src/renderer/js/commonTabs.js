@@ -1,7 +1,47 @@
 import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog } from './dialog.js';
+import { createLoadingIndicator } from './loadingIndicator.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+export function runWhenDomReady(callback) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', callback, { once: true });
+    } else {
+        callback();
+    }
+}
+
+const displayCollators = new Map();
+
+function getDisplayCollator(language) {
+    const locale = language === 'zh_CN' ? 'zh-CN' : 'en-US';
+    if (!displayCollators.has(locale)) {
+        displayCollators.set(locale, new Intl.Collator(locale, {
+            numeric: true,
+            sensitivity: 'base'
+        }));
+    }
+    return displayCollators.get(locale);
+}
+
+export function withTitleToSort(game, settings) {
+    const titleToSort = settings.language === 'zh_CN'
+        ? game.zh_CN || game.title
+        : game.title;
+    return { ...game, titleToSort: titleToSort || '' };
+}
+
+export function sortGamesForDisplay(games, settings) {
+    const collator = getDisplayCollator(settings.language);
+    return [...games].sort((a, b) => collator.compare(a.titleToSort || '', b.titleToSort || ''));
+}
+
+export function appendRows(tableBody, rows) {
+    const fragment = document.createDocumentFragment();
+    rows.forEach(row => fragment.appendChild(row));
+    tableBody.appendChild(fragment);
+}
+
+runWhenDomReady(() => {
     updateTranslations(document);
     initializeTabs();
     setupSearchFilter('backup');
@@ -31,11 +71,13 @@ window.api.receive('auto-backup-stopped', (wikiId) => {
 });
 
 window.api.receive('auto-backup-performed', async (wikiId) => {
-    await addOrUpdateTableRow('backup', wikiId);
-    await addOrUpdateTableRow('restore', wikiId);
+    if (window.backupTableDataMap) {
+        await addOrUpdateTableRow('backup', wikiId);
+    }
+    if (window.restoreTableDataMap) {
+        await addOrUpdateTableRow('restore', wikiId);
+    }
 });
-
-import { createLoadingIndicator } from './loadingIndicator.js';
 
 export const spinner = `
     <svg aria-hidden="true" role="status" class="inline w-4 h-4 text-white animate-spin"
@@ -445,7 +487,7 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
                 titleToSort: r.querySelector('th[scope="row"]').textContent.trim()
             }));
 
-        const sorted = await window.api.invoke('sort-games', siblingRows);
+        const sorted = sortGamesForDisplay(siblingRows, settings);
         const targetIndex = sorted.findIndex(g => g.wikiId === wikiId.toString());
 
         if (isFavorite) {
@@ -642,6 +684,7 @@ async function addGameToFavorites(tabName, wikiId) {
     const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
 
     if (rowToMove) {
+        const settings = await window.api.invoke('get-settings');
         tableBody.removeChild(rowToMove);
         setIcon(rowToMove, 'favorite', true);
 
@@ -653,7 +696,7 @@ async function addGameToFavorites(tabName, wikiId) {
                 titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
             }));
 
-        const sortedFavoriteGames = await window.api.invoke('sort-games', favoriteGames);
+        const sortedFavoriteGames = sortGamesForDisplay(favoriteGames, settings);
         const targetIndex = sortedFavoriteGames.findIndex(game => game.wikiId === wikiId);
 
         if (targetIndex === 0) {
@@ -673,6 +716,7 @@ async function removeGameFromFavorites(tabName, wikiId) {
     const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
 
     if (rowToMove) {
+        const settings = await window.api.invoke('get-settings');
         setIcon(rowToMove, 'favorite', false);
         tableBody.removeChild(rowToMove);
 
@@ -684,7 +728,7 @@ async function removeGameFromFavorites(tabName, wikiId) {
                 titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
             }));
 
-        const sortedNonFavoriteGames = await window.api.invoke('sort-games', nonFavoriteGames);
+        const sortedNonFavoriteGames = sortGamesForDisplay(nonFavoriteGames, settings);
         const targetIndex = sortedNonFavoriteGames.findIndex(game => game.wikiId === wikiId);
 
         const lastFavoriteRow = Array.from(tableBody.querySelectorAll('tr'))
@@ -757,6 +801,11 @@ export async function updateSelectedCountAndSize(tabName) {
 
 // Function to setup "Select All" checkbox functionality
 export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
+    if (!selectAllCheckbox || selectAllCheckbox.dataset.listenerAdded) {
+        return;
+    }
+    selectAllCheckbox.dataset.listenerAdded = 'true';
+
     const tableBody = document.querySelector(`#${tabName} tbody`);
 
     // Handle the "Select All" checkbox change

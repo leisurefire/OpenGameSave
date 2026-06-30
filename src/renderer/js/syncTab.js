@@ -1,4 +1,4 @@
-import { formatSize } from './commonTabs.js';
+import { formatSize, runWhenDomReady } from './commonTabs.js';
 import { operationStartCheck, showAlert, updateTranslations } from './utility.js';
 
 async function loadSyncSettings() {
@@ -140,7 +140,7 @@ function setupGitHubSyncTab() {
     refreshGitHubSyncStatus().catch(console.error);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+runWhenDomReady(() => {
     setupGitHubSyncTab();
     updateTranslations(document);
 });

@@ -1,18 +1,28 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog, showRestoreConflictDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, withTitleToSort, sortGamesForDisplay, appendRows } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
+let restoreTabInitialized = false;
 
 window.api.receive('restore-conflict-prompt', async (requestId, prompt) => {
     const result = await showRestoreConflictDialog(prompt);
     window.api.send('restore-conflict-response', requestId, result);
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeRestoreTab() {
+    if (restoreTabInitialized) {
+        return;
+    }
+    restoreTabInitialized = true;
+
     setupRestoreButton();
     updateRestoreTable(true);
+}
+
+runWhenDomReady(() => {
+    initializeRestoreTab();
 });
 
 window.api.receive('update-restore-table', () => {
@@ -25,8 +35,8 @@ async function updateRestoreTable(loader) {
         await showLoadingIndicator('restore');
     }
 
-    const gameData = await window.api.invoke('fetch-restore-table-data');
-    await populateRestoreTable(gameData);
+    const viewModel = await window.api.invoke('get-table-view-model', 'restore');
+    await populateRestoreTable(viewModel);
     updateSelectedCountAndSize('restore');
     updateUninstalledButtonVisibility('restore');
 
@@ -38,12 +48,12 @@ async function updateRestoreTable(loader) {
 window.updateRestoreTable = updateRestoreTable;
 
 // Function to populate restore table
-async function populateRestoreTable(data) {
+async function populateRestoreTable(viewModel) {
     const restoreTable = document.querySelector('#restore');
     const tableBody = document.querySelector('#restore tbody');
     const selectAllCheckbox = restoreTable.querySelector('#restore-checkbox-all-search');
 
-    const settings = await window.api.invoke('get-settings');
+    const { games: data, settings, autoBackupState } = viewModel;
     const favoriteGamesWikiIds = settings.pinnedGames || [];
     const blockedGamesWikiIds = settings.blockedGames || [];
     const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
@@ -52,30 +62,23 @@ async function populateRestoreTable(data) {
     tableBody.innerHTML = '';
     restoreTableDataMap.clear();
 
-    const gamesWithTitleToSort = await Promise.all(
-        data.map(async (game) => {
-            const titleToSort = settings.language === 'zh_CN'
-                ? game.zh_CN || game.title
-                : game.title;
-            return { ...game, titleToSort };
-        })
-    );
+    const gamesWithTitleToSort = data.map(game => withTitleToSort(game, settings));
 
     // Split and sort favorite and other games
-    const favoriteGames = await window.api.invoke(
-        'sort-games',
-        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
+    const favoriteGames = sortGamesForDisplay(
+        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
+        settings
     );
 
-    const otherGames = await window.api.invoke(
-        'sort-games',
-        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString()))
+    const otherGames = sortGamesForDisplay(
+        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
+        settings
     );
 
     // Append rows to the table body
-    const autoBackupState = await window.api.invoke('get-auto-backup-state');
     const autoBackupSet = new Set(Object.keys(autoBackupState));
 
+    const rows = [];
     const appendRowsToTable = (games, isFavorite) => {
         games.forEach((game) => {
             const wikiId = game.wiki_page_id;
@@ -129,12 +132,13 @@ async function populateRestoreTable(data) {
                 setIcon(row, 'timer', true);
             }
 
-            tableBody.appendChild(row);
+            rows.push(row);
         });
     };
 
     appendRowsToTable(favoriteGames, true);
     appendRowsToTable(otherGames, false);
+    appendRows(tableBody, rows);
 
     setupSelectAllCheckbox('restore', selectAllCheckbox);
     applyTableFilters('restore');
