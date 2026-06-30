@@ -343,8 +343,8 @@ async function renderManageBackupsModal(root, initData) {
         { label: labels.backupSize },
         { label: labels.action }
     ]);
-    manageTable.appendRows(rowsHtml);
     root.querySelector('#manage-backups-table-container').appendChild(manageTable);
+    manageTable.appendRows(rowsHtml);
 
     const refreshMainTables = () => {
         window.api.send('update-backup-table');
@@ -625,8 +625,8 @@ async function renderLocalSaveModal(root, initData) {
         { label: labels.path },
         { label: null }
     ]);
-    localSaveTable.appendRows(rowsHtml);
     root.querySelector('#local-save-table-container').appendChild(localSaveTable);
+    localSaveTable.appendRows(rowsHtml);
 
     root.querySelectorAll('.open-local-save-path-btn').forEach(button => {
         button.onclick = () => {

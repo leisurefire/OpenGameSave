@@ -1,6 +1,7 @@
 const { app, dialog } = require('electron');
 
 const { exec } = require('child_process');
+const { Worker } = require('worker_threads');
 const fs = require('fs');
 const fsOriginal = require('original-fs');
 const os = require('os');
@@ -24,6 +25,62 @@ const { getGameData, getAllUserIds } = require('./gameData');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 const execPromise = util.promisify(exec);
+
+function createBackupWorkerContext() {
+    const currentGameData = getGameData();
+
+    return {
+        settings: getSettings(),
+        gameData: {
+            steamPath: currentGameData.steamPath,
+            ubisoftPath: currentGameData.ubisoftPath,
+            currentSteamUserId3: currentGameData.currentSteamUserId3,
+            currentUbisoftUserId: currentGameData.currentUbisoftUserId
+        },
+        allUserIds: getAllUserIds(),
+        dbPath: path.join(app.getPath("userData"), "OGS Database", "database.db"),
+        installedDbPath: path.join(process.cwd(), 'database', 'database.db'),
+        placeholderMapping: placeholder_mapping,
+        osKeyMap,
+        labels: {
+            noBackups: i18next.t('main.no_backups'),
+            missingDatabase: i18next.t('alert.missing_database_file_message')
+        }
+    };
+}
+
+function runBackupWorkerTask(task, payload = {}, onMessage = null) {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, 'backupWorker.js'));
+
+        worker.once('error', reject);
+        worker.once('exit', (code) => {
+            if (code !== 0) {
+                reject(new Error(`Backup worker stopped with exit code ${code}`));
+            }
+        });
+
+        worker.on('message', (message) => {
+            if (message.type === 'done') {
+                worker.terminate().catch(() => { });
+                resolve(message.result);
+            } else if (message.type === 'error') {
+                worker.terminate().catch(() => { });
+                const error = new Error(message.error?.message || 'Backup worker failed');
+                error.stack = message.error?.stack || error.stack;
+                reject(error);
+            } else if (typeof onMessage === 'function') {
+                onMessage(message);
+            }
+        });
+
+        worker.postMessage({
+            task,
+            payload,
+            context: createBackupWorkerContext()
+        });
+    });
+}
 
 
 
@@ -999,9 +1056,76 @@ async function updateDatabase() {
     }
 }
 
+async function getGameDataFromDBWorkerBacked(ignoreUninstalled = false, wikiId = null) {
+    try {
+        const result = await runBackupWorkerTask('getGameDataFromDB', { ignoreUninstalled, wikiId });
+        if (Array.isArray(result.remainingUninstalledWikiIds)) {
+            const currentUninstalledWikiIds = getSettings().uninstalledGames || [];
+            if (JSON.stringify([...result.remainingUninstalledWikiIds].sort()) !== JSON.stringify([...currentUninstalledWikiIds].sort())) {
+                saveSettings('uninstalledGames', result.remainingUninstalledWikiIds);
+            }
+        }
+        return { games: result.games || [], errors: result.errors || [] };
+    } catch (error) {
+        console.error(`Backup worker scan failed, falling back to main process: ${error.stack || error.message}`);
+        return await getGameDataFromDB(ignoreUninstalled, wikiId);
+    }
+}
+
+async function getAllGameDataFromDBWorkerBacked() {
+    if (getStatus().scanning_full) {
+        return;
+    }
+
+    const progressId = 'scan-full';
+    const progressTitle = i18next.t('alert.scanning_full');
+    const mainWin = getMainWin();
+
+    mainWin.webContents.send('update-progress', progressId, progressTitle, 'start');
+    updateStatus('scanning_full', true);
+    let handedOffToFallback = false;
+
+    try {
+        const result = await runBackupWorkerTask('getAllGameDataFromDB', {}, (message) => {
+            if (message.type === 'progress') {
+                mainWin.webContents.send('update-progress', progressId, progressTitle, message.value);
+            }
+        });
+
+        mainWin.webContents.send('show-alert', 'success', i18next.t('alert.scan_full_complete'));
+        showBackgroundNotification(
+            'info',
+            i18next.t('alert.scan_full_complete'),
+            i18next.t('alert.scan_full_background_notification')
+        );
+
+        return { games: result.games || [], errors: result.errors || [] };
+    } catch (error) {
+        console.error(`Backup worker full scan failed, falling back to main process: ${error.stack || error.message}`);
+        handedOffToFallback = true;
+        updateStatus('scanning_full', false);
+        mainWin.webContents.send('update-progress', progressId, progressTitle, 'end');
+        return await getAllGameDataFromDB();
+    } finally {
+        if (!handedOffToFallback) {
+            updateStatus('scanning_full', false);
+            mainWin.webContents.send('update-progress', progressId, progressTitle, 'end');
+        }
+    }
+}
+
+async function backupGameWorkerBacked(gameObj) {
+    try {
+        return await runBackupWorkerTask('backupGame', { gameObj });
+    } catch (error) {
+        console.error(`Backup worker backup failed, falling back to main process: ${error.stack || error.message}`);
+        return await backupGame(gameObj);
+    }
+}
+
 module.exports = {
-    getGameDataFromDB,
-    getAllGameDataFromDB,
-    backupGame,
+    getGameDataFromDB: getGameDataFromDBWorkerBacked,
+    getAllGameDataFromDB: getAllGameDataFromDBWorkerBacked,
+    backupGame: backupGameWorkerBacked,
     updateDatabase
 };

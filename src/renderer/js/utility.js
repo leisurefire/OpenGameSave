@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { getFilteredVirtualSelectedIds, getVirtualState } from './virtualTable.js';
 
 window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
@@ -26,10 +27,12 @@ window.api.receive('menu-hidden', () => {
 
 window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
     const table = document.querySelector(`#${tableId}`);
-    const selectedRows = table ? table.querySelectorAll('.row-checkbox:checked') : [];
-    const wikiIds = Array.from(selectedRows)
-        .map(checkbox => checkbox.closest('tr')?.getAttribute('data-wiki-id')?.trim())
-        .filter(Boolean);
+    const tableBody = table?.querySelector('tbody');
+    const wikiIds = getVirtualState(tableBody)
+        ? getFilteredVirtualSelectedIds(tableBody)
+        : Array.from(table ? table.querySelectorAll('.row-checkbox:checked') : [])
+            .map(checkbox => checkbox.closest('tr')?.getAttribute('data-wiki-id')?.trim())
+            .filter(Boolean);
     window.api.send('selected-wiki-ids-response', requestId, wikiIds);
 });
 

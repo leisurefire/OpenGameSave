@@ -1,4 +1,5 @@
 import ActionButton from './ActionButton.js';
+import { appendRows as appendVirtualRows, disableVirtualRows } from '../virtualTable.js';
 
 /**
  * <data-table> Web Component
@@ -29,6 +30,7 @@ class DataTable extends HTMLElement {
 
     disconnectedCallback() {
         this._observer?.disconnect();
+        disableVirtualRows(this);
     }
 
     /** @param {{ label: string, align?: string, widget?: boolean }[]} columns */
@@ -46,13 +48,18 @@ class DataTable extends HTMLElement {
         const temp = document.createElement('tbody');
         temp.innerHTML = trHtml;
         const aligns = this._computeAligns();
+        const rows = Array.from(temp.querySelectorAll('tr'));
 
         // Disconnect observer while appending to avoid double-processing
         this._observer?.disconnect();
 
-        Array.from(temp.querySelectorAll('tr')).forEach(tr => {
+        rows.forEach(tr => {
             this._processRow(tr, aligns);
-            this.appendChild(tr);
+        });
+
+        appendVirtualRows(this, rows, {
+            scrollContainer: this.closest('.modal-window-content') || this.shadowRoot.querySelector('.dt-body'),
+            rowHeight: 49
         });
 
         // Reconnect observer for future dynamic additions
@@ -60,7 +67,8 @@ class DataTable extends HTMLElement {
     }
 
     clearRows() {
-        Array.from(this.querySelectorAll('tr.dt-row')).forEach(tr => tr.remove());
+        disableVirtualRows(this);
+        this.replaceChildren();
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
@@ -80,6 +88,10 @@ class DataTable extends HTMLElement {
     }
 
     _processRow(tr, aligns) {
+        if (tr.dataset.virtualSpacer) {
+            return;
+        }
+
         tr.classList.add('dt-row');
         tr.querySelectorAll('td').forEach((td, i) => {
             td.classList.add('dt-cell');

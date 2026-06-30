@@ -1,6 +1,19 @@
 import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog } from './dialog.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
+import {
+    appendRows as appendVirtualRows,
+    applyVirtualFilter,
+    findVirtualRow,
+    getFilteredVirtualRows,
+    getFilteredVirtualSelectedIds,
+    getRowId,
+    getVirtualState,
+    removeVirtualRow,
+    setAllVirtualSelected,
+    sortVirtualRows,
+    updateVirtualSelection
+} from './virtualTable.js';
 
 export function runWhenDomReady(callback) {
     if (document.readyState === 'loading') {
@@ -36,9 +49,7 @@ export function sortGamesForDisplay(games, settings) {
 }
 
 export function appendRows(tableBody, rows) {
-    const fragment = document.createDocumentFragment();
-    rows.forEach(row => fragment.appendChild(row));
-    tableBody.appendChild(fragment);
+    appendVirtualRows(tableBody, rows);
 }
 
 runWhenDomReady(() => {
@@ -57,17 +68,13 @@ window.api.receive('apply-language', () => {
 
 // Auto backup IPC receivers
 window.api.receive('auto-backup-started', (wikiId) => {
-    const backupRow = document.querySelector(`#backup tbody tr[data-wiki-id="${wikiId}"]`);
-    const restoreRow = document.querySelector(`#restore tbody tr[data-wiki-id="${wikiId}"]`);
-    if (backupRow) setIcon(backupRow, 'timer', true);
-    if (restoreRow) setIcon(restoreRow, 'timer', true);
+    setTableRowIcon('backup', wikiId, 'timer', true);
+    setTableRowIcon('restore', wikiId, 'timer', true);
 });
 
 window.api.receive('auto-backup-stopped', (wikiId) => {
-    const backupRow = document.querySelector(`#backup tbody tr[data-wiki-id="${wikiId}"]`);
-    const restoreRow = document.querySelector(`#restore tbody tr[data-wiki-id="${wikiId}"]`);
-    if (backupRow) setIcon(backupRow, 'timer', false);
-    if (restoreRow) setIcon(restoreRow, 'timer', false);
+    setTableRowIcon('backup', wikiId, 'timer', false);
+    setTableRowIcon('restore', wikiId, 'timer', false);
 });
 
 window.api.receive('auto-backup-performed', async (wikiId) => {
@@ -220,7 +227,7 @@ function setupSearchFilter(tabName) {
 
         const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
 
-        rows.forEach(row => {
+        const rowMatchesFilters = (row) => {
             // Match against both English and Chinese names, regardless of the
             // displayed language. Fall back to the visible cell text if the
             // game data isn't available in the data map.
@@ -242,8 +249,17 @@ function setupSearchFilter(tabName) {
             const matchesFavorite = !favoritesOnly || isFavorite;
             const matchesBlocked = blockedOnly ? isBlocked : !isBlocked;
             const matchesUninstalled = !uninstalledOnly || isUninstalled;
-            row.style.display = matchesSearch && matchesFavorite && matchesBlocked && matchesUninstalled ? '' : 'none';
-        });
+            return matchesSearch && matchesFavorite && matchesBlocked && matchesUninstalled;
+        };
+
+        const virtualState = getVirtualState(tableBody);
+        if (virtualState) {
+            applyVirtualFilter(tableBody, rowMatchesFilters);
+        } else {
+            rows.forEach(row => {
+                row.style.display = rowMatchesFilters(row) ? '' : 'none';
+            });
+        }
 
         if (selectAllCheckbox) {
             updateSelectAllCheckbox(selectAllCheckbox, tableBody);
@@ -319,6 +335,38 @@ export function setIcon(row, iconName, show) {
     if (iconSpan) {
         iconSpan.classList.toggle('hidden', !show);
     }
+}
+
+function getTableRow(tabName, wikiId) {
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    return tableBody?.querySelector(`tr[data-wiki-id="${wikiId}"]`) || findVirtualRow(tableBody, wikiId);
+}
+
+function setTableRowIcon(tabName, wikiId, iconName, show) {
+    const row = getTableRow(tabName, wikiId);
+    if (row) {
+        setIcon(row, iconName, show);
+    }
+}
+
+function isFavoriteRow(row) {
+    return !row.querySelector('span[data-icon="favorite"].hidden');
+}
+
+function sortRowsForTable(rows, settings) {
+    const sortRows = (rowsToSort) => sortGamesForDisplay(
+        rowsToSort.map(row => ({
+            row,
+            wikiId: getRowId(row),
+            titleToSort: row.querySelector('th[scope="row"]')?.textContent.trim() || ''
+        })),
+        settings
+    ).map(item => item.row);
+
+    return [
+        ...sortRows(rows.filter(isFavoriteRow)),
+        ...sortRows(rows.filter(row => !isFavoriteRow(row)))
+    ];
 }
 
 export function getPlatformIcon(platform, iconMap) {
@@ -400,6 +448,12 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
 }
 
 export async function addOrUpdateTableRow(tabName, wikiId) {
+    const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    if (!dataMap || !tableBody) {
+        return;
+    }
+
     let gameData;
     if (tabName === 'backup') {
         const games = await window.api.invoke('fetch-backup-table-data', null, wikiId);
@@ -410,10 +464,9 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
     }
     if (!gameData) return;
 
-    const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     dataMap.set(wikiId, gameData);
 
-    const existingRow = document.querySelector(`#${tabName} tbody tr[data-wiki-id="${wikiId}"]`);
+    const existingRow = getTableRow(tabName, wikiId);
 
     if (existingRow) {
         // Update existing row cells
@@ -475,10 +528,17 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
         }
 
         // Insert row in sorted position
-        const tableBody = document.querySelector(`#${tabName} tbody`);
+        if (getVirtualState(tableBody)) {
+            getVirtualState(tableBody).allRows.push(row);
+            sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings));
+            applyTableFilters(tabName);
+            return;
+        }
+
         const siblingRows = Array.from(tableBody.querySelectorAll('tr'))
+            .filter(r => !r.dataset.virtualSpacer)
             .filter(r => {
-                const favorite = !r.querySelector('span[data-icon="favorite"].hidden');
+                const favorite = isFavoriteRow(r);
                 return isFavorite ? favorite : !favorite;
             })
             .concat({ getAttribute: () => wikiId.toString(), querySelector: () => ({ textContent: gameTitle }) })
@@ -502,8 +562,9 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
             // Insert among non-favorite rows
             if (targetIndex === 0) {
                 const lastFavoriteRow = Array.from(tableBody.querySelectorAll('tr'))
+                    .filter(r => !r.dataset.virtualSpacer)
                     .reverse()
-                    .find(r => !r.querySelector('span[data-icon="favorite"].hidden'));
+                    .find(isFavoriteRow);
                 if (lastFavoriteRow) {
                     tableBody.insertBefore(row, lastFavoriteRow.nextSibling);
                 } else {
@@ -521,9 +582,12 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
 
 // Helper function to remove a game row from a tab's table and clean up its data map
 export function removeTableRow(tabName, wikiId) {
-    const row = document.querySelector(`#${tabName} tbody tr[data-wiki-id="${wikiId}"]`);
-    if (row) {
-        row.remove();
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    if (!removeVirtualRow(tableBody, wikiId)) {
+        const row = tableBody?.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+        if (row) {
+            row.remove();
+        }
     }
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     dataMap.delete(wikiId);
@@ -681,15 +745,22 @@ function setDropDownAction() {
 
 async function addGameToFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
-    const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+    const rowToMove = getTableRow(tabName, wikiId);
 
     if (rowToMove) {
         const settings = await window.api.invoke('get-settings');
-        tableBody.removeChild(rowToMove);
         setIcon(rowToMove, 'favorite', true);
 
+        if (sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings))) {
+            document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
+            return;
+        }
+
+        tableBody.removeChild(rowToMove);
+
         const favoriteGames = Array.from(tableBody.querySelectorAll('tr'))
-            .filter(row => !row.querySelector('span[data-icon="favorite"].hidden'))
+            .filter(row => !row.dataset.virtualSpacer)
+            .filter(isFavoriteRow)
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
@@ -713,15 +784,23 @@ async function addGameToFavorites(tabName, wikiId) {
 
 async function removeGameFromFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
-    const rowToMove = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+    const rowToMove = getTableRow(tabName, wikiId);
 
     if (rowToMove) {
         const settings = await window.api.invoke('get-settings');
         setIcon(rowToMove, 'favorite', false);
+
+        if (sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings))) {
+            document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
+            updateSelectedCountAndSize(tabName);
+            return;
+        }
+
         tableBody.removeChild(rowToMove);
 
         const nonFavoriteGames = Array.from(tableBody.querySelectorAll('tr'))
-            .filter(row => row.querySelector('span[data-icon="favorite"].hidden'))
+            .filter(row => !row.dataset.virtualSpacer)
+            .filter(row => !isFavoriteRow(row))
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
@@ -732,8 +811,9 @@ async function removeGameFromFavorites(tabName, wikiId) {
         const targetIndex = sortedNonFavoriteGames.findIndex(game => game.wikiId === wikiId);
 
         const lastFavoriteRow = Array.from(tableBody.querySelectorAll('tr'))
+            .filter(row => !row.dataset.virtualSpacer)
             .reverse()
-            .find(row => !row.querySelector('span[data-icon="favorite"].hidden'));
+            .find(isFavoriteRow);
 
         if (targetIndex === 0) {
             if (lastFavoriteRow) {
@@ -753,8 +833,7 @@ async function removeGameFromFavorites(tabName, wikiId) {
 }
 
 function updateGameBlockedState(tabName, wikiId, blocked) {
-    const tableBody = document.querySelector(`#${tabName} tbody`);
-    const row = tableBody?.querySelector(`tr[data-wiki-id="${wikiId}"]`);
+    const row = getTableRow(tabName, wikiId);
 
     if (row) {
         row.dataset.blocked = blocked.toString();
@@ -770,18 +849,17 @@ export async function updateSelectedCountAndSize(tabName) {
     const totalSizeWidget = document.querySelector(`#${tabName}-selected-size`);
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const selectedWikiIds = getSelectedWikiIds(tabName);
-    const visibleRows = Array.from(tableBody.querySelectorAll('tr'))
-        .filter(row => row.style.display !== 'none');
+    const visibleRows = getFilteredVirtualRows(tableBody);
     const total_games_count = visibleRows.length;
 
     let total_size = 0;
     let total_selected = 0;
 
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
+    const visibleIds = new Set(visibleRows.map(row => getRowId(row)).filter(Boolean));
 
     selectedWikiIds.forEach(wikiId => {
-        const row = tableBody.querySelector(`tr[data-wiki-id="${wikiId}"]`);
-        if (!row || row.style.display === 'none') return;
+        if (!visibleIds.has(wikiId)) return;
 
         const gameData = dataMap.get(wikiId);
         if (gameData) {
@@ -811,11 +889,13 @@ export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
     // Handle the "Select All" checkbox change
     selectAllCheckbox.addEventListener('change', function () {
         const isChecked = this.checked;
-        const rowCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
-            .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
-        rowCheckboxes.forEach(checkbox => {
-            checkbox.checked = isChecked;
-        });
+        if (!setAllVirtualSelected(tableBody, isChecked)) {
+            const rowCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
+                .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
+            rowCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        }
 
         updateSelectAllCheckbox(selectAllCheckbox, tableBody);
         updateSelectedCountAndSize(tabName);
@@ -824,6 +904,7 @@ export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
     // Handle individual row checkbox changes
     tableBody.addEventListener('change', function (event) {
         if (event.target.classList.contains('row-checkbox')) {
+            updateVirtualSelection(tableBody, event.target);
             updateSelectAllCheckbox(selectAllCheckbox, tableBody);
             updateSelectedCountAndSize(tabName);
         }
@@ -832,16 +913,34 @@ export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
 
 // Function to update the "Select All" checkbox state
 function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
-    const rowCheckboxes = Array.from(tableContainer.querySelectorAll('.row-checkbox'))
-        .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
-    const allChecked = rowCheckboxes.length > 0 && rowCheckboxes.every(checkbox => checkbox.checked);
-    const anyChecked = rowCheckboxes.some(checkbox => checkbox.checked);
+    const virtualState = getVirtualState(tableContainer);
+    let totalRows;
+    let selectedRows;
+
+    if (virtualState) {
+        totalRows = virtualState.filteredRows.length;
+        selectedRows = getFilteredVirtualSelectedIds(tableContainer).length;
+    } else {
+        const rowCheckboxes = Array.from(tableContainer.querySelectorAll('.row-checkbox'))
+            .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
+        totalRows = rowCheckboxes.length;
+        selectedRows = rowCheckboxes.filter(checkbox => checkbox.checked).length;
+    }
+
+    const allChecked = totalRows > 0 && selectedRows === totalRows;
+    const anyChecked = selectedRows > 0;
     selectAllCheckbox.checked = allChecked;
     selectAllCheckbox.indeterminate = !allChecked && anyChecked;
 }
 
 export function getSelectedWikiIds(tabName) {
     const table = document.querySelector(`#${tabName}`);
+    const tableBody = table.querySelector('tbody');
+    const virtualSelectedIds = getFilteredVirtualSelectedIds(tableBody);
+    if (virtualSelectedIds.length > 0 || getVirtualState(tableBody)) {
+        return virtualSelectedIds;
+    }
+
     const selectedRows = table.querySelectorAll('.row-checkbox:checked');
     return Array.from(selectedRows)
         .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none')

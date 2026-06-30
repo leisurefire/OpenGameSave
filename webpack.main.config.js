@@ -10,7 +10,10 @@ module.exports = {
     mode: isProduction ? 'production' : 'development',
     target: 'electron-main',
     devtool: isProduction ? false : 'source-map',
-    entry: { main: './src/main/main.js' },
+    entry: {
+        main: './src/main/main.js',
+        backupWorker: './src/main/backupWorker.js'
+    },
     externals: [nodeExternals()],
     output: {
         path: path.resolve(__dirname, 'dist/out/main'),
