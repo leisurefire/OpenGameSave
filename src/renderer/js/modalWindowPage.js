@@ -353,24 +353,26 @@ async function renderManageBackupsModal(root, initData) {
 
     document.getElementById('modal-open-backup-folder').addEventListener('click', () => window.api.send('open-backup-folder', wikiId));
 
-    root.querySelectorAll('.delete-backup-btn').forEach(button => {
-        button.onclick = async () => {
+    manageTable.addEventListener('click', async (event) => {
+        const button = event.target.closest('.delete-backup-btn, .permanent-backup-btn, .rename-backup-btn, .confirm-rename-btn, .restore-backup-btn');
+        if (!button || !manageTable.contains(button)) {
+            return;
+        }
+
+        if (button.classList.contains('delete-backup-btn')) {
             const backupDate = button.dataset.backupDate;
             const confirmMessage = (await window.i18n.translate('alert.confirm_delete_backup_message')).replace('{{backup_date}}', formatBackupDate(backupDate));
             const confirmed = await requestConfirmModal(await window.i18n.translate('alert.confirm_delete_backup_title'), confirmMessage);
             if (!confirmed) return;
             const success = await window.api.invoke('delete-backup', wikiId, backupDate);
             if (success) {
-                button.closest('tr')?.remove();
-                const countElement = root.querySelector('.backup-count-value');
-                countElement.textContent = Math.max(0, parseInt(countElement.textContent, 10) - 1);
                 refreshMainTables();
+                await renderManageBackupsModal(root, initData);
             }
-        };
-    });
+            return;
+        }
 
-    root.querySelectorAll('.permanent-backup-btn').forEach(button => {
-        button.onclick = async () => {
+        if (button.classList.contains('permanent-backup-btn')) {
             const backupDate = button.dataset.backupDate;
             const newIsPermanent = button.dataset.isPermanent !== 'true';
             const success = await window.api.invoke('update-backup-info', wikiId, backupDate, 'is_permanent', newIsPermanent);
@@ -378,22 +380,20 @@ async function renderManageBackupsModal(root, initData) {
                 refreshMainTables();
                 await renderManageBackupsModal(root, initData);
             }
-        };
-    });
+            return;
+        }
 
-    root.querySelectorAll('.rename-backup-btn').forEach(button => {
-        button.onclick = () => {
+        if (button.classList.contains('rename-backup-btn')) {
             const row = button.closest('tr');
             row.querySelector('.rename-mode').classList.replace('hidden', 'flex');
             row.querySelector('.backup-date-display').classList.add('hidden');
             const input = row.querySelector('.backup-name-input');
             input.value = row.dataset.customName || '';
             input.focus();
-        };
-    });
+            return;
+        }
 
-    root.querySelectorAll('.confirm-rename-btn').forEach(button => {
-        button.onclick = async () => {
+        if (button.classList.contains('confirm-rename-btn')) {
             const row = button.closest('tr');
             const backupDate = row.dataset.backupDate;
             const customName = row.querySelector('.backup-name-input').value.trim();
@@ -402,11 +402,10 @@ async function renderManageBackupsModal(root, initData) {
                 refreshMainTables();
                 await renderManageBackupsModal(root, initData);
             }
-        };
-    });
+            return;
+        }
 
-    root.querySelectorAll('.restore-backup-btn').forEach(button => {
-        button.onclick = async () => {
+        if (button.classList.contains('restore-backup-btn')) {
             const backupDate = button.dataset.backupDate;
             const start = await operationStartCheck('restore');
             if (!start) return;
@@ -419,10 +418,8 @@ async function renderManageBackupsModal(root, initData) {
             closeModalWindow();
             if (error) showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
             else showMainAlert('success', await window.i18n.translate('main.restore_complete'));
-        };
+        }
     });
-
-
 }
 
 async function renderAutoBackupModal(root, initData) {
@@ -628,11 +625,14 @@ async function renderLocalSaveModal(root, initData) {
     root.querySelector('#local-save-table-container').appendChild(localSaveTable);
     localSaveTable.appendRows(rowsHtml);
 
-    root.querySelectorAll('.open-local-save-path-btn').forEach(button => {
-        button.onclick = () => {
-            const pathObj = resolvedPaths[Number(button.dataset.index)];
-            if (pathObj) window.api.send('browse-local-save', [pathObj]);
-        };
+    localSaveTable.addEventListener('click', (event) => {
+        const button = event.target.closest('.open-local-save-path-btn');
+        if (!button || !localSaveTable.contains(button)) {
+            return;
+        }
+
+        const pathObj = resolvedPaths[Number(button.dataset.index)];
+        if (pathObj) window.api.send('browse-local-save', [pathObj]);
     });
 
     document.getElementById('modal-delete-local-save').addEventListener('click', async () => {
