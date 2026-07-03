@@ -2,141 +2,28 @@ const { BrowserWindow, ipcMain } = require('electron');
 
 const { randomUUID } = require('crypto');
 
-const { exec } = require('child_process');
 const fsOriginal = require('original-fs');
 const path = require('path');
-const util = require('util');
 
-const fse = require('fs-extra');
 const i18next = require('i18next');
-const { format, parse } = require('date-fns');
+const { format } = require('date-fns');
 
-const { getGameData, getLatestModificationTime } = require('./gameData');
+const { getGameData } = require('./gameData');
 const {
-    getGameDisplayName, calculateDirectorySize, ensureWritable, fsOriginalCopyFolder,
-    placeholder_mapping, getSettings
+    getGameDisplayName, placeholder_mapping, getSettings
 } = require('./global');
+const { runWorkerTask } = require('./backup');
 
-const execPromise = util.promisify(exec);
-
-
-// A sample restore game object: {
-//     "wiki_page_id": "97395",
-//     "latest_backup": "2024/09/08 15:23",
-//     "title": "Control",
-//     "zh_CN": "控制",
-//     "backup_size": 132168,
-//     "backups": [
-//         {
-//             "date": "2024-09-08_15-23",
-//             "title": "Control",
-//             "zh_CN": "控制",
-//             "backup_size": 132168,
-//             "backup_paths": [
-//                 {
-//                     "folder_name": "path1",
-//                     "template": "{{p|steam}}\\userdata\\477235894\\870780\\remote",
-//                     "type": "folder",
-//                     "install_folder": "Control"
-//                 },
-//                 {
-//                     "folder_name": "path2",
-//                     "template": "{{p|game}}\\renderer.ini",
-//                     "type": "file",
-//                     "install_folder": "Control"
-//                 }
-//             ]
-//         }
-//     ]
-// }
-
-async function fetchBackups(wikiIdFolderPath, wikiId, errors) {
-    const backups = [];
-
-    try {
-        if (wikiId && !fsOriginal.existsSync(wikiIdFolderPath)) return null;
-        const stats = fsOriginal.statSync(wikiIdFolderPath);
-        if (!stats.isDirectory()) return null;
-
-        const backupFolders = fsOriginal.readdirSync(wikiIdFolderPath);
-        for (const backupFolder of backupFolders) {
-            const backupFolderPath = path.join(wikiIdFolderPath, backupFolder);
-            const configFilePath = path.join(backupFolderPath, 'backup_info.json');
-            const backupSize = calculateDirectorySize(backupFolderPath);
-
-            if (fsOriginal.existsSync(configFilePath)) {
-                try {
-                    const backupConfig = await fse.readJson(configFilePath);
-                    backups.push({
-                        date: backupFolder,  // Backup folder name is the date (YYYY-MM-DD_HH-mm)
-                        title: backupConfig.title,
-                        zh_CN: backupConfig.zh_CN,
-                        backup_size: backupSize,
-                        backup_paths: backupConfig.backup_paths,
-                        is_permanent: backupConfig.is_permanent || false,
-                        custom_name: backupConfig.custom_name || ''
-                    });
-
-                } catch (err) {
-                    console.error(`Error reading backup config file at ${configFilePath}: ${err.stack}`);
-                    errors.push(`${i18next.t('alert.restore_process_error_config', { config_path: configFilePath })}: ${err.message}`);
-                }
-            }
-        }
-
-        if (backups.length === 0) return null;
-
-        // Sort by date and get the latest
-        const latestBackup = backups.sort((a, b) => b.date.localeCompare(a.date))[0];
-        const latestBackupFormatted = format(parse(latestBackup.date, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
-
-        return {
-            wiki_page_id: wikiId,
-            latest_backup: latestBackupFormatted,
-            title: latestBackup.title,
-            zh_CN: latestBackup.zh_CN,
-            backup_size: latestBackup.backup_size,
-            backups: backups
-        };
-
-    } catch (error) {
-        console.error(`Error processing ${wikiIdFolderPath} for restore table display: ${error.stack}`);
-        errors.push(`${i18next.t('alert.restore_process_error_path', { backup_path: wikiIdFolderPath })}: ${error.message}`);
-        return null;
-    }
-}
+const RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS = 30000;
 
 async function getGameDataForRestore(wikiId = null) {
-    const backupPath = getSettings().backupPath;
-    fsOriginal.mkdirSync(backupPath, { recursive: true });
-
-    const errors = [];
-
-    // If specific wikiId is provided, fetch only that game
-    if (wikiId) {
-        const wikiIdFolderPath = path.join(backupPath, wikiId.toString());
-        const gameData = await fetchBackups(wikiIdFolderPath, wikiId, errors);
-
-        return {
-            games: gameData ? [gameData] : [],
-            errors: errors
-        };
+    try {
+        const result = await runWorkerTask('getGameDataForRestore', { wikiId });
+        return { games: result.games || [], errors: result.errors || [] };
+    } catch (error) {
+        console.error(`Restore worker scan failed: ${error.stack || error.message}`);
+        return { games: [], errors: [error.message] };
     }
-
-    // Otherwise fetch all games
-    const gameFolders = fsOriginal.readdirSync(backupPath);
-    const games = [];
-
-    for (const gameFolder of gameFolders) {
-        const wikiIdFolderPath = path.join(backupPath, gameFolder);
-        const gameData = await fetchBackups(wikiIdFolderPath, gameFolder, errors);
-
-        if (gameData) {
-            games.push(gameData);
-        }
-    }
-
-    return { games, errors };
 }
 
 async function restoreGame(gameObj, userActionForAll) {
@@ -193,27 +80,7 @@ async function restoreGame(gameObj, userActionForAll) {
             return { action: localActionForAll, error: `${i18next.t('alert.restore_game_error', { game_name: getGameDisplayName(gameObj) })}: ${i18next.t('alert.manually_skipped')}` };
         }
 
-        // Proceed with restoring all paths based on user's decision
-        for (const { sourcePath, destinationPath, backupType } of pathsToCheck) {
-            ensureWritable(destinationPath);
-
-            if (backupType === 'folder') {
-                fsOriginal.mkdirSync(destinationPath, { recursive: true });
-                fsOriginalCopyFolder(sourcePath, destinationPath);
-
-            } else if (backupType === 'file') {
-                fsOriginal.mkdirSync(path.dirname(destinationPath), { recursive: true });
-                fsOriginal.copyFileSync(path.join(sourcePath, path.basename(destinationPath)), destinationPath);
-
-            } else if (backupType === 'reg') {
-                const registryFilePath = path.join(sourcePath, 'registry_backup.reg');
-                const regImportCommand = `reg import "${registryFilePath}"`;
-                await execPromise(regImportCommand);
-
-            } else {
-                console.warn(`Unknown backup type: ${backupType}`);
-            }
-        }
+        await runWorkerTask('restorePaths', { pathsToRestore: pathsToCheck });
 
         if (gameNotInstalled) {
             throw Error(i18next.t('alert.game_not_installed'));
@@ -239,33 +106,41 @@ async function requestRestoreConflictDecision(prompt) {
 
     return new Promise((resolve) => {
         const requestId = randomUUID();
-        const handleResponse = (event, responseId, response) => {
-            if (responseId !== requestId) return;
+        let resolved = false;
+
+        const finish = (response) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeoutId);
             ipcMain.removeListener('restore-conflict-response', handleResponse);
+            targetWindow.removeListener('closed', handleWindowClosed);
             resolve(response || { choice: 'skip', doForAll: false });
         };
 
+        const handleResponse = (event, responseId, response) => {
+            if (responseId !== requestId) return;
+            finish(response);
+        };
+        const handleWindowClosed = () => finish({ choice: 'skip', doForAll: false });
+        const timeoutId = setTimeout(() => finish({ choice: 'skip', doForAll: false }), RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS);
+
         ipcMain.on('restore-conflict-response', handleResponse);
-        targetWindow.webContents.send('restore-conflict-prompt', requestId, prompt);
+        targetWindow.once('closed', handleWindowClosed);
+        try {
+            if (targetWindow.isDestroyed() || targetWindow.webContents.isDestroyed()) {
+                finish({ choice: 'skip', doForAll: false });
+                return;
+            }
+            targetWindow.webContents.send('restore-conflict-prompt', requestId, prompt);
+        } catch (error) {
+            console.error('Failed to send restore conflict prompt:', error);
+            finish({ choice: 'skip', doForAll: false });
+        }
     });
 }
 
 async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
-    let latestSourceModTime = new Date(0);
-    let latestDestModTime = new Date(0);
-
-    // Loop through each source-destination pair to find the latest modification times
-    for (const { sourcePath, destinationPath } of pathsToCheck) {
-        const srcModTime = getLatestModificationTime(sourcePath);
-        const destModTime = getLatestModificationTime(destinationPath);
-
-        if (srcModTime > latestSourceModTime) {
-            latestSourceModTime = srcModTime;
-        }
-        if (destModTime > latestDestModTime) {
-            latestDestModTime = destModTime;
-        }
-    }
+    const { latestSourceModTime, latestDestModTime } = await runWorkerTask('getRestoreConflictTimes', { pathsToCheck });
 
     // If the destination files are newer than the source (backup), prompt the user
     if (latestSourceModTime < latestDestModTime) {
@@ -276,8 +151,8 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
         const response = await requestRestoreConflictDecision({
             title: i18next.t('alert.save_conflict'),
             message: `${i18next.t('alert.save_conflict_detected', { game: gameDisplayName })}\n\n` +
-                `${i18next.t('alert.machine_save_date', { machineTime: format(latestDestModTime, 'yyyy-MM-dd HH:mm') })}\n` +
-                `${i18next.t('alert.backup_save_date', { backupTime: format(latestSourceModTime, 'yyyy-MM-dd HH:mm') })}\n\n` +
+                `${i18next.t('alert.machine_save_date', { machineTime: format(new Date(latestDestModTime), 'yyyy-MM-dd HH:mm') })}\n` +
+                `${i18next.t('alert.backup_save_date', { backupTime: format(new Date(latestSourceModTime), 'yyyy-MM-dd HH:mm') })}\n\n` +
                 `${i18next.t('alert.overwrite_prompt')}`,
             checkboxLabel: i18next.t('alert.do_this_for_all')
         });

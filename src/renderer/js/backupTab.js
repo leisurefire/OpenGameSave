@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, withTitleToSort, sortGamesForDisplay, appendRows } from './commonTabs.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, appendRows } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -87,7 +87,6 @@ async function populateBackupTable(viewModel) {
     const selectAllCheckbox = backupTable.querySelector('#backup-checkbox-all-search');
 
     const { games: data, settings, iconMap, autoBackupState } = viewModel;
-    const favoriteGamesWikiIds = settings.pinnedGames || [];
     const blockedGamesWikiIds = settings.blockedGames || [];
     const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
     const selectedWikiIds = getSelectedWikiIds('backup');
@@ -97,18 +96,7 @@ async function populateBackupTable(viewModel) {
     tableBody.innerHTML = '';
     backupTableDataMap.clear();
 
-    const gamesWithTitleToSort = data.map(game => withTitleToSort(game, settings));
-
-    // Split and sort favorite and other games
-    const favoriteGames = sortGamesForDisplay(
-        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
-        settings
-    );
-
-    const otherGames = sortGamesForDisplay(
-        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
-        settings
-    );
+    const { favoriteGames, otherGames } = getSortedFavoriteGroups(data, settings);
 
     // Append rows to the table body
     const autoBackupSet = new Set(Object.keys(autoBackupState));
@@ -285,39 +273,7 @@ async function performBackup() {
 }
 
 function showBackupSummary(backupCount, backupFailed, errors, backupSize) {
-    const backupSummary = document.querySelector('#backup-summary');
-    const backupContent = document.querySelector('#backup-content');
-    const backupFailedContainer = document.querySelector('#backup-summary-total-failed-container');
-    backupSummary.classList.remove('hidden');
-    backupContent.classList.add('hidden');
-
-    window.api.invoke('get-settings').then(async (settings) => {
-        if (settings) {
-            document.getElementById('backup-summary-total-games').textContent = backupCount;
-            document.getElementById('backup-summary-total-size').textContent = formatSize(backupSize);
-            document.getElementById('backup-summary-save-path').textContent = settings.backupPath;
-
-            if (backupFailed > 0) {
-                const failed_message = await window.i18n.translate('summary.total_backup_failed', {
-                    failed_count: backupFailed
-                });
-                document.getElementById('backup-summary-total-failed').textContent = failed_message;
-                document.getElementById('backup-failed-learn-more').addEventListener('click', () => {
-                    showMessageDialog(failed_message, [errors]);
-                });
-                backupFailedContainer.classList.remove('hidden');
-            } else {
-                backupFailedContainer.classList.add('hidden');
-            }
-        }
-    });
-
-    document.querySelector('#backup-summary-done').addEventListener('click', (event) => {
-        backupContent.classList.remove('animate-fadeInShift', 'animate-fadeOut');
-        backupSummary.classList.add('hidden');
-        backupContent.classList.remove('hidden');
-        event.target.closest('button').classList.add('hidden');
-    });
+    showOperationSummary('backup', backupCount, backupFailed, errors, backupSize, 'summary.total_backup_failed');
 }
 
 async function updateDatabase() {

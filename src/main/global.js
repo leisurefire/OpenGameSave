@@ -279,7 +279,9 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
         ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, "../preload/preload.js"),
-            sandbox: false,
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
         },
     });
 
@@ -475,7 +477,9 @@ const createMainWindow = async () => {
         ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, "../preload/preload.js"),
-            sandbox: false,
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
         },
     });
 
@@ -668,34 +672,50 @@ function getGameDisplayName(gameObj) {
     }
 }
 
+const directorySizeCache = new Map();
+const DIRECTORY_SIZE_CACHE_TTL_MS = 2000;
+
 // Calculates the total size of a directory or file
 function calculateDirectorySize(directoryPath, ignoreConfig = true) {
-    let totalSize = 0;
-
     try {
-        if (fsOriginal.statSync(directoryPath).isDirectory()) {
-            const files = fsOriginal.readdirSync(directoryPath);
-            files.forEach(file => {
-                if (ignoreConfig && file === 'backup_info.json') {
-                    return;
-                }
-                const filePath = path.join(directoryPath, file);
-                if (fsOriginal.statSync(filePath).isDirectory()) {
-                    totalSize += calculateDirectorySize(filePath);
-                } else {
-                    totalSize += fsOriginal.statSync(filePath).size;
-                }
-            });
-
-        } else {
-            totalSize += fsOriginal.statSync(directoryPath).size;
+        const stats = fsOriginal.statSync(directoryPath);
+        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
+        const cached = directorySizeCache.get(cacheKey);
+        const now = Date.now();
+        if (cached && cached.mtimeMs === stats.mtimeMs && now - cached.timestamp < DIRECTORY_SIZE_CACHE_TTL_MS) {
+            return cached.size;
         }
 
+        let totalSize = 0;
+        if (stats.isDirectory()) {
+            const entries = fsOriginal.readdirSync(directoryPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (ignoreConfig && entry.name === 'backup_info.json') {
+                    continue;
+                }
+
+                const filePath = path.join(directoryPath, entry.name);
+                if (entry.isDirectory()) {
+                    totalSize += calculateDirectorySize(filePath, ignoreConfig);
+                } else if (entry.isFile()) {
+                    totalSize += fsOriginal.statSync(filePath).size;
+                }
+            }
+        } else {
+            totalSize = stats.size;
+        }
+
+        directorySizeCache.set(cacheKey, {
+            mtimeMs: stats.mtimeMs,
+            size: totalSize,
+            timestamp: now
+        });
+        return totalSize;
     } catch (error) {
         console.error(`Error calculating directory size for ${directoryPath}:`, error);
     }
 
-    return totalSize;
+    return 0;
 }
 
 // Ensure all files under a path have writable permission
@@ -845,21 +865,24 @@ async function exportBackups(count, exportPath, wikiIds = null) {
             };
 
             const originalCwd = process.cwd();
-            process.chdir(sourcePath);
-            const archiveStream = Seven.add(finalDestPath, itemsToArchive, sevenOptions);
+            try {
+                process.chdir(sourcePath);
+                const archiveStream = Seven.add(finalDestPath, itemsToArchive, sevenOptions);
 
-            archiveStream.on('progress', (progress) => {
-                if (progress.percent) {
-                    win.webContents.send('update-progress', progressId, progressTitle, Math.floor(progress.percent));
-                }
-            });
+                archiveStream.on('progress', (progress) => {
+                    if (progress.percent) {
+                        win.webContents.send('update-progress', progressId, progressTitle, Math.floor(progress.percent));
+                    }
+                });
 
-            await new Promise((resolve, reject) => {
-                archiveStream.on('end', resolve);
-                archiveStream.on('error', reject);
-            });
+                await new Promise((resolve, reject) => {
+                    archiveStream.on('end', resolve);
+                    archiveStream.on('error', reject);
+                });
+            } finally {
+                process.chdir(originalCwd);
+            }
 
-            process.chdir(originalCwd);
             win.webContents.send('update-progress', progressId, progressTitle, 'end');
             win.webContents.send('show-alert', 'success', i18next.t('alert.export_success'));
             status.exporting = false;
@@ -877,6 +900,7 @@ async function importBackups(gsmPath) {
     const progressId = 'import';
     const progressTitle = i18next.t('alert.importing');
     const destinationPath = settings.backupPath;
+    let tempExtractPath = null;
 
     try {
         if (!status.importing) {
@@ -884,7 +908,7 @@ async function importBackups(gsmPath) {
             win.webContents.send('update-progress', progressId, progressTitle, 'start');
 
             // 1. Extract the GSMR file to a temporary directory
-            const tempExtractPath = fsOriginal.mkdtempSync(path.join(os.tmpdir(), 'GSMImportTemp-'));
+            tempExtractPath = fsOriginal.mkdtempSync(path.join(os.tmpdir(), 'GSMImportTemp-'));
             const sevenOptions = {
                 yes: true,
                 recursive: true,
@@ -942,8 +966,6 @@ async function importBackups(gsmPath) {
 
             win.webContents.send('show-alert', 'success', i18next.t('alert.import_success'));
             status.importing = false;
-
-            await fsOriginal.promises.rm(tempExtractPath, { recursive: true });
         }
 
     } catch (error) {
@@ -952,6 +974,9 @@ async function importBackups(gsmPath) {
         status.importing = false;
 
     } finally {
+        if (tempExtractPath) {
+            await fsOriginal.promises.rm(tempExtractPath, { recursive: true, force: true });
+        }
         win.webContents.send('update-progress', progressId, progressTitle, 'end');
         win.webContents.send('update-backup-table');
         win.webContents.send('update-restore-table');

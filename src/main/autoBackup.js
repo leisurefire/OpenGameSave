@@ -13,6 +13,14 @@ const activeAutoBackups = new Map();
 const watcherCooldowns = new Map();
 const pendingWatcherBackups = new Set(); // Track changes that occurred during cooldown
 const WATCHER_COOLDOWN_MS = 10000; // 10 seconds cooldown between backups
+const MAX_AUTO_BACKUP_LOGS = 100;
+
+function addAutoBackupLog(entry, logEntry) {
+    entry.logs.push(logEntry);
+    if (entry.logs.length > MAX_AUTO_BACKUP_LOGS) {
+        entry.logs.splice(0, entry.logs.length - MAX_AUTO_BACKUP_LOGS);
+    }
+}
 
 /**
  * Start auto backup for a game
@@ -178,14 +186,17 @@ async function performSilentBackup(wikiId) {
     if (!entry) return;
 
     // Prevent concurrent backups for the same game
-    if (entry.backupInProgress) return;
+    if (entry.backupInProgress) {
+        pendingWatcherBackups.add(wikiId);
+        return;
+    }
     entry.backupInProgress = true;
 
     try {
         const { games } = await getGameDataFromDB(false, wikiId);
         if (!games || games.length === 0) {
             const errorMsg = i18next.t('alert.auto_backup_game_not_found');
-            entry.logs.push({
+            addAutoBackupLog(entry, {
                 timestamp: format(new Date(), 'yyyy/MM/dd HH:mm:ss'),
                 success: false,
                 error: errorMsg
@@ -205,7 +216,7 @@ async function performSilentBackup(wikiId) {
             success: !error,
             error: error || null
         };
-        entry.logs.push(logEntry);
+        addAutoBackupLog(entry, logEntry);
 
         // Notify renderer to update table rows
         const win = getMainWin();
@@ -219,7 +230,7 @@ async function performSilentBackup(wikiId) {
         }
     } catch (error) {
         console.error(`Auto backup error for ${wikiId}:`, error.message);
-        entry.logs.push({
+        addAutoBackupLog(entry, {
             timestamp: format(new Date(), 'yyyy/MM/dd HH:mm:ss'),
             success: false,
             error: error.message
@@ -230,7 +241,12 @@ async function performSilentBackup(wikiId) {
         }
     } finally {
         if (activeAutoBackups.has(wikiId)) {
-            activeAutoBackups.get(wikiId).backupInProgress = false;
+            const activeEntry = activeAutoBackups.get(wikiId);
+            activeEntry.backupInProgress = false;
+            if (pendingWatcherBackups.has(wikiId)) {
+                pendingWatcherBackups.delete(wikiId);
+                performSilentBackup(wikiId);
+            }
         }
     }
 }

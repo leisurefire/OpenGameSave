@@ -294,6 +294,7 @@ function createMenuWindow() {
             preload: path.join(__dirname, '../preload/preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: true,
             backgroundThrottling: false,
         },
     });
@@ -458,6 +459,70 @@ function getSystemAccentColor() {
     return `#${accent.substring(0, 6)}`;
 }
 
+function isSafeRelativePath(rootPath, targetPath) {
+    const relativePath = path.relative(rootPath, targetPath);
+    return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function resolveInside(rootPath, ...segments) {
+    const resolvedRoot = path.resolve(rootPath);
+    const resolvedTarget = path.resolve(resolvedRoot, ...segments.map(segment => String(segment)));
+
+    if (!isSafeRelativePath(resolvedRoot, resolvedTarget)) {
+        throw new Error('Path escapes the expected root');
+    }
+
+    return resolvedTarget;
+}
+
+function normalizeWikiId(wikiId) {
+    const normalized = String(wikiId || '').trim();
+    if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
+        throw new Error('Invalid wiki id');
+    }
+    return normalized;
+}
+
+function normalizeBackupDate(backupDate) {
+    const normalized = String(backupDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}$/.test(normalized)) {
+        throw new Error('Invalid backup date');
+    }
+    return normalized;
+}
+
+function getValidatedBackupPath(wikiId, backupDate = null) {
+    const backupRoot = path.resolve(getSettings().backupPath);
+    const safeWikiId = normalizeWikiId(wikiId);
+    return backupDate === null
+        ? resolveInside(backupRoot, safeWikiId)
+        : resolveInside(backupRoot, safeWikiId, normalizeBackupDate(backupDate));
+}
+
+async function getVerifiedLocalSavePaths(wikiId, selectedIndexes = null) {
+    const safeWikiId = normalizeWikiId(wikiId);
+    const { games } = await getGameDataFromDB(false, safeWikiId);
+    const resolvedPaths = games?.[0]?.resolved_paths || [];
+
+    if (!Array.isArray(selectedIndexes)) {
+        return resolvedPaths;
+    }
+
+    return selectedIndexes
+        .map(index => Number(index))
+        .filter(index => Number.isInteger(index) && index >= 0 && index < resolvedPaths.length)
+        .map(index => resolvedPaths[index]);
+}
+
+function isAllowedExternalUrl(url) {
+    try {
+        const parsedUrl = new URL(String(url || ''));
+        return parsedUrl.protocol === 'https:';
+    } catch (error) {
+        return false;
+    }
+}
+
 systemPreferences.on('accent-color-changed', (event, newColor) => {
     if (getSettings().syncAccentColor) {
         const color = `#${newColor.substring(0, 6)}`;
@@ -506,6 +571,10 @@ ipcMain.handle("get-detected-game-paths", async () => {
 });
 
 ipcMain.handle('open-url', async (event, url) => {
+    if (!isAllowedExternalUrl(url)) {
+        throw new Error('Blocked external URL');
+    }
+
     await shell.openExternal(url);
 });
 
@@ -761,7 +830,7 @@ ipcMain.handle('restore-game', async (event, gameObj, userActionForAll) => {
 
 ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
     try {
-        const backupPath = path.join(getSettings().backupPath, wikiId.toString(), backupDate);
+        const backupPath = getValidatedBackupPath(wikiId, backupDate);
         await fsOriginal.promises.rm(backupPath, { recursive: true, force: true });
         return true;
 
@@ -774,7 +843,13 @@ ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
 
 ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, value) => {
     try {
-        const configFilePath = path.join(getSettings().backupPath, wikiId.toString(), backupDate, 'backup_info.json');
+        const allowedBackupInfoKeys = new Set(['is_permanent', 'custom_name']);
+        if (!allowedBackupInfoKeys.has(key)) {
+            throw new Error('Invalid backup metadata key');
+        }
+
+        const backupInstancePath = getValidatedBackupPath(wikiId, backupDate);
+        const configFilePath = resolveInside(backupInstancePath, 'backup_info.json');
 
         try {
             await fsOriginal.promises.access(configFilePath, fs.constants.F_OK);
@@ -783,7 +858,7 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
         }
 
         const backupConfig = await fse.readJson(configFilePath);
-        backupConfig[key] = value;
+        backupConfig[key] = key === 'is_permanent' ? Boolean(value) : String(value || '').slice(0, 120);
         await fse.writeJson(configFilePath, backupConfig, { spaces: 4 });
 
         return true;
@@ -796,9 +871,10 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
 });
 
 ipcMain.on('open-backup-folder', async (event, wikiId) => {
-    const backupPath = path.join(getSettings().backupPath, wikiId.toString());
+    let backupPath;
     let hasBackups = false;
     try {
+        backupPath = getValidatedBackupPath(wikiId);
         const entries = await fsOriginal.promises.readdir(backupPath);
         hasBackups = entries.length > 0;
     } catch (error) {
@@ -812,12 +888,25 @@ ipcMain.on('open-backup-folder', async (event, wikiId) => {
     }
 });
 
-ipcMain.on('browse-local-save', async (event, resolvedPaths) => {
-    browseLocalSave(resolvedPaths);
+ipcMain.on('browse-local-save', async (event, wikiId, selectedIndexes = null) => {
+    try {
+        const resolvedPaths = await getVerifiedLocalSavePaths(wikiId, selectedIndexes);
+        browseLocalSave(resolvedPaths);
+    } catch (error) {
+        console.error('Error validating local save browse request:', error.message);
+        getMainWin().webContents.send('show-alert', 'error', error.message);
+    }
 });
 
-ipcMain.handle('delete-local-save', async (event, resolvedPaths) => {
-    return await deleteLocalSave(resolvedPaths);
+ipcMain.handle('delete-local-save', async (event, wikiId) => {
+    try {
+        const resolvedPaths = await getVerifiedLocalSavePaths(wikiId);
+        return await deleteLocalSave(resolvedPaths);
+    } catch (error) {
+        console.error('Error validating local save delete request:', error.message);
+        getMainWin().webContents.send('show-alert', 'error', error.message);
+        return false;
+    }
 });
 
 ipcMain.on('migrate-backups', (event, newBackupPath) => {

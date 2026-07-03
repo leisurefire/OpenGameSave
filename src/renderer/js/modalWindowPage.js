@@ -631,14 +631,14 @@ async function renderLocalSaveModal(root, initData) {
             return;
         }
 
-        const pathObj = resolvedPaths[Number(button.dataset.index)];
-        if (pathObj) window.api.send('browse-local-save', [pathObj]);
+        const pathIndex = Number(button.dataset.index);
+        if (resolvedPaths[pathIndex]) window.api.send('browse-local-save', wikiId, [pathIndex]);
     });
 
     document.getElementById('modal-delete-local-save').addEventListener('click', async () => {
         const confirmed = await requestConfirmModal(await window.i18n.translate('main.delete_local_save'), await window.i18n.translate('alert.confirm_delete_local_save_message'));
         if (!confirmed) return;
-        const success = await window.api.invoke('delete-local-save', resolvedPaths);
+        const success = await window.api.invoke('delete-local-save', wikiId);
         if (success) {
             window.api.send('update-backup-table');
             window.api.send('update-restore-table');

@@ -1,5 +1,5 @@
 const { parentPort } = require('worker_threads');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const fsOriginal = fs;
 const os = require('os');
@@ -12,9 +12,11 @@ const { format, parse } = require('date-fns');
 const sqlite3 = require('sqlite3');
 const WinReg = require('winreg');
 
-const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(execFile);
 
 let context = null;
+const directorySizeCache = new Map();
+const DIRECTORY_SIZE_CACHE_TTL_MS = 2000;
 
 function settings() {
     return context.settings;
@@ -33,30 +35,42 @@ function getGameDisplayName(gameObj) {
 }
 
 function calculateDirectorySize(directoryPath, ignoreConfig = true) {
-    let totalSize = 0;
-
     try {
         const stats = fsOriginal.statSync(directoryPath);
+        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
+        const cached = directorySizeCache.get(cacheKey);
+        const now = Date.now();
+        if (cached && cached.mtimeMs === stats.mtimeMs && now - cached.timestamp < DIRECTORY_SIZE_CACHE_TTL_MS) {
+            return cached.size;
+        }
+
+        let totalSize = 0;
         if (stats.isDirectory()) {
-            const files = fsOriginal.readdirSync(directoryPath);
-            files.forEach(file => {
-                if (ignoreConfig && file === 'backup_info.json') return;
-                const filePath = path.join(directoryPath, file);
-                const fileStats = fsOriginal.statSync(filePath);
-                if (fileStats.isDirectory()) {
+            const entries = fsOriginal.readdirSync(directoryPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (ignoreConfig && entry.name === 'backup_info.json') continue;
+                const filePath = path.join(directoryPath, entry.name);
+                if (entry.isDirectory()) {
                     totalSize += calculateDirectorySize(filePath, ignoreConfig);
-                } else {
-                    totalSize += fileStats.size;
+                } else if (entry.isFile()) {
+                    totalSize += fsOriginal.statSync(filePath).size;
                 }
-            });
+            }
         } else {
             totalSize += stats.size;
         }
+
+        directorySizeCache.set(cacheKey, {
+            mtimeMs: stats.mtimeMs,
+            size: totalSize,
+            timestamp: now
+        });
+        return totalSize;
     } catch (error) {
         console.error(`Error calculating directory size for ${directoryPath}:`, error);
     }
 
-    return totalSize;
+    return 0;
 }
 
 function ensureWritable(pathToCheck) {
@@ -88,6 +102,33 @@ function fsOriginalCopyFolder(source, target) {
             fsOriginal.copyFileSync(sourcePath, destinationPath);
         }
     }
+}
+
+function getLatestModificationTime(targetPath) {
+    let latestTime = 0;
+
+    try {
+        if (!fsOriginal.existsSync(targetPath)) {
+            return latestTime;
+        }
+
+        const stats = fsOriginal.statSync(targetPath);
+        latestTime = stats.mtimeMs;
+
+        if (stats.isDirectory()) {
+            const entries = fsOriginal.readdirSync(targetPath, { withFileTypes: true });
+            for (const entry of entries) {
+                const entryLatestTime = getLatestModificationTime(path.join(targetPath, entry.name));
+                if (entryLatestTime > latestTime) {
+                    latestTime = entryLatestTime;
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`Error getting latest modification time for ${targetPath}:`, error);
+    }
+
+    return latestTime;
 }
 
 function getNewestBackup(wikiPageId) {
@@ -582,7 +623,7 @@ async function backupGame(gameObj) {
 
             if (resolvedPathObj.type === 'reg') {
                 const registryFilePath = path.join(targetPath, 'registry_backup.reg');
-                await execPromise(`reg export "${resolvedPath}" "${registryFilePath}" /y`);
+                await execFilePromise('reg.exe', ['export', resolvedPath, registryFilePath, '/y'], { windowsHide: true });
                 backupConfig.backup_paths.push({
                     folder_name: pathFolderName,
                     template: resolvedPathObj.finalTemplate,
@@ -642,6 +683,135 @@ async function backupGame(gameObj) {
     return null;
 }
 
+async function fetchBackups(wikiIdFolderPath, wikiId) {
+    const backups = [];
+    const errors = [];
+
+    try {
+        if (wikiId && !fsOriginal.existsSync(wikiIdFolderPath)) return { gameData: null, errors };
+        const stats = fsOriginal.statSync(wikiIdFolderPath);
+        if (!stats.isDirectory()) return { gameData: null, errors };
+
+        const backupFolders = fsOriginal.readdirSync(wikiIdFolderPath, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
+
+        for (const backupFolder of backupFolders) {
+            const backupFolderPath = path.join(wikiIdFolderPath, backupFolder);
+            const configFilePath = path.join(backupFolderPath, 'backup_info.json');
+            const backupSize = calculateDirectorySize(backupFolderPath);
+
+            if (fsOriginal.existsSync(configFilePath)) {
+                try {
+                    const backupConfig = await fse.readJson(configFilePath);
+                    backups.push({
+                        date: backupFolder,
+                        title: backupConfig.title,
+                        zh_CN: backupConfig.zh_CN,
+                        backup_size: backupSize,
+                        backup_paths: backupConfig.backup_paths,
+                        is_permanent: backupConfig.is_permanent || false,
+                        custom_name: backupConfig.custom_name || ''
+                    });
+                } catch (err) {
+                    console.error(`Error reading backup config file at ${configFilePath}: ${err.stack}`);
+                    errors.push(`Error reading backup config ${configFilePath}: ${err.message}`);
+                }
+            }
+        }
+
+        if (backups.length === 0) return { gameData: null, errors };
+
+        const latestBackup = backups.sort((a, b) => b.date.localeCompare(a.date))[0];
+        const latestBackupFormatted = format(parse(latestBackup.date, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
+
+        return {
+            gameData: {
+                wiki_page_id: wikiId,
+                latest_backup: latestBackupFormatted,
+                title: latestBackup.title,
+                zh_CN: latestBackup.zh_CN,
+                backup_size: latestBackup.backup_size,
+                backups
+            },
+            errors
+        };
+    } catch (error) {
+        console.error(`Error processing ${wikiIdFolderPath} for restore table display: ${error.stack}`);
+        errors.push(`Error processing restore path ${wikiIdFolderPath}: ${error.message}`);
+        return { gameData: null, errors };
+    }
+}
+
+async function getGameDataForRestore({ wikiId = null }) {
+    const backupPath = settings().backupPath;
+    fsOriginal.mkdirSync(backupPath, { recursive: true });
+    const errors = [];
+
+    if (wikiId) {
+        const wikiIdFolderPath = path.join(backupPath, wikiId.toString());
+        const { gameData, errors: fetchErrors } = await fetchBackups(wikiIdFolderPath, wikiId);
+        errors.push(...fetchErrors);
+        return { games: gameData ? [gameData] : [], errors };
+    }
+
+    const gameFolders = fsOriginal.readdirSync(backupPath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+    const games = [];
+
+    for (const gameFolder of gameFolders) {
+        const wikiIdFolderPath = path.join(backupPath, gameFolder);
+        const { gameData, errors: fetchErrors } = await fetchBackups(wikiIdFolderPath, gameFolder);
+        errors.push(...fetchErrors);
+        if (gameData) {
+            games.push(gameData);
+        }
+    }
+
+    return { games, errors };
+}
+
+async function restorePaths(pathsToRestore) {
+    for (const { sourcePath, destinationPath, backupType } of pathsToRestore) {
+        ensureWritable(destinationPath);
+
+        if (backupType === 'folder') {
+            fsOriginal.mkdirSync(destinationPath, { recursive: true });
+            fsOriginalCopyFolder(sourcePath, destinationPath);
+        } else if (backupType === 'file') {
+            fsOriginal.mkdirSync(path.dirname(destinationPath), { recursive: true });
+            fsOriginal.copyFileSync(path.join(sourcePath, path.basename(destinationPath)), destinationPath);
+        } else if (backupType === 'reg') {
+            const registryFilePath = path.join(sourcePath, 'registry_backup.reg');
+            await execFilePromise('reg.exe', ['import', registryFilePath], { windowsHide: true });
+        } else {
+            console.warn(`Unknown backup type: ${backupType}`);
+        }
+    }
+
+    return null;
+}
+
+async function getRestoreConflictTimes(pathsToCheck) {
+    let latestSourceModTime = 0;
+    let latestDestModTime = 0;
+
+    for (const { sourcePath, destinationPath } of pathsToCheck) {
+        const srcModTime = getLatestModificationTime(sourcePath);
+        const destModTime = getLatestModificationTime(destinationPath);
+
+        if (srcModTime > latestSourceModTime) {
+            latestSourceModTime = srcModTime;
+        }
+        if (destModTime > latestDestModTime) {
+            latestDestModTime = destModTime;
+        }
+    }
+
+    return { latestSourceModTime, latestDestModTime };
+}
+
 parentPort.on('message', async (message) => {
     context = message.context;
 
@@ -653,6 +823,12 @@ parentPort.on('message', async (message) => {
             result = await getAllGameDataFromDB();
         } else if (message.task === 'backupGame') {
             result = await backupGame(message.payload.gameObj);
+        } else if (message.task === 'getGameDataForRestore') {
+            result = await getGameDataForRestore(message.payload || {});
+        } else if (message.task === 'restorePaths') {
+            result = await restorePaths(message.payload.pathsToRestore || []);
+        } else if (message.task === 'getRestoreConflictTimes') {
+            result = await getRestoreConflictTimes(message.payload.pathsToCheck || []);
         } else {
             throw new Error(`Unknown backup worker task: ${message.task}`);
         }

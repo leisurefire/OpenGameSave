@@ -157,13 +157,14 @@ export function updateProgress(progressId, progressTitle, percentage) {
         progressElement.className = "ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl";
         progressElement.innerHTML = `
             <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent">
-                <span>${progressTitle}</span>
+                <span class="progress-title"></span>
                 <span id="${progressId}-percentage">0%</span>
             </div>
             <div class="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
                 <div id="${progressId}-bar" class="bg-theme-accent w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
             </div>
         `;
+        progressElement.querySelector('.progress-title').textContent = progressTitle;
         progressContainer.appendChild(progressElement);
         return;
     } else if (percentage === 'end') {

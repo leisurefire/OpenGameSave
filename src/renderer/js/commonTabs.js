@@ -1,5 +1,5 @@
 import { showAlert, updateTranslations } from './utility.js';
-import { showDontShowDialog } from './dialog.js';
+import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
 import {
     appendRows as appendVirtualRows,
@@ -36,16 +36,32 @@ function getDisplayCollator(language) {
     return displayCollators.get(locale);
 }
 
-export function withTitleToSort(game, settings) {
+function withTitleToSort(game, settings) {
     const titleToSort = settings.language === 'zh_CN'
         ? game.zh_CN || game.title
         : game.title;
     return { ...game, titleToSort: titleToSort || '' };
 }
 
-export function sortGamesForDisplay(games, settings) {
+function sortGamesForDisplay(games, settings) {
     const collator = getDisplayCollator(settings.language);
     return [...games].sort((a, b) => collator.compare(a.titleToSort || '', b.titleToSort || ''));
+}
+
+export function getSortedFavoriteGroups(games, settings) {
+    const favoriteWikiIds = settings.pinnedGames || [];
+    const gamesWithTitleToSort = games.map(game => withTitleToSort(game, settings));
+
+    return {
+        favoriteGames: sortGamesForDisplay(
+            gamesWithTitleToSort.filter(game => favoriteWikiIds.includes(game.wiki_page_id.toString())),
+            settings
+        ),
+        otherGames: sortGamesForDisplay(
+            gamesWithTitleToSort.filter(game => !favoriteWikiIds.includes(game.wiki_page_id.toString())),
+            settings
+        )
+    };
 }
 
 export function appendRows(tableBody, rows) {
@@ -379,6 +395,42 @@ export function formatSize(sizeInBytes) {
     return (sizeInBytes / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['B', 'KB', 'MB', 'GB', 'TB'][i];
 }
 
+export function showOperationSummary(tabName, completedCount, failedCount, errors, totalSize, failedMessageKey) {
+    const summary = document.querySelector(`#${tabName}-summary`);
+    const content = document.querySelector(`#${tabName}-content`);
+    const failedContainer = document.querySelector(`#${tabName}-summary-total-failed-container`);
+    summary.classList.remove('hidden');
+    content.classList.add('hidden');
+
+    window.api.invoke('get-settings').then(async (settings) => {
+        if (!settings) return;
+
+        document.getElementById(`${tabName}-summary-total-games`).textContent = completedCount;
+        document.getElementById(`${tabName}-summary-total-size`).textContent = formatSize(totalSize);
+        document.getElementById(`${tabName}-summary-save-path`).textContent = settings.backupPath;
+
+        if (failedCount > 0) {
+            const failedMessage = await window.i18n.translate(failedMessageKey, {
+                failed_count: failedCount
+            });
+            document.getElementById(`${tabName}-summary-total-failed`).textContent = failedMessage;
+            document.getElementById(`${tabName}-failed-learn-more`).onclick = () => {
+                showMessageDialog(failedMessage, [errors]);
+            };
+            failedContainer.classList.remove('hidden');
+        } else {
+            failedContainer.classList.add('hidden');
+        }
+    });
+
+    document.querySelector(`#${tabName}-summary-done`).onclick = (event) => {
+        content.classList.remove('animate-fadeInShift', 'animate-fadeOut');
+        summary.classList.add('hidden');
+        content.classList.remove('hidden');
+        event.target.closest('button').classList.add('hidden');
+    };
+}
+
 const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
 
 export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId) {
@@ -394,7 +446,7 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
                         <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
                         <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
-            ${gameTitle}
+            <span class="game-title"></span>
         </th>
         <td class="p-4 truncate opacity-80 text-center align-middle">
             ${platformIcons}
@@ -411,6 +463,7 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
             </button>
         </td>
     `;
+    row.querySelector('.game-title').textContent = gameTitle;
     return row;
 }
 
@@ -427,7 +480,7 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
                         <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
                         <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
             <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
-            ${gameTitle}
+            <span class="game-title"></span>
         </th>
         <td class="p-4 truncate opacity-80 text-center align-middle backup-count">
             ${backupCount}
@@ -444,6 +497,7 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
             </button>
         </td>
     `;
+    row.querySelector('.game-title').textContent = gameTitle;
     return row;
 }
 

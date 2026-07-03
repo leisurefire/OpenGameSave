@@ -28,9 +28,10 @@ export async function showToast(type, message, detailContent) {
     toastElement.innerHTML = `
         <i class="fa-solid ${iconClass[toastType] || iconClass.info} text-xl"></i>
         <div class="flex-1 text-sm font-bold leading-tight">
-            <span class="text-content">${message}</span>
+            <span class="text-content"></span>
         </div>
     `;
+    toastElement.querySelector('.text-content').textContent = message;
 
     if (toastType === 'dialog') {
         const learnMoreBtn = document.createElement('button');

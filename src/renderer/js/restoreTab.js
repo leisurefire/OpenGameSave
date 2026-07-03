@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
-import { showMessageDialog, showRestoreConflictDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, withTitleToSort, sortGamesForDisplay, appendRows } from './commonTabs.js';
+import { showRestoreConflictDialog } from './dialog.js';
+import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, appendRows } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
@@ -54,7 +54,6 @@ async function populateRestoreTable(viewModel) {
     const selectAllCheckbox = restoreTable.querySelector('#restore-checkbox-all-search');
 
     const { games: data, settings, autoBackupState } = viewModel;
-    const favoriteGamesWikiIds = settings.pinnedGames || [];
     const blockedGamesWikiIds = settings.blockedGames || [];
     const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
     const selectedWikiIds = getSelectedWikiIds('restore');
@@ -62,18 +61,7 @@ async function populateRestoreTable(viewModel) {
     tableBody.innerHTML = '';
     restoreTableDataMap.clear();
 
-    const gamesWithTitleToSort = data.map(game => withTitleToSort(game, settings));
-
-    // Split and sort favorite and other games
-    const favoriteGames = sortGamesForDisplay(
-        gamesWithTitleToSort.filter(game => favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
-        settings
-    );
-
-    const otherGames = sortGamesForDisplay(
-        gamesWithTitleToSort.filter(game => !favoriteGamesWikiIds.includes(game.wiki_page_id.toString())),
-        settings
-    );
+    const { favoriteGames, otherGames } = getSortedFavoriteGroups(data, settings);
 
     // Append rows to the table body
     const autoBackupSet = new Set(Object.keys(autoBackupState));
@@ -248,38 +236,6 @@ async function performRestore() {
 }
 
 export function showRestoreSummary(restoreCount, restoreFailed, errors, restoreSize) {
-    const restoreSummary = document.querySelector('#restore-summary');
-    const restoreContent = document.querySelector('#restore-content');
-    const restoreFailedContainer = document.querySelector('#restore-summary-total-failed-container');
-    restoreSummary.classList.remove('hidden');
-    restoreContent.classList.add('hidden');
-
-    window.api.invoke('get-settings').then(async (settings) => {
-        if (settings) {
-            document.getElementById('restore-summary-total-games').textContent = restoreCount;
-            document.getElementById('restore-summary-total-size').textContent = formatSize(restoreSize);
-            document.getElementById('restore-summary-save-path').textContent = settings.backupPath;
-
-            if (restoreFailed > 0) {
-                const failed_message = await window.i18n.translate('summary.total_restore_failed', {
-                    failed_count: restoreFailed
-                });
-                document.getElementById('restore-summary-total-failed').textContent = failed_message;
-                document.getElementById('restore-failed-learn-more').addEventListener('click', () => {
-                    showMessageDialog(failed_message, [errors]);
-                });
-                restoreFailedContainer.classList.remove('hidden');
-            } else {
-                restoreFailedContainer.classList.add('hidden');
-            }
-        }
-    });
-
-    document.querySelector('#restore-summary-done').addEventListener('click', (event) => {
-        restoreContent.classList.remove('animate-fadeInShift', 'animate-fadeOut');
-        restoreSummary.classList.add('hidden');
-        restoreContent.classList.remove('hidden');
-        event.target.closest('button').classList.add('hidden');
-    });
+    showOperationSummary('restore', restoreCount, restoreFailed, errors, restoreSize, 'summary.total_restore_failed');
 }
 window.showRestoreSummary = showRestoreSummary;
