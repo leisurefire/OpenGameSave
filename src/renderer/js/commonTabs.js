@@ -1,6 +1,7 @@
 import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
+import { formatSize } from './formatting.js';
 import {
     appendRows as appendVirtualRows,
     applyVirtualFilter,
@@ -405,10 +406,83 @@ export function getPlatformIcon(platform, iconMap) {
     return iconMap[platform] || '';
 }
 
-export function formatSize(sizeInBytes) {
-    if (sizeInBytes === 0) return '0 B';
-    const i = Math.floor(Math.log(sizeInBytes) / Math.log(1024));
-    return (sizeInBytes / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['B', 'KB', 'MB', 'GB', 'TB'][i];
+export { formatSize };
+
+export function populateGameTable({
+    tabName,
+    tableDataMap,
+    viewModel,
+    createRow,
+    hasPermanentBackup = () => false
+}) {
+    const table = document.querySelector(`#${tabName}`);
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    const selectAllCheckbox = table.querySelector(`#${tabName}-checkbox-all-search`);
+
+    const { games: data, settings, autoBackupState } = viewModel;
+    const blockedGamesWikiIds = settings.blockedGames || [];
+    const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
+    const selectedWikiIds = new Set(getSelectedWikiIds(tabName).map(String));
+    const autoBackupSet = new Set(Object.keys(autoBackupState));
+
+    tableBody.innerHTML = '';
+    tableDataMap.clear();
+
+    const { favoriteGames, otherGames } = getSortedFavoriteGroups(data, settings);
+    const rows = [];
+
+    const appendRowsToTable = (games, isFavorite) => {
+        games.forEach((game) => {
+            const wikiId = game.wiki_page_id;
+            tableDataMap.set(wikiId, game);
+
+            const gameTitle = game.zh_CN && settings.language === 'zh_CN'
+                ? game.zh_CN
+                : game.title;
+            if (!gameTitle) {
+                return;
+            }
+
+            const row = createRow(game, gameTitle);
+
+            if (selectedWikiIds.has(wikiId.toString())) {
+                const checkbox = row.querySelector('.row-checkbox');
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            }
+
+            if (isFavorite) {
+                setIcon(row, 'favorite', true);
+            }
+
+            if (blockedGamesWikiIds.includes(wikiId.toString())) {
+                row.dataset.blocked = 'true';
+                setIcon(row, 'blocked', true);
+            }
+
+            if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
+                row.dataset.uninstalled = 'true';
+            }
+
+            if (hasPermanentBackup(game, wikiId)) {
+                setIcon(row, 'star', true);
+            }
+
+            if (autoBackupSet.has(wikiId.toString())) {
+                setIcon(row, 'timer', true);
+            }
+
+            rows.push(row);
+        });
+    };
+
+    appendRowsToTable(favoriteGames, true);
+    appendRowsToTable(otherGames, false);
+    appendRows(tableBody, rows);
+
+    setupSelectAllCheckbox(tabName, selectAllCheckbox);
+    applyTableFilters(tabName);
 }
 
 export function showOperationSummary(tabName, completedCount, failedCount, errors, totalSize, failedMessageKey) {

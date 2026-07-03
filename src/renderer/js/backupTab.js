@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, setActionButtonState, appendRows } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -82,91 +82,24 @@ export async function updateBackupTable(loader) {
 
 // Function to populate backup table
 async function populateBackupTable(viewModel) {
-    const backupTable = document.querySelector('#backup');
-    const tableBody = document.querySelector('#backup tbody');
-    const selectAllCheckbox = backupTable.querySelector('#backup-checkbox-all-search');
-
-    const { games: data, settings, iconMap, autoBackupState } = viewModel;
-    const blockedGamesWikiIds = settings.blockedGames || [];
-    const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
-    const selectedWikiIds = getSelectedWikiIds('backup');
-
     const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
 
-    tableBody.innerHTML = '';
-    backupTableDataMap.clear();
-
-    const { favoriteGames, otherGames } = getSortedFavoriteGroups(data, settings);
-
-    // Append rows to the table body
-    const autoBackupSet = new Set(Object.keys(autoBackupState));
-
-    const rows = [];
-    const appendRowsToTable = (games, isFavorite) => {
-        games.forEach((game) => {
-            const wikiId = game.wiki_page_id;
-            backupTableDataMap.set(wikiId, game);
-
-            let gameTitle = game.title;
-            if (game.zh_CN && settings.language === 'zh_CN') {
-                gameTitle = game.zh_CN;
-            }
-            if (!gameTitle) {
-                return;
-            }
-
+    populateGameTable({
+        tabName: 'backup',
+        tableDataMap: backupTableDataMap,
+        viewModel,
+        createRow: (game, gameTitle) => {
             const sortedPlatforms = platformOrder.filter(platform => (game.platform || []).includes(platform));
-            const platformIcons = sortedPlatforms.map(platform => getPlatformIcon(platform, iconMap)).join(' ');
+            const platformIcons = sortedPlatforms.map(platform => getPlatformIcon(platform, viewModel.iconMap)).join(' ');
             const backupSize = formatSize(game.backup_size);
 
-            let row = createBackupTableRow(gameTitle, platformIcons, backupSize, game.latest_backup, game.wiki_page_id);
-
-            // Check if selected
-            if (selectedWikiIds.includes(wikiId)) {
-                const checkbox = row.querySelector('.row-checkbox');
-                if (checkbox) {
-                    checkbox.checked = true;
-                }
-            }
-
-            // Check if favorite
-            if (isFavorite) {
-                setIcon(row, 'favorite', true);
-            }
-
-            // Check if blocked
-            if (blockedGamesWikiIds.includes(wikiId.toString())) {
-                row.dataset.blocked = 'true';
-                setIcon(row, 'blocked', true);
-            }
-
-            // Check if uninstalled
-            if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
-                row.dataset.uninstalled = 'true';
-            }
-
-            // Check if any backup is permanent by looking at restore table data which has is_permanent
+            return createBackupTableRow(gameTitle, platformIcons, backupSize, game.latest_backup, game.wiki_page_id);
+        },
+        hasPermanentBackup: (game, wikiId) => {
             const restoreGameData = window.restoreTableDataMap && window.restoreTableDataMap.get(wikiId);
-            const hasPermamentBackup = restoreGameData && restoreGameData.backups && restoreGameData.backups.some(backup => backup.is_permanent);
-            if (hasPermamentBackup) {
-                setIcon(row, 'star', true);
-            }
-
-            // Check if auto backup is active
-            if (autoBackupSet.has(wikiId.toString())) {
-                setIcon(row, 'timer', true);
-            }
-
-            rows.push(row);
-        });
-    };
-
-    appendRowsToTable(favoriteGames, true);
-    appendRowsToTable(otherGames, false);
-    appendRows(tableBody, rows);
-
-    setupSelectAllCheckbox('backup', selectAllCheckbox);
-    applyTableFilters('backup');
+            return restoreGameData && restoreGameData.backups && restoreGameData.backups.some(backup => backup.is_permanent);
+        }
+    });
 }
 
 function setupBackupTabButtons() {
@@ -274,12 +207,8 @@ async function performBackup() {
         }
 
         updateProgress(backupProgressId, backupProgressTitle, 'end');
-        showBackupSummary(backupCount, backupFailed, errors, backupSize);
+        showOperationSummary('backup', backupCount, backupFailed, errors, backupSize, 'summary.total_backup_failed');
     }
-}
-
-function showBackupSummary(backupCount, backupFailed, errors, backupSize) {
-    showOperationSummary('backup', backupCount, backupFailed, errors, backupSize, 'summary.total_backup_failed');
 }
 
 async function updateDatabase() {

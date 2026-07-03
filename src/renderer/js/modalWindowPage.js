@@ -1,5 +1,6 @@
 import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
+import { formatSize } from './formatting.js';
 import './components/DataTable.js';
 
 function escapeHtml(value) {
@@ -17,12 +18,6 @@ function closeModalWindow() {
 
 function showMainAlert(type, message, detailContent) {
     window.api.send('show-main-alert', type, message, detailContent);
-}
-
-function formatSize(sizeInBytes) {
-    if (sizeInBytes === 0) return '0 B';
-    const i = Math.floor(Math.log(sizeInBytes) / Math.log(1024));
-    return (sizeInBytes / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['B', 'KB', 'MB', 'GB', 'TB'][i];
 }
 
 async function getGameTitle(wikiId, settings) {
