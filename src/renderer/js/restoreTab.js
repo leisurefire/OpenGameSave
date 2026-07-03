@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showRestoreConflictDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, appendRows } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, setActionButtonState, appendRows } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
@@ -146,46 +146,52 @@ function setupRestoreButton() {
             return;
         }
 
-        // Disable the button and change the appearance
-        restoreButton.disabled = true;
-        restoreButton.classList.add('cursor-not-allowed');
-        restoreIcon.classList.remove('fa-clock-rotate-left');
-        restoreIcon.innerHTML = spinner;
-        restoreButton.setAttribute('data-i18n', 'main.restore_in_progress');
-        restoreText.textContent = await window.i18n.translate('main.restore_in_progress');
+        await setActionButtonState({
+            button: restoreButton,
+            icon: restoreIcon,
+            text: restoreText,
+            iconClass: 'fa-clock-rotate-left',
+            i18nKey: 'main.restore_in_progress',
+            busy: true
+        });
 
         await performRestore();
         document.querySelector('#restore-summary-done').classList.remove('hidden');
 
-        // Re-enable the button and revert to the original state
-        restoreButton.disabled = false;
-        restoreButton.classList.remove('cursor-not-allowed');
-        restoreIcon.innerHTML = '';
-        restoreIcon.classList.add('fa-clock-rotate-left');
-        restoreButton.setAttribute('data-i18n', 'main.restore_selected');
-        restoreText.textContent = await window.i18n.translate('main.restore_selected');
+        await setActionButtonState({
+            button: restoreButton,
+            icon: restoreIcon,
+            text: restoreText,
+            iconClass: 'fa-clock-rotate-left',
+            i18nKey: 'main.restore_selected',
+            busy: false
+        });
         window.api.send('update-status', 'restoring', false);
 
         // Update table rows in background
         (async () => {
             window.api.send('update-status', 'updating_backup', true);
-            restoreButton.disabled = true;
-            restoreButton.classList.add('cursor-not-allowed');
-            restoreIcon.classList.remove('fa-clock-rotate-left');
-            restoreIcon.innerHTML = spinner;
-            restoreButton.setAttribute('data-i18n', 'main.updating_restore');
-            restoreText.textContent = await window.i18n.translate('main.updating_restore');
+            await setActionButtonState({
+                button: restoreButton,
+                icon: restoreIcon,
+                text: restoreText,
+                iconClass: 'fa-clock-rotate-left',
+                i18nKey: 'main.updating_restore',
+                busy: true
+            });
 
             for (const wikiId of selectedGames) {
                 await addOrUpdateTableRow('backup', wikiId);
             }
 
-            restoreButton.disabled = false;
-            restoreButton.classList.remove('cursor-not-allowed');
-            restoreIcon.innerHTML = '';
-            restoreIcon.classList.add('fa-clock-rotate-left');
-            restoreButton.setAttribute('data-i18n', 'main.restore_selected');
-            restoreText.textContent = await window.i18n.translate('main.restore_selected');
+            await setActionButtonState({
+                button: restoreButton,
+                icon: restoreIcon,
+                text: restoreText,
+                iconClass: 'fa-clock-rotate-left',
+                i18nKey: 'main.restore_selected',
+                busy: false
+            });
             window.api.send('update-status', 'updating_backup', false);
         })();
     });

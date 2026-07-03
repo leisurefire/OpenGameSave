@@ -9,6 +9,8 @@ const vdf = require('vdf-parser');
 const WinReg = require('winreg');
 const yaml = require('js-yaml');
 
+const { getLatestModificationTime: getLatestModificationTimeMs } = require('./fileSystemUtils');
+
 class GameData {
     constructor() {
         this.steamPath = null;
@@ -479,39 +481,8 @@ class GameData {
 }
 
 function getLatestModificationTime(directory) {
-    if (!fsOriginal.existsSync(directory)) {
-        return new Date(0);
-    }
-
-    const stats = fsOriginal.statSync(directory);
-
-    if (stats.isDirectory()) {
-        const files = fsOriginal.readdirSync(directory);
-        let latestModTime = new Date(0);
-
-        for (const file of files) {
-            const fullPath = path.join(directory, file);
-            const fileStats = fsOriginal.statSync(fullPath);
-
-            if (fileStats.isDirectory()) {
-                // Recursively check subdirectories
-                const subDirModTime = getLatestModificationTime(fullPath);
-                if (subDirModTime > latestModTime) {
-                    latestModTime = subDirModTime;
-                }
-            } else {
-                // Consider file modification time
-                const fileModTime = setMilliseconds(setSeconds(fileStats.mtime, 0), 0);
-                if (fileModTime > latestModTime) {
-                    latestModTime = fileModTime;
-                }
-            }
-        }
-        return latestModTime;
-
-    } else {
-        return setMilliseconds(setSeconds(stats.mtime, 0), 0);
-    }
+    const latestTime = getLatestModificationTimeMs(directory, fsOriginal);
+    return latestTime ? setMilliseconds(setSeconds(new Date(latestTime), 0), 0) : new Date(0);
 }
 
 let gameData = new GameData();

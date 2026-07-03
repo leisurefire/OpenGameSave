@@ -5,13 +5,13 @@ const path = require('path');
 
 const axios = require('axios');
 const i18next = require('i18next');
-const sqlite3 = require('sqlite3');
 
 const {
     getMainWin, getStatus, updateStatus,
     placeholder_mapping, osKeyMap, getSettings, saveSettings, showBackgroundNotification
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
+const { sqlite3, dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 
@@ -79,45 +79,17 @@ function runBackupWorkerTask(task, payload = {}, onMessage = null) {
     });
 }
 
-// ─── sqlite3 Promise 辅助函数 ─────────────────────────────────────────────────
-
-function _dbRun(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) { err ? reject(err) : resolve(this); });
-    });
-}
-
-function _dbGet(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
-    });
-}
-
-function _openDb(dbPath, mode) {
-    return new Promise((resolve, reject) => {
-        const db = new sqlite3.Database(dbPath, mode, (err) => {
-            err ? reject(err) : resolve(db);
-        });
-    });
-}
-
-function _closeDb(db) {
-    return new Promise((resolve, reject) => {
-        db.close((err) => err ? reject(err) : resolve());
-    });
-}
-
 /**
  * 读取本地数据库的 PRAGMA user_version
  */
 async function getLocalDbVersion(dbPath) {
     if (!fs.existsSync(dbPath)) return 0;
-    const db = await _openDb(dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(dbPath, sqlite3.OPEN_READONLY);
     try {
-        const row = await _dbGet(db, 'PRAGMA user_version');
+        const row = await dbGet(db, 'PRAGMA user_version');
         return row ? row.user_version : 0;
     } finally {
-        await _closeDb(db);
+        await closeDb(db);
     }
 }
 
@@ -125,14 +97,14 @@ async function getLocalDbVersion(dbPath) {
  * 将一个补丁 JSON 应用到数据库
  */
 async function applyPatch(dbPath, patch) {
-    const db = await _openDb(dbPath, sqlite3.OPEN_READWRITE);
+    const db = await openDb(dbPath, sqlite3.OPEN_READWRITE);
     try {
-        await _dbRun(db, 'BEGIN TRANSACTION');
+        await dbRun(db, 'BEGIN TRANSACTION');
 
         // upsert
         if (patch.upsert && patch.upsert.length > 0) {
             for (const row of patch.upsert) {
-                await _dbRun(db,
+                await dbRun(db,
                     `INSERT OR REPLACE INTO games
                         (wiki_page_id, title, zh_CN, install_folder, steam_id, gog_id, platform, save_location)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -153,21 +125,21 @@ async function applyPatch(dbPath, patch) {
         // delete
         if (patch.delete && patch.delete.length > 0) {
             const placeholders = patch.delete.map(() => '?').join(',');
-            await _dbRun(db,
+            await dbRun(db,
                 `DELETE FROM games WHERE wiki_page_id IN (${placeholders})`,
                 patch.delete
             );
         }
 
         // 更新版本号（不能用参数绑定）
-        await _dbRun(db, `PRAGMA user_version = ${parseInt(patch.version, 10)}`);
+        await dbRun(db, `PRAGMA user_version = ${parseInt(patch.version, 10)}`);
 
-        await _dbRun(db, 'COMMIT');
+        await dbRun(db, 'COMMIT');
     } catch (err) {
-        await _dbRun(db, 'ROLLBACK').catch(() => { });
+        await dbRun(db, 'ROLLBACK').catch(() => { });
         throw err;
     } finally {
-        await _closeDb(db);
+        await closeDb(db);
     }
 }
 

@@ -8,15 +8,22 @@ const util = require('util');
 
 const fse = require('fs-extra');
 const glob = require('glob');
-const { format, parse } = require('date-fns');
-const sqlite3 = require('sqlite3');
+const { format } = require('date-fns');
 const WinReg = require('winreg');
+
+const {
+    calculateDirectorySize,
+    ensureWritable,
+    copyFolder: fsOriginalCopyFolder,
+    getLatestModificationTime,
+    getNewestBackup: getNewestBackupFromPath,
+    readBackupFolder
+} = require('./fileSystemUtils');
+const { sqlite3, dbAll, openDb, closeDb, stmtAll, finalizeStmt } = require('./sqliteUtils');
 
 const execFilePromise = util.promisify(execFile);
 
 let context = null;
-const directorySizeCache = new Map();
-const DIRECTORY_SIZE_CACHE_TTL_MS = 2000;
 
 function settings() {
     return context.settings;
@@ -34,120 +41,12 @@ function getGameDisplayName(gameObj) {
     return settings().language === 'zh_CN' ? gameObj.zh_CN || gameObj.title : gameObj.title;
 }
 
-function calculateDirectorySize(directoryPath, ignoreConfig = true) {
-    try {
-        const stats = fsOriginal.statSync(directoryPath);
-        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
-        const cached = directorySizeCache.get(cacheKey);
-        const now = Date.now();
-        if (cached && cached.mtimeMs === stats.mtimeMs && now - cached.timestamp < DIRECTORY_SIZE_CACHE_TTL_MS) {
-            return cached.size;
-        }
-
-        let totalSize = 0;
-        if (stats.isDirectory()) {
-            const entries = fsOriginal.readdirSync(directoryPath, { withFileTypes: true });
-            for (const entry of entries) {
-                if (ignoreConfig && entry.name === 'backup_info.json') continue;
-                const filePath = path.join(directoryPath, entry.name);
-                if (entry.isDirectory()) {
-                    totalSize += calculateDirectorySize(filePath, ignoreConfig);
-                } else if (entry.isFile()) {
-                    totalSize += fsOriginal.statSync(filePath).size;
-                }
-            }
-        } else {
-            totalSize += stats.size;
-        }
-
-        directorySizeCache.set(cacheKey, {
-            mtimeMs: stats.mtimeMs,
-            size: totalSize,
-            timestamp: now
-        });
-        return totalSize;
-    } catch (error) {
-        console.error(`Error calculating directory size for ${directoryPath}:`, error);
-    }
-
-    return 0;
-}
-
-function ensureWritable(pathToCheck) {
-    if (!fsOriginal.existsSync(pathToCheck)) return;
-
-    const stats = fsOriginal.statSync(pathToCheck);
-    if (stats.isDirectory()) {
-        const items = fsOriginal.readdirSync(pathToCheck);
-        for (const item of items) {
-            ensureWritable(path.join(pathToCheck, item));
-        }
-    } else if (!(stats.mode & 0o200)) {
-        fsOriginal.chmodSync(pathToCheck, 0o666);
-    }
-}
-
-function fsOriginalCopyFolder(source, target) {
-    fsOriginal.mkdirSync(target, { recursive: true });
-
-    const items = fsOriginal.readdirSync(source);
-    for (const item of items) {
-        const sourcePath = path.join(source, item);
-        const destinationPath = path.join(target, item);
-        const stats = fsOriginal.statSync(sourcePath);
-
-        if (stats.isDirectory()) {
-            fsOriginalCopyFolder(sourcePath, destinationPath);
-        } else {
-            fsOriginal.copyFileSync(sourcePath, destinationPath);
-        }
-    }
-}
-
-function getLatestModificationTime(targetPath) {
-    let latestTime = 0;
-
-    try {
-        if (!fsOriginal.existsSync(targetPath)) {
-            return latestTime;
-        }
-
-        const stats = fsOriginal.statSync(targetPath);
-        latestTime = stats.mtimeMs;
-
-        if (stats.isDirectory()) {
-            const entries = fsOriginal.readdirSync(targetPath, { withFileTypes: true });
-            for (const entry of entries) {
-                const entryLatestTime = getLatestModificationTime(path.join(targetPath, entry.name));
-                if (entryLatestTime > latestTime) {
-                    latestTime = entryLatestTime;
-                }
-            }
-        }
-    } catch (error) {
-        console.error(`Error getting latest modification time for ${targetPath}:`, error);
-    }
-
-    return latestTime;
-}
-
 function getNewestBackup(wikiPageId) {
-    const backupDir = path.join(settings().backupPath, wikiPageId.toString());
-    if (!fsOriginal.existsSync(backupDir)) {
-        return context.labels.noBackups;
-    }
-
-    const backups = fsOriginal.readdirSync(backupDir).filter(file => {
-        const fullPath = path.join(backupDir, file);
-        return fsOriginal.statSync(fullPath).isDirectory();
+    return getNewestBackupFromPath(wikiPageId, {
+        backupPath: settings().backupPath,
+        noBackupsLabel: context.labels.noBackups,
+        fsAdapter: fsOriginal
     });
-
-    if (backups.length === 0) {
-        return context.labels.noBackups;
-    }
-
-    const latestBackup = backups.sort((a, b) => b.localeCompare(a))[0];
-    return format(parse(latestBackup, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
 }
 
 async function ensureDatabase() {
@@ -192,28 +91,6 @@ async function processAndPushGame(row, games) {
     }
 }
 
-function dbAll(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
-    });
-}
-
-function dbPrepareAll(stmt, param) {
-    return new Promise((resolve, reject) => {
-        stmt.all(param, (err, rows) => err ? reject(err) : resolve(rows));
-    });
-}
-
-function dbClose(db) {
-    return new Promise((resolve, reject) => {
-        db.close((err) => err ? reject(err) : resolve());
-    });
-}
-
-function stmtFinalize(stmt) {
-    return new Promise((resolve) => stmt.finalize(resolve));
-}
-
 async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
     const games = [];
     const errors = [];
@@ -222,7 +99,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
         return { games, errors: [context.labels.missingDatabase] };
     }
 
-    const db = new sqlite3.Database(context.dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(context.dbPath, sqlite3.OPEN_READONLY);
     const gameInstallPaths = Array.isArray(settings().gameInstalls) ? settings().gameInstalls : [];
 
     if (wikiId) {
@@ -249,7 +126,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
             console.error(`Error fetching single game data for ${wikiId}: ${error.stack}`);
             errors.push(`Error processing ${wikiId}: ${error.message}`);
         } finally {
-            await dbClose(db);
+            await closeDb(db);
         }
         return { games, errors };
     }
@@ -270,7 +147,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
                 if (processedInstallPaths.has(dir)) continue;
                 processedInstallPaths.add(dir);
 
-                const rows = await dbPrepareAll(stmtInstallFolder, dir);
+                const rows = await stmtAll(stmtInstallFolder, dir);
                 if (rows && rows.length > 0) {
                     for (const row of rows) {
                         try {
@@ -286,7 +163,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
             }
         }
 
-        await stmtFinalize(stmtInstallFolder);
+        await finalizeStmt(stmtInstallFolder);
         stmtInstallFolder = null;
 
         if (!ignoreUninstalled && settings().saveUninstalledGames) {
@@ -315,10 +192,10 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
         console.error(`Error displaying backup table: ${error.stack}`);
         errors.push(`Error displaying backup table: ${error.message}`);
         if (stmtInstallFolder) {
-            stmtInstallFolder.finalize();
+            await finalizeStmt(stmtInstallFolder).catch(() => { });
         }
     } finally {
-        await dbClose(db);
+        await closeDb(db);
     }
 
     return { games, errors };
@@ -332,7 +209,7 @@ async function getAllGameDataFromDB() {
         return { games, errors: [context.labels.missingDatabase] };
     }
 
-    const db = new sqlite3.Database(context.dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(context.dbPath, sqlite3.OPEN_READONLY);
 
     try {
         const rows = await dbAll(db, 'SELECT * FROM games');
@@ -358,7 +235,7 @@ async function getAllGameDataFromDB() {
         console.error(`Error displaying backup table: ${error.stack}`);
         errors.push(`Error displaying backup table: ${error.message}`);
     } finally {
-        await dbClose(db);
+        await closeDb(db);
     }
 
     return { games, errors };
@@ -683,66 +560,6 @@ async function backupGame(gameObj) {
     return null;
 }
 
-async function fetchBackups(wikiIdFolderPath, wikiId) {
-    const backups = [];
-    const errors = [];
-
-    try {
-        if (wikiId && !fsOriginal.existsSync(wikiIdFolderPath)) return { gameData: null, errors };
-        const stats = fsOriginal.statSync(wikiIdFolderPath);
-        if (!stats.isDirectory()) return { gameData: null, errors };
-
-        const backupFolders = fsOriginal.readdirSync(wikiIdFolderPath, { withFileTypes: true })
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => dirent.name);
-
-        for (const backupFolder of backupFolders) {
-            const backupFolderPath = path.join(wikiIdFolderPath, backupFolder);
-            const configFilePath = path.join(backupFolderPath, 'backup_info.json');
-            const backupSize = calculateDirectorySize(backupFolderPath);
-
-            if (fsOriginal.existsSync(configFilePath)) {
-                try {
-                    const backupConfig = await fse.readJson(configFilePath);
-                    backups.push({
-                        date: backupFolder,
-                        title: backupConfig.title,
-                        zh_CN: backupConfig.zh_CN,
-                        backup_size: backupSize,
-                        backup_paths: backupConfig.backup_paths,
-                        is_permanent: backupConfig.is_permanent || false,
-                        custom_name: backupConfig.custom_name || ''
-                    });
-                } catch (err) {
-                    console.error(`Error reading backup config file at ${configFilePath}: ${err.stack}`);
-                    errors.push(`Error reading backup config ${configFilePath}: ${err.message}`);
-                }
-            }
-        }
-
-        if (backups.length === 0) return { gameData: null, errors };
-
-        const latestBackup = backups.sort((a, b) => b.date.localeCompare(a.date))[0];
-        const latestBackupFormatted = format(parse(latestBackup.date, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
-
-        return {
-            gameData: {
-                wiki_page_id: wikiId,
-                latest_backup: latestBackupFormatted,
-                title: latestBackup.title,
-                zh_CN: latestBackup.zh_CN,
-                backup_size: latestBackup.backup_size,
-                backups
-            },
-            errors
-        };
-    } catch (error) {
-        console.error(`Error processing ${wikiIdFolderPath} for restore table display: ${error.stack}`);
-        errors.push(`Error processing restore path ${wikiIdFolderPath}: ${error.message}`);
-        return { gameData: null, errors };
-    }
-}
-
 async function getGameDataForRestore({ wikiId = null }) {
     const backupPath = settings().backupPath;
     fsOriginal.mkdirSync(backupPath, { recursive: true });
@@ -750,7 +567,7 @@ async function getGameDataForRestore({ wikiId = null }) {
 
     if (wikiId) {
         const wikiIdFolderPath = path.join(backupPath, wikiId.toString());
-        const { gameData, errors: fetchErrors } = await fetchBackups(wikiIdFolderPath, wikiId);
+        const { gameData, errors: fetchErrors } = await readBackupFolder(wikiIdFolderPath, wikiId, { fsAdapter: fsOriginal });
         errors.push(...fetchErrors);
         return { games: gameData ? [gameData] : [], errors };
     }
@@ -762,7 +579,7 @@ async function getGameDataForRestore({ wikiId = null }) {
 
     for (const gameFolder of gameFolders) {
         const wikiIdFolderPath = path.join(backupPath, gameFolder);
-        const { gameData, errors: fetchErrors } = await fetchBackups(wikiIdFolderPath, gameFolder);
+        const { gameData, errors: fetchErrors } = await readBackupFolder(wikiIdFolderPath, gameFolder, { fsAdapter: fsOriginal });
         errors.push(...fetchErrors);
         if (gameData) {
             games.push(gameData);

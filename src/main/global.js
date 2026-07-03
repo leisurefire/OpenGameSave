@@ -10,9 +10,16 @@ const { randomUUID } = require('crypto');
 const axios = require('axios');
 const fse = require('fs-extra');
 const i18next = require('i18next');
-const { format, parse } = require('date-fns');
+const { format } = require('date-fns');
 const Seven = require('node-7z');
 const sevenBin = require('7zip-bin');
+
+const {
+    calculateDirectorySize: calculateDirectorySizeWithFs,
+    ensureWritable: ensureWritableWithFs,
+    copyFolder,
+    getNewestBackup: getNewestBackupFromPath
+} = require('./fileSystemUtils');
 
 
 
@@ -672,100 +679,20 @@ function getGameDisplayName(gameObj) {
     }
 }
 
-const directorySizeCache = new Map();
-const DIRECTORY_SIZE_CACHE_TTL_MS = 2000;
-
-// Calculates the total size of a directory or file
 function calculateDirectorySize(directoryPath, ignoreConfig = true) {
-    try {
-        const stats = fsOriginal.statSync(directoryPath);
-        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
-        const cached = directorySizeCache.get(cacheKey);
-        const now = Date.now();
-        if (cached && cached.mtimeMs === stats.mtimeMs && now - cached.timestamp < DIRECTORY_SIZE_CACHE_TTL_MS) {
-            return cached.size;
-        }
-
-        let totalSize = 0;
-        if (stats.isDirectory()) {
-            const entries = fsOriginal.readdirSync(directoryPath, { withFileTypes: true });
-            for (const entry of entries) {
-                if (ignoreConfig && entry.name === 'backup_info.json') {
-                    continue;
-                }
-
-                const filePath = path.join(directoryPath, entry.name);
-                if (entry.isDirectory()) {
-                    totalSize += calculateDirectorySize(filePath, ignoreConfig);
-                } else if (entry.isFile()) {
-                    totalSize += fsOriginal.statSync(filePath).size;
-                }
-            }
-        } else {
-            totalSize = stats.size;
-        }
-
-        directorySizeCache.set(cacheKey, {
-            mtimeMs: stats.mtimeMs,
-            size: totalSize,
-            timestamp: now
-        });
-        return totalSize;
-    } catch (error) {
-        console.error(`Error calculating directory size for ${directoryPath}:`, error);
-    }
-
-    return 0;
+    return calculateDirectorySizeWithFs(directoryPath, ignoreConfig, fsOriginal);
 }
 
-// Ensure all files under a path have writable permission
 function ensureWritable(pathToCheck) {
-    if (!fsOriginal.existsSync(pathToCheck)) {
-        return;
-    }
-
-    const stats = fsOriginal.statSync(pathToCheck);
-
-    if (stats.isDirectory()) {
-        const items = fsOriginal.readdirSync(pathToCheck);
-
-        for (const item of items) {
-            const fullPath = path.join(pathToCheck, item);
-            ensureWritable(fullPath);
-        }
-
-    } else {
-        if (!(stats.mode & 0o200)) {
-            fsOriginal.chmod(pathToCheck, 0o666, (err) => {
-                if (err) {
-                    throw (`Error changing permissions for ${pathToCheck}:`, err);
-                }
-            });
-        }
-    }
+    ensureWritableWithFs(pathToCheck, fsOriginal);
 }
 
 function getNewestBackup(wiki_page_id) {
-    const backupDir = path.join(settings.backupPath, wiki_page_id.toString());
-
-    if (!fsOriginal.existsSync(backupDir)) {
-        return i18next.t('main.no_backups');
-    }
-
-    const backups = fsOriginal.readdirSync(backupDir).filter(file => {
-        const fullPath = path.join(backupDir, file);
-        return fsOriginal.statSync(fullPath).isDirectory();
+    return getNewestBackupFromPath(wiki_page_id, {
+        backupPath: settings.backupPath,
+        noBackupsLabel: i18next.t('main.no_backups'),
+        fsAdapter: fsOriginal
     });
-
-    if (backups.length === 0) {
-        return i18next.t('main.no_backups');
-    }
-
-    const latestBackup = backups.sort((a, b) => {
-        return b.localeCompare(a);
-    })[0];
-
-    return format(parse(latestBackup, 'yyyy-MM-dd_HH-mm', new Date()), 'yyyy/MM/dd HH:mm');
 }
 
 function updateStatus(statusKey, statusValue) {
@@ -773,22 +700,7 @@ function updateStatus(statusKey, statusValue) {
 }
 
 function fsOriginalCopyFolder(source, target) {
-    fsOriginal.mkdirSync(target, { recursive: true });
-
-    const items = fsOriginal.readdirSync(source);
-
-    for (const item of items) {
-        const sourcePath = path.join(source, item);
-        const destinationPath = path.join(target, item);
-
-        const stats = fsOriginal.statSync(sourcePath);
-
-        if (stats.isDirectory()) {
-            fsOriginalCopyFolder(sourcePath, destinationPath);
-        } else {
-            fsOriginal.copyFileSync(sourcePath, destinationPath);
-        }
-    }
+    copyFolder(source, target, fsOriginal);
 }
 
 async function exportBackups(count, exportPath, wikiIds = null) {

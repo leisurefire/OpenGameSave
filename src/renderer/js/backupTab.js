@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { spinner, showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, appendRows } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, setupSelectAllCheckbox, getSelectedWikiIds, setIcon, applyTableFilters, updateUninstalledButtonVisibility, runWhenDomReady, getSortedFavoriteGroups, showOperationSummary, setActionButtonState, appendRows } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -184,48 +184,54 @@ function setupBackupTabButtons() {
         }
         window.api.send('update-status', 'backuping', true);
 
-        // Disable the button and change the appearance
-        backupButton.disabled = true;
-        backupButton.classList.add('cursor-not-allowed');
-        backupIcon.classList.remove('fa-bolt');
-        backupIcon.innerHTML = spinner;
-        backupButton.setAttribute('data-i18n', 'main.backup_in_progress');
-        backupText.textContent = await window.i18n.translate('main.backup_in_progress');
+        await setActionButtonState({
+            button: backupButton,
+            icon: backupIcon,
+            text: backupText,
+            iconClass: 'fa-bolt',
+            i18nKey: 'main.backup_in_progress',
+            busy: true
+        });
 
         await performBackup();
         document.querySelector('#backup-summary-done').classList.remove('hidden');
 
-        // Re-enable the button and revert to the original state
-        backupButton.disabled = false;
-        backupButton.classList.remove('cursor-not-allowed');
-        backupIcon.innerHTML = '';
-        backupIcon.classList.add('fa-bolt');
-        backupButton.setAttribute('data-i18n', 'main.backup_selected');
-        backupText.textContent = await window.i18n.translate('main.backup_selected');
+        await setActionButtonState({
+            button: backupButton,
+            icon: backupIcon,
+            text: backupText,
+            iconClass: 'fa-bolt',
+            i18nKey: 'main.backup_selected',
+            busy: false
+        });
         window.api.send('update-status', 'backuping', false);
 
         // Update table rows in background
         (async () => {
             window.api.send('update-status', 'updating_backup', true);
             window.api.send('update-status', 'updating_restore', true);
-            backupButton.disabled = true;
-            backupButton.classList.add('cursor-not-allowed');
-            backupIcon.classList.remove('fa-bolt');
-            backupIcon.innerHTML = spinner;
-            backupButton.setAttribute('data-i18n', 'main.updating_backup');
-            backupText.textContent = await window.i18n.translate('main.updating_backup');
+            await setActionButtonState({
+                button: backupButton,
+                icon: backupIcon,
+                text: backupText,
+                iconClass: 'fa-bolt',
+                i18nKey: 'main.updating_backup',
+                busy: true
+            });
 
             for (const wikiId of selectedGames) {
                 await addOrUpdateTableRow('backup', wikiId);
                 await addOrUpdateTableRow('restore', wikiId);
             }
 
-            backupButton.disabled = false;
-            backupButton.classList.remove('cursor-not-allowed');
-            backupIcon.innerHTML = '';
-            backupIcon.classList.add('fa-bolt');
-            backupButton.setAttribute('data-i18n', 'main.backup_selected');
-            backupText.textContent = await window.i18n.translate('main.backup_selected');
+            await setActionButtonState({
+                button: backupButton,
+                icon: backupIcon,
+                text: backupText,
+                iconClass: 'fa-bolt',
+                i18nKey: 'main.backup_selected',
+                busy: false
+            });
             window.api.send('update-status', 'updating_backup', false);
             window.api.send('update-status', 'updating_restore', false);
         })();
@@ -286,22 +292,26 @@ async function updateDatabase() {
     const start = await operationStartCheck('update-db');
     if (start) {
         window.api.send('update-status', 'updating_db', true);
-        updateButton.disabled = true;
-        updateButton.classList.add('cursor-not-allowed');
-        updateButtonIcon.innerHTML = spinner;
-        updateButtonIcon.classList.remove('fa-rotate');
-        updateButton.setAttribute('data-i18n', 'alert.updating_database');
-        updateButtonText.textContent = await window.i18n.translate('alert.updating_database');
+        await setActionButtonState({
+            button: updateButton,
+            icon: updateButtonIcon,
+            text: updateButtonText,
+            iconClass: 'fa-rotate',
+            i18nKey: 'alert.updating_database',
+            busy: true
+        });
 
         await window.api.invoke('update-database');
 
         window.api.send('update-status', 'updating_db', false);
-        updateButton.disabled = false;
-        updateButton.classList.remove('cursor-not-allowed');
-        updateButtonIcon.innerHTML = '';
-        updateButtonIcon.classList.add('fa-rotate');
-        updateButton.setAttribute('data-i18n', 'main.update_database');
-        updateButtonText.textContent = await window.i18n.translate('main.update_database');
+        await setActionButtonState({
+            button: updateButton,
+            icon: updateButtonIcon,
+            text: updateButtonText,
+            iconClass: 'fa-rotate',
+            i18nKey: 'main.update_database',
+            busy: false
+        });
         updateBackupTable(true);
     }
 }

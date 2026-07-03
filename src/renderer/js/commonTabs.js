@@ -111,6 +111,22 @@ export const spinner = `
     </svg>
 `;
 
+export async function setActionButtonState({ button, icon, text, iconClass, i18nKey, busy }) {
+    button.disabled = busy;
+    button.classList.toggle('cursor-not-allowed', busy);
+
+    if (busy) {
+        if (iconClass) icon.classList.remove(iconClass);
+        icon.innerHTML = spinner;
+    } else {
+        icon.innerHTML = '';
+        if (iconClass) icon.classList.add(iconClass);
+    }
+
+    button.setAttribute('data-i18n', i18nKey);
+    text.textContent = await window.i18n.translate(i18nKey);
+}
+
 // Function to initialize the tab switching functionality
 function initializeTabs() {
     const tabsElement = document.getElementById('main-tab');
