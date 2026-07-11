@@ -1,58 +1,53 @@
-const sqlite3 = require('sqlite3');
+const Database = require('better-sqlite3');
+
+function bindParams(statement, method, params) {
+    if (Array.isArray(params)) {
+        return statement[method](...params);
+    }
+    if (params && typeof params === 'object') {
+        return statement[method](params);
+    }
+    if (params === undefined) {
+        return statement[method]();
+    }
+    return statement[method](params);
+}
 
 function dbRun(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-            err ? reject(err) : resolve(this);
-        });
-    });
+    if (params.length === 0) {
+        return db.exec(sql);
+    }
+    return bindParams(db.prepare(sql), 'run', params);
 }
 
 function dbAll(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
-    });
+    return bindParams(db.prepare(sql), 'all', params);
 }
 
 function dbGet(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
-    });
+    return bindParams(db.prepare(sql), 'get', params);
 }
 
-function openDb(dbPath, mode) {
-    return new Promise((resolve, reject) => {
-        const db = new sqlite3.Database(dbPath, mode, (err) => {
-            err ? reject(err) : resolve(db);
-        });
+function openDb(dbPath, options = {}) {
+    return new Database(dbPath, {
+        timeout: 5000,
+        ...options
     });
 }
 
 function closeDb(db) {
-    return new Promise((resolve, reject) => {
-        db.close((err) => err ? reject(err) : resolve());
-    });
+    db.close();
 }
 
 function stmtAll(stmt, param) {
-    return new Promise((resolve, reject) => {
-        stmt.all(param, (err, rows) => err ? reject(err) : resolve(rows));
-    });
-}
-
-function finalizeStmt(stmt) {
-    return new Promise((resolve, reject) => {
-        stmt.finalize((err) => err ? reject(err) : resolve());
-    });
+    return bindParams(stmt, 'all', param);
 }
 
 module.exports = {
-    sqlite3,
     dbRun,
     dbAll,
     dbGet,
     openDb,
     closeDb,
-    stmtAll,
-    finalizeStmt
+    stmtAll
 };

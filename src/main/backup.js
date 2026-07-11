@@ -11,7 +11,7 @@ const {
     placeholder_mapping, osKeyMap, getSettings, saveSettings, showBackgroundNotification
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
-const { sqlite3, dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
+const { dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
 
@@ -84,7 +84,7 @@ function runBackupWorkerTask(task, payload = {}, onMessage = null) {
  */
 async function getLocalDbVersion(dbPath) {
     if (!fs.existsSync(dbPath)) return 0;
-    const db = await openDb(dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(dbPath, { readonly: true, fileMustExist: true });
     try {
         const row = await dbGet(db, 'PRAGMA user_version');
         return row ? row.user_version : 0;
@@ -97,7 +97,7 @@ async function getLocalDbVersion(dbPath) {
  * 将一个补丁 JSON 应用到数据库
  */
 async function applyPatch(dbPath, patch) {
-    const db = await openDb(dbPath, sqlite3.OPEN_READWRITE);
+    const db = await openDb(dbPath, { fileMustExist: true });
     try {
         await dbRun(db, 'BEGIN TRANSACTION');
 
@@ -136,7 +136,9 @@ async function applyPatch(dbPath, patch) {
 
         await dbRun(db, 'COMMIT');
     } catch (err) {
-        await dbRun(db, 'ROLLBACK').catch(() => { });
+        try {
+            dbRun(db, 'ROLLBACK');
+        } catch { }
         throw err;
     } finally {
         await closeDb(db);

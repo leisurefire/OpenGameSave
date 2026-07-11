@@ -19,7 +19,7 @@ const {
     getNewestBackup: getNewestBackupFromPath,
     readBackupFolder
 } = require('./fileSystemUtils');
-const { sqlite3, dbAll, openDb, closeDb, stmtAll, finalizeStmt } = require('./sqliteUtils');
+const { dbAll, openDb, closeDb, stmtAll } = require('./sqliteUtils');
 
 const execFilePromise = util.promisify(execFile);
 
@@ -99,7 +99,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
         return { games, errors: [context.labels.missingDatabase] };
     }
 
-    const db = await openDb(context.dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(context.dbPath, { readonly: true, fileMustExist: true });
     const gameInstallPaths = Array.isArray(settings().gameInstalls) ? settings().gameInstalls : [];
 
     if (wikiId) {
@@ -163,7 +163,6 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
             }
         }
 
-        await finalizeStmt(stmtInstallFolder);
         stmtInstallFolder = null;
 
         if (!ignoreUninstalled && settings().saveUninstalledGames) {
@@ -191,9 +190,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
     } catch (error) {
         console.error(`Error displaying backup table: ${error.stack}`);
         errors.push(`Error displaying backup table: ${error.message}`);
-        if (stmtInstallFolder) {
-            await finalizeStmt(stmtInstallFolder).catch(() => { });
-        }
+        stmtInstallFolder = null;
     } finally {
         await closeDb(db);
     }
@@ -209,7 +206,7 @@ async function getAllGameDataFromDB() {
         return { games, errors: [context.labels.missingDatabase] };
     }
 
-    const db = await openDb(context.dbPath, sqlite3.OPEN_READONLY);
+    const db = await openDb(context.dbPath, { readonly: true, fileMustExist: true });
 
     try {
         const rows = await dbAll(db, 'SELECT * FROM games');

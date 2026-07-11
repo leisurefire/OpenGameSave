@@ -18,13 +18,13 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置 Node.js 18
+      - name: 设置 Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '24'
 
-      - name: 安装 sqlite3
-        run: npm install sqlite3
+      - name: 安装 better-sqlite3
+        run: npm install better-sqlite3@12.11.1 --no-save
 
       - name: 确定目标 Release Tag
         id: resolve_tag

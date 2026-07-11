@@ -17,53 +17,35 @@
 
 const fs = require('fs');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 
 // ─── Promise 封装 ────────────────────────────────────────────────────────────
 
-function openDb(dbPath, mode) {
-    return new Promise((resolve, reject) => {
-        const db = new sqlite3.Database(dbPath, mode, (err) => {
-            if (err) reject(err);
-            else resolve(db);
-        });
+function openDb(dbPath, options = {}) {
+    return new Database(dbPath, {
+        timeout: 5000,
+        fileMustExist: true,
+        ...options
     });
 }
 
 function closeDb(db) {
-    return new Promise((resolve, reject) => {
-        db.close((err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+    db.close();
 }
 
 function dbRun(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-            if (err) reject(err);
-            else resolve(this);
-        });
-    });
+    if (params.length === 0) {
+        return db.exec(sql);
+    }
+    return db.prepare(sql).run(...params);
 }
 
 function dbAll(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
+    return db.prepare(sql).all(...params);
 }
 
 function dbGet(db, sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-        });
-    });
+    return db.prepare(sql).get(...params);
 }
 
 // ─── 参数解析 ─────────────────────────────────────────────────────────────────
@@ -152,7 +134,7 @@ async function main() {
     const isFirstRelease = !fromPath || !fs.existsSync(fromPath);
 
     // 打开新数据库
-    const newDb = await openDb(toPath, sqlite3.OPEN_READWRITE);
+    const newDb = await openDb(toPath);
     const newVersion = await getUserVersion(newDb);
     const newGamesMap = await loadGamesMap(newDb);
 
@@ -167,7 +149,7 @@ async function main() {
         deleteIds = [];
     } else {
         // 打开旧数据库
-        const oldDb = await openDb(fromPath, sqlite3.OPEN_READONLY);
+        const oldDb = await openDb(fromPath, { readonly: true });
         fromVersion = await getUserVersion(oldDb);
         const oldGamesMap = await loadGamesMap(oldDb);
         await closeDb(oldDb);
