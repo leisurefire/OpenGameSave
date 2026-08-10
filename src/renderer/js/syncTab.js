@@ -27,7 +27,8 @@ async function chooseBackupPath() {
     const canStart = await operationStartCheck('change-settings');
     if (canStart) {
         backupPathInput.value = selectedPath;
-        window.api.send('migrate-backups', selectedPath);
+        const migrated = await window.api.invoke('migrate-backups', selectedPath);
+        if (!migrated) backupPathInput.value = settings.backupPath;
     } else {
         backupPathInput.value = settings.backupPath;
     }
@@ -90,7 +91,6 @@ async function runGitHubSync(direction) {
     const progressTitle = await window.i18n.translate(direction === 'upload' ? 'alert.github_sync_uploading' : 'alert.github_sync_downloading');
 
     setSyncBusy(true);
-    window.api.send('update-status', 'github_syncing', true);
 
     try {
         const progressId = 'github-sync';
@@ -99,7 +99,9 @@ async function runGitHubSync(direction) {
             const progressElement = document.createElement('div');
             progressElement.id = progressId;
             progressElement.className = 'ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl';
-            progressElement.innerHTML = `<div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent"><span>${progressTitle}</span><span>Git</span></div><div class="text-xs opacity-60">${await window.i18n.translate('alert.github_sync_progress_hint')}</div>`;
+            progressElement.innerHTML = '<div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent"><span class="sync-progress-title"></span><span>Git</span></div><div class="sync-progress-hint text-xs opacity-60"></div>';
+            progressElement.querySelector('.sync-progress-title').textContent = progressTitle;
+            progressElement.querySelector('.sync-progress-hint').textContent = await window.i18n.translate('alert.github_sync_progress_hint');
             progressContainer.appendChild(progressElement);
         }
 
@@ -116,7 +118,6 @@ async function runGitHubSync(direction) {
         document.getElementById('github-sync')?.remove();
         showAlert('modal', await window.i18n.translate('alert.github_sync_failed'), error.message || String(error));
     } finally {
-        window.api.send('update-status', 'github_syncing', false);
         setSyncBusy(false);
     }
 }

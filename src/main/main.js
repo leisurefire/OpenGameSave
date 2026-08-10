@@ -1,4 +1,4 @@
-const { BrowserWindow, app, dialog, ipcMain, shell, systemPreferences } = require('electron');
+const { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } = require('electron');
 
 const { randomUUID } = require('crypto');
 const fs = require('fs');
@@ -9,7 +9,6 @@ const path = require('path');
 const fse = require('fs-extra');
 const i18next = require('i18next');
 const Backend = require('i18next-fs-backend');
-const { pinyin } = require('pinyin-pro');
 
 const {
     windowVisualEffect, applyWindowsMicaEffect,
@@ -22,6 +21,17 @@ const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = 
 const { getGameDataForRestore, restoreGame } = require("./restore");
 const { startAutoBackup, stopAutoBackup, getAutoBackupState, restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
 const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } = require('./githubSync');
+const {
+    assertNoSymlinkAncestors,
+    isPathInside,
+    normalizeBackupDate,
+    normalizeRegistryKeyPath,
+    normalizeWikiId,
+    resolveInside,
+    validateBackupMetadata
+} = require('./validation');
+const { denyUnexpectedPermissions, hardenBrowserWindow } = require('./windowSecurity');
+const { acquireGameOperation, acquireGlobalOperation } = require('./gameOperationLock');
 
 
 function logFatalError(error) {
@@ -30,12 +40,11 @@ function logFatalError(error) {
 
     try {
         const logDir = path.join(app.getPath('userData'), 'logs');
-        fs.mkdirSync(logDir, { recursive: true });
-        fs.appendFileSync(
-            path.join(logDir, 'main-error.log'),
-            `[${new Date().toISOString()}] ${message}\n\n`,
-            'utf8'
-        );
+        fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+        const logPath = path.join(logDir, 'main-error.log');
+        const payload = `[${new Date().toISOString()}] ${message}\n\n`;
+        const shouldRotate = fs.existsSync(logPath) && fs.statSync(logPath).size > 5 * 1024 * 1024;
+        fs[shouldRotate ? 'writeFileSync' : 'appendFileSync'](logPath, payload, { encoding: 'utf8', mode: 0o600 });
     } catch (logError) {
         console.error('Failed to write fatal error log:', logError);
     }
@@ -61,6 +70,7 @@ if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
 }
 
 app.commandLine.appendSwitch("lang", "en");
+app.enableSandbox();
 const gotTheLock = app.requestSingleInstanceLock();
 let pendingGSMPath = null;
 let isQuitting = false;
@@ -174,12 +184,13 @@ if (!gotTheLock) {
     app.on('second-instance', (event, argv) => {
         const gsmPath = argv.find(arg => arg.toLowerCase().endsWith('.gsmr'));
         const uriPath = argv.find(arg => arg.startsWith('gamesavemanager://'));
-        if (gsmPath) {
-            getMainWin().webContents.send('open-import-modal', gsmPath);
+        const mainWin = getMainWin();
+        if (gsmPath && mainWin && !mainWin.isDestroyed()) {
+            mainWin.webContents.send('open-import-modal', gsmPath);
         }
         else if (uriPath) {
-            const action = uriPath.replace('gamesavemanager://', '').replace('/', '');
-            ipcMain.emit('notification-action', null, action);
+            const action = uriPath.slice('gamesavemanager://'.length).replace(/^\/+|\/+$/g, '').toLowerCase();
+            if (action === 'yes' || action === 'no') ipcMain.emit('notification-action', null, action);
         }
     });
 
@@ -295,10 +306,15 @@ function createMenuWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: true,
+            webviewTag: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            spellcheck: false,
             backgroundThrottling: false,
         },
     });
 
+    hardenBrowserWindow(newMenuWindow, path.join(__dirname, '../renderer'));
     menuWindow = newMenuWindow;
     newMenuWindow.loadFile(path.join(__dirname, '../renderer/menu.html'));
 
@@ -320,7 +336,12 @@ function createMenuWindow() {
     });
 }
 
-ipcMain.on('show-popup-menu', (event, { items, x, y, direction = 'down' }) => {
+ipcMain.on('show-popup-menu', (event, payload = {}) => {
+    const items = Array.isArray(payload.items) ? payload.items.slice(0, 30) : [];
+    const x = Number(payload.x);
+    const y = Number(payload.y);
+    const direction = payload.direction === 'up' ? 'up' : 'down';
+    if (!Number.isFinite(x) || !Number.isFinite(y) || items.length === 0) return;
     if (!menuWindow || menuWindow.isDestroyed()) createMenuWindow();
 
     const parentWindow = BrowserWindow.fromWebContents(event.sender);
@@ -362,9 +383,9 @@ ipcMain.on('show-popup-menu', (event, { items, x, y, direction = 'down' }) => {
 });
 
 ipcMain.on('resize-and-show-menu', (event, size) => {
-    if (menuWindow && !menuWindow.isDestroyed()) {
+    if (menuWindow && !menuWindow.isDestroyed() && event.sender === menuWindow.webContents) {
         const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
-        const height = Math.ceil(size?.height || 0);
+        const height = Math.min(Math.max(Math.ceil(size?.height || 1), 1), 1000);
         const y = menuWindow.menuDirection === 'up'
             ? Math.round(menuWindow.targetScreenY - height)
             : menuWindow.targetScreenY;
@@ -384,6 +405,7 @@ ipcMain.on('resize-and-show-menu', (event, size) => {
 });
 
 ipcMain.on('menu-item-click', (event, action, data) => {
+    if (!menuWindow || event.sender !== menuWindow.webContents) return;
     hideMenuWindow();
 
     const mainWin = getMainWin();
@@ -393,6 +415,7 @@ ipcMain.on('menu-item-click', (event, action, data) => {
 });
 
 app.whenReady().then(async () => {
+    denyUnexpectedPermissions(session.defaultSession);
     app.setAsDefaultProtocolClient('gamesavemanager');
 
     loadSettings();
@@ -459,38 +482,6 @@ function getSystemAccentColor() {
     return `#${accent.substring(0, 6)}`;
 }
 
-function isSafeRelativePath(rootPath, targetPath) {
-    const relativePath = path.relative(rootPath, targetPath);
-    return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
-}
-
-function resolveInside(rootPath, ...segments) {
-    const resolvedRoot = path.resolve(rootPath);
-    const resolvedTarget = path.resolve(resolvedRoot, ...segments.map(segment => String(segment)));
-
-    if (!isSafeRelativePath(resolvedRoot, resolvedTarget)) {
-        throw new Error('Path escapes the expected root');
-    }
-
-    return resolvedTarget;
-}
-
-function normalizeWikiId(wikiId) {
-    const normalized = String(wikiId || '').trim();
-    if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
-        throw new Error('Invalid wiki id');
-    }
-    return normalized;
-}
-
-function normalizeBackupDate(backupDate) {
-    const normalized = String(backupDate || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}$/.test(normalized)) {
-        throw new Error('Invalid backup date');
-    }
-    return normalized;
-}
-
 function getValidatedBackupPath(wikiId, backupDate = null) {
     const backupRoot = path.resolve(getSettings().backupPath);
     const safeWikiId = normalizeWikiId(wikiId);
@@ -499,25 +490,75 @@ function getValidatedBackupPath(wikiId, backupDate = null) {
         : resolveInside(backupRoot, safeWikiId, normalizeBackupDate(backupDate));
 }
 
+async function getVerifiedBackupPath(wikiId, backupDate = null) {
+    const backupRoot = path.resolve(getSettings().backupPath);
+    const gamePath = getValidatedBackupPath(wikiId);
+    const targetPath = backupDate === null ? gamePath : getValidatedBackupPath(wikiId, backupDate);
+    const pathsToVerify = backupDate === null
+        ? [backupRoot, gamePath]
+        : [backupRoot, gamePath, targetPath];
+    for (const candidatePath of pathsToVerify) {
+        const stats = await fsOriginal.promises.lstat(candidatePath);
+        if (!stats.isDirectory() || stats.isSymbolicLink()) {
+            throw new Error('Backup path is not a regular directory');
+        }
+    }
+    return targetPath;
+}
+
 async function getVerifiedLocalSavePaths(wikiId, selectedIndexes = null) {
     const safeWikiId = normalizeWikiId(wikiId);
     const { games } = await getGameDataFromDB(false, safeWikiId);
     const resolvedPaths = games?.[0]?.resolved_paths || [];
 
-    if (!Array.isArray(selectedIndexes)) {
-        return resolvedPaths;
-    }
+    const selectedPaths = !Array.isArray(selectedIndexes)
+        ? resolvedPaths
+        : selectedIndexes
+            .map(index => Number(index))
+            .filter(index => Number.isInteger(index) && index >= 0 && index < resolvedPaths.length)
+            .map(index => resolvedPaths[index]);
 
-    return selectedIndexes
-        .map(index => Number(index))
-        .filter(index => Number.isInteger(index) && index >= 0 && index < resolvedPaths.length)
-        .map(index => resolvedPaths[index]);
+    const currentGameData = getGameData();
+    const configuredInstallPaths = Array.isArray(getSettings().gameInstalls) ? getSettings().gameInstalls : [];
+    const allowedRoots = [
+        os.homedir(), process.env.APPDATA, process.env.LOCALAPPDATA, process.env.PROGRAMDATA,
+        process.env.PUBLIC, currentGameData.steamPath, currentGameData.ubisoftPath,
+        ...configuredInstallPaths
+    ].filter(root => typeof root === 'string' && path.isAbsolute(root));
+
+    const verifiedPaths = [];
+    for (const pathObject of selectedPaths) {
+        if (pathObject?.type === 'reg') {
+            verifiedPaths.push({ ...pathObject, resolved: normalizeRegistryKeyPath(pathObject.resolved) });
+            continue;
+        }
+        const resolvedPath = typeof pathObject?.resolved === 'string' && path.isAbsolute(pathObject.resolved)
+            ? path.resolve(pathObject.resolved)
+            : null;
+        const comparisonPath = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+        const allowedRoot = resolvedPath
+            ? allowedRoots
+                .filter(root => isPathInside(root, resolvedPath) && comparisonPath(root) !== comparisonPath(resolvedPath))
+                .sort((left, right) => right.length - left.length)[0]
+            : null;
+        if (!allowedRoot) throw new Error('Local save path is outside the allowed roots');
+        await assertNoSymlinkAncestors(allowedRoot, resolvedPath, fsOriginal);
+        verifiedPaths.push({ ...pathObject, resolved: resolvedPath });
+    }
+    return verifiedPaths;
 }
 
 function isAllowedExternalUrl(url) {
     try {
-        const parsedUrl = new URL(String(url || ''));
-        return parsedUrl.protocol === 'https:';
+        const value = String(url || '');
+        if (value.length === 0 || value.length > 2048) return false;
+        const parsedUrl = new URL(value);
+        const allowedHosts = new Set(['github.com', 'www.pcgamingwiki.com']);
+        return parsedUrl.protocol === 'https:'
+            && !parsedUrl.username
+            && !parsedUrl.password
+            && (!parsedUrl.port || parsedUrl.port === '443')
+            && allowedHosts.has(parsedUrl.hostname.toLowerCase());
     } catch (error) {
         return false;
     }
@@ -539,7 +580,7 @@ ipcMain.handle('get-accent-color', () => {
 });
 
 ipcMain.on('apply-accent-color-setting', (event, syncEnabled) => {
-    const color = syncEnabled ? getSystemAccentColor() : '#16c60c';
+    const color = syncEnabled === true ? getSystemAccentColor() : '#16c60c';
     BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
             win.webContents.send('accent-color-changed', color);
@@ -548,7 +589,9 @@ ipcMain.on('apply-accent-color-setting', (event, syncEnabled) => {
 });
 
 ipcMain.handle("translate", async (event, key, options) => {
-    return i18next.t(key, options);
+    const safeKey = String(key ?? '');
+    if (!/^[A-Za-z0-9_.-]{1,200}$/.test(safeKey)) throw new Error('Invalid translation key');
+    return i18next.t(safeKey, options && typeof options === 'object' && !Array.isArray(options) ? options : {});
 });
 
 ipcMain.handle('change-language', async (event, language) => {
@@ -557,7 +600,15 @@ ipcMain.handle('change-language', async (event, language) => {
 });
 
 ipcMain.on('save-settings', async (event, key, value) => {
-    saveSettings(key, value);
+    try {
+        await saveSettings(key, value);
+    } catch (error) {
+        console.error('Failed to save setting:', error);
+        const mainWin = getMainWin();
+        if (mainWin && !mainWin.isDestroyed()) {
+            mainWin.webContents.send('show-alert', 'error', error.message);
+        }
+    }
 });
 
 ipcMain.handle("get-settings", () => {
@@ -604,11 +655,17 @@ ipcMain.handle('open-backup-dialog', async () => {
 
 
 ipcMain.handle('open-directory', async (event, directoryPath) => {
+    const configuredBackupPath = path.resolve(getSettings().backupPath);
+    const requestedPath = typeof directoryPath === 'string' ? path.resolve(directoryPath) : '';
+    const comparisonPath = (value) => process.platform === 'win32' ? value.toLowerCase() : value;
+    if (!requestedPath || comparisonPath(requestedPath) !== comparisonPath(configuredBackupPath)) {
+        return { success: false, message: i18next.t('alert.github_sync_repo_missing') };
+    }
     let isDirectory = false;
-    if (directoryPath) {
+    if (requestedPath) {
         try {
-            const stats = await fsOriginal.promises.stat(directoryPath);
-            isDirectory = stats.isDirectory();
+            const stats = await fsOriginal.promises.lstat(requestedPath);
+            isDirectory = stats.isDirectory() && !stats.isSymbolicLink();
         } catch (error) {
             isDirectory = false;
         }
@@ -621,7 +678,7 @@ ipcMain.handle('open-directory', async (event, directoryPath) => {
         };
     }
 
-    const errorMessage = await shell.openPath(directoryPath);
+    const errorMessage = await shell.openPath(requestedPath);
     return {
         success: !errorMessage,
         message: errorMessage
@@ -663,6 +720,8 @@ ipcMain.handle('select-path', async (event, fileType) => {
                 { name: i18next.t('main.gsmr-file-type'), extensions: ['gsmr'] }
             ];
             break;
+        default:
+            throw new Error('Invalid path selection type');
     }
 
     const result = await dialog.showOpenDialog(focusedWindow, {
@@ -677,28 +736,6 @@ ipcMain.handle('select-path', async (event, fileType) => {
     return null;
 });
 
-// Sort objects using object.titleToSort
-ipcMain.handle('sort-games', (event, games) => {
-    const gamesWithSortedTitles = games.map((game) => {
-        try {
-            const isChinese = /[\u4e00-\u9fff]/.test(game.titleToSort);
-            const titleToSort = isChinese
-                ? pinyin(game.titleToSort, { toneType: 'none' })
-                : game.titleToSort.toLowerCase();
-            return { ...game, titleToSort };
-
-        } catch (error) {
-            console.error(`Error sorting game ${game.titleToSort}: ${error.stack}`);
-            getMainWin().webContents.send('show-alert', 'modal', `${i18next.t('alert.sort_failed', { game_name: game.titleToSort })}`, error.message);
-            return { ...game, titleToSort: '' };
-        }
-    });
-
-    return gamesWithSortedTitles.sort((a, b) => {
-        return a.titleToSort.localeCompare(b.titleToSort);
-    });
-});
-
 ipcMain.handle('get-account-data', async () => {
     await ensureGameDataReady();
     return getAllUserIds();
@@ -708,10 +745,6 @@ ipcMain.handle('get-platform', () => {
     return osKeyMap[os.platform()];
 });
 
-ipcMain.handle('get-uuid', () => {
-    return randomUUID();
-});
-
 ipcMain.handle('get-icon-map', async () => {
     return getCachedIconMap();
 });
@@ -719,8 +752,8 @@ ipcMain.handle('get-icon-map', async () => {
 ipcMain.handle('get-table-view-model', async (event, tableName, options = {}) => {
     await ensureGameDataReady();
 
-    const wikiId = options?.wikiId || null;
-    const ignoreUninstalled = options?.ignoreUninstalled;
+    const wikiId = options?.wikiId == null ? null : normalizeWikiId(options.wikiId);
+    const ignoreUninstalled = options?.ignoreUninstalled === true;
     const settings = getSettings();
     const autoBackupState = getAutoBackupState();
     let games = [];
@@ -752,7 +785,7 @@ ipcMain.handle('get-table-view-model', async (event, tableName, options = {}) =>
 
 ipcMain.handle('get-local-save-data', async (event, wikiId) => {
     await ensureGameDataReady();
-    const { games } = await getGameDataFromDB(false, wikiId);
+    const { games } = await getGameDataFromDB(false, normalizeWikiId(wikiId));
     return games && games.length > 0 ? games[0] : null;
 });
 
@@ -765,7 +798,8 @@ ipcMain.on('run-scan-full', () => {
 
 ipcMain.handle('fetch-backup-table-data', async (event, ignoreUninstalled, wikiId = null) => {
     await ensureGameDataReady();
-    const { games, errors } = await getGameDataFromDB(ignoreUninstalled, wikiId);
+    const safeWikiId = wikiId == null ? null : normalizeWikiId(wikiId);
+    const { games, errors } = await getGameDataFromDB(ignoreUninstalled === true, safeWikiId);
 
     if (errors.length > 0) {
         getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.backup_process_error_display'), errors);
@@ -783,6 +817,7 @@ ipcMain.on('update-restore-table', async (event) => {
 });
 
 ipcMain.handle('get-main-selected-wiki-ids', async (event, tableId) => {
+    if (tableId !== 'backup' && tableId !== 'restore') return [];
     const mainWin = getMainWin();
     if (!mainWin || mainWin.isDestroyed()) {
         return [];
@@ -796,10 +831,18 @@ ipcMain.handle('get-main-selected-wiki-ids', async (event, tableId) => {
         }, 3000);
 
         const handleResponse = (responseEvent, responseId, wikiIds) => {
-            if (responseId !== requestId) return;
+            if (responseEvent.sender !== mainWin.webContents || responseId !== requestId) return;
             clearTimeout(timeout);
             ipcMain.removeListener('selected-wiki-ids-response', handleResponse);
-            resolve(Array.isArray(wikiIds) ? wikiIds : []);
+            const safeWikiIds = [];
+            for (const wikiId of Array.isArray(wikiIds) ? wikiIds.slice(0, 10000) : []) {
+                try {
+                    safeWikiIds.push(normalizeWikiId(wikiId));
+                } catch (_) {
+                    // Ignore malformed row identifiers from stale renderer state.
+                }
+            }
+            resolve(safeWikiIds);
         };
 
         ipcMain.on('selected-wiki-ids-response', handleResponse);
@@ -809,12 +852,16 @@ ipcMain.handle('get-main-selected-wiki-ids', async (event, tableId) => {
 
 ipcMain.handle('backup-game', async (event, gameObj) => {
     await ensureGameDataReady();
-    return await backupGame(gameObj);
+    const wikiId = normalizeWikiId(gameObj?.wiki_page_id);
+    const { games } = await getGameDataFromDB(false, wikiId);
+    if (!games?.[0]) throw new Error('Game data is no longer available');
+    return await backupGame(games[0]);
 });
 
 ipcMain.handle('fetch-restore-table-data', async (event, wikiId = null) => {
     await ensureGameDataReady();
-    const { games, errors } = await getGameDataForRestore(wikiId);
+    const safeWikiId = wikiId == null ? null : normalizeWikiId(wikiId);
+    const { games, errors } = await getGameDataForRestore(safeWikiId);
 
     if (errors.length > 0) {
         getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.backup_process_error_display'), errors);
@@ -825,12 +872,28 @@ ipcMain.handle('fetch-restore-table-data', async (event, wikiId = null) => {
 
 ipcMain.handle('restore-game', async (event, gameObj, userActionForAll) => {
     await ensureGameDataReady();
-    return await restoreGame(gameObj, userActionForAll);
+    const wikiId = normalizeWikiId(gameObj?.wiki_page_id);
+    const requestedBackupDate = gameObj?.backups?.[0]?.date == null
+        ? null
+        : normalizeBackupDate(gameObj.backups[0].date);
+    const actionForAll = userActionForAll === 'replace' || userActionForAll === 'skip' ? userActionForAll : null;
+    let releaseOperation;
+    try {
+        releaseOperation = acquireGameOperation(wikiId, 'restore');
+        return await restoreGame(wikiId, requestedBackupDate, actionForAll);
+    } catch (error) {
+        console.error(`Restore failed for game ${wikiId}:`, error.message);
+        return { action: null, error: error.message };
+    } finally {
+        releaseOperation?.();
+    }
 });
 
 ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
+    let releaseOperation;
     try {
-        const backupPath = getValidatedBackupPath(wikiId, backupDate);
+        releaseOperation = acquireGameOperation(wikiId, 'delete backup');
+        const backupPath = await getVerifiedBackupPath(wikiId, backupDate);
         await fsOriginal.promises.rm(backupPath, { recursive: true, force: true });
         return true;
 
@@ -838,28 +901,53 @@ ipcMain.handle('delete-backup', async (event, wikiId, backupDate) => {
         console.error(`Error deleting backup ${backupDate} for id ${wikiId}:`, error.message);
         getMainWin().webContents.send('show-alert', 'error', i18next.t('alert.backup_delete_failed'));
         return false;
+    } finally {
+        releaseOperation?.();
     }
 });
 
 ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, value) => {
+    let releaseOperation;
     try {
+        releaseOperation = acquireGameOperation(wikiId, 'update backup metadata');
         const allowedBackupInfoKeys = new Set(['is_permanent', 'custom_name']);
         if (!allowedBackupInfoKeys.has(key)) {
             throw new Error('Invalid backup metadata key');
         }
 
-        const backupInstancePath = getValidatedBackupPath(wikiId, backupDate);
+        const backupInstancePath = await getVerifiedBackupPath(wikiId, backupDate);
         const configFilePath = resolveInside(backupInstancePath, 'backup_info.json');
 
         try {
-            await fsOriginal.promises.access(configFilePath, fs.constants.F_OK);
+            const configStats = await fsOriginal.promises.lstat(configFilePath);
+            if (!configStats.isFile() || configStats.isSymbolicLink() || configStats.size > 1024 * 1024) {
+                throw new Error('Backup config file is invalid');
+            }
         } catch (error) {
             throw new Error('Backup config file not found');
         }
 
         const backupConfig = await fse.readJson(configFilePath);
-        backupConfig[key] = key === 'is_permanent' ? Boolean(value) : String(value || '').slice(0, 120);
-        await fse.writeJson(configFilePath, backupConfig, { spaces: 4 });
+        if (key === 'is_permanent') {
+            if (typeof value !== 'boolean') throw new Error('Invalid permanent flag');
+            backupConfig.is_permanent = value;
+        } else {
+            if (typeof value !== 'string' || value.length > 120) throw new Error('Invalid backup name');
+            backupConfig.custom_name = value;
+        }
+        const normalizedConfig = validateBackupMetadata(backupConfig);
+        const tempConfigPath = `${configFilePath}.${randomUUID()}.tmp`;
+        try {
+            await fsOriginal.promises.writeFile(tempConfigPath, `${JSON.stringify(normalizedConfig, null, 4)}\n`, {
+                encoding: 'utf8',
+                mode: 0o600,
+                flag: 'wx'
+            });
+            await fsOriginal.promises.rename(tempConfigPath, configFilePath);
+        } catch (error) {
+            await fsOriginal.promises.rm(tempConfigPath, { force: true }).catch(() => { });
+            throw error;
+        }
 
         return true;
 
@@ -867,6 +955,8 @@ ipcMain.handle('update-backup-info', async (event, wikiId, backupDate, key, valu
         console.error(`Error updating backup info for backup ${backupDate} for id ${wikiId}:`, error.message);
         getMainWin().webContents.send('show-alert', 'error', i18next.t('alert.backup_update_failed'));
         return false;
+    } finally {
+        releaseOperation?.();
     }
 });
 
@@ -874,7 +964,7 @@ ipcMain.on('open-backup-folder', async (event, wikiId) => {
     let backupPath;
     let hasBackups = false;
     try {
-        backupPath = getValidatedBackupPath(wikiId);
+        backupPath = await getVerifiedBackupPath(wikiId);
         const entries = await fsOriginal.promises.readdir(backupPath);
         hasBackups = entries.length > 0;
     } catch (error) {
@@ -899,19 +989,23 @@ ipcMain.on('browse-local-save', async (event, wikiId, selectedIndexes = null) =>
 });
 
 ipcMain.handle('delete-local-save', async (event, wikiId) => {
+    let releaseOperation;
     try {
+        releaseOperation = acquireGameOperation(wikiId, 'delete local save');
         const resolvedPaths = await getVerifiedLocalSavePaths(wikiId);
         return await deleteLocalSave(resolvedPaths);
     } catch (error) {
         console.error('Error validating local save delete request:', error.message);
         getMainWin().webContents.send('show-alert', 'error', error.message);
         return false;
+    } finally {
+        releaseOperation?.();
     }
 });
 
-ipcMain.on('migrate-backups', (event, newBackupPath) => {
+ipcMain.handle('migrate-backups', async (event, newBackupPath) => {
     const currentBackupPath = getSettings().backupPath;
-    moveFilesWithProgress(currentBackupPath, newBackupPath);
+    return await moveFilesWithProgress(currentBackupPath, newBackupPath);
 });
 
 ipcMain.handle('get-status', () => {
@@ -919,8 +1013,11 @@ ipcMain.handle('get-status', () => {
 });
 
 ipcMain.on('update-status', (event, statusKey, statusValue) => {
-    console.log(`Updating status: ${statusKey} = ${statusValue}`);
-    updateStatus(statusKey, statusValue);
+    try {
+        updateStatus(statusKey, statusValue);
+    } catch (error) {
+        console.error('Rejected invalid status update:', error.message);
+    }
 });
 
 ipcMain.handle('get-current-version', () => {
@@ -940,8 +1037,7 @@ ipcMain.handle('is-newer-version', (event, candidateVersion, currentVersion) => 
 });
 
 ipcMain.handle('update-database', async () => {
-    await updateDatabase();
-    return;
+    return await updateDatabase();
 });
 
 ipcMain.handle('github-sync-status', async (event, syncPath) => {
@@ -949,20 +1045,26 @@ ipcMain.handle('github-sync-status', async (event, syncPath) => {
 });
 
 ipcMain.handle('github-sync-upload', async (event, syncPath) => {
+    if (getStatus().github_syncing) throw new Error('Git synchronization is already running');
+    const releaseOperation = acquireGlobalOperation('upload backups to Git');
     updateStatus('github_syncing', true);
     try {
         return await uploadBackupsToGitHub(syncPath);
     } finally {
         updateStatus('github_syncing', false);
+        releaseOperation();
     }
 });
 
 ipcMain.handle('github-sync-download', async (event, syncPath) => {
+    if (getStatus().github_syncing) throw new Error('Git synchronization is already running');
+    const releaseOperation = acquireGlobalOperation('download backups from Git');
     updateStatus('github_syncing', true);
     try {
         return await downloadBackupsFromGitHub(syncPath);
     } finally {
         updateStatus('github_syncing', false);
+        releaseOperation();
         getMainWin().webContents.send('update-restore-table');
         getMainWin().webContents.send('update-backup-table');
     }
@@ -990,18 +1092,28 @@ ipcMain.handle('start-scan-full', async () => {
     }
 });
 
-ipcMain.on('update-app', (event, latest_version) => {
-    updateApp(latest_version);
+ipcMain.on('update-app', () => {
+    updateApp();
 });
 
 // Auto backup IPC handlers
 ipcMain.handle('start-auto-backup', async (event, wikiId, mode, intervalMinutes) => {
     await ensureGameDataReady();
-    await startAutoBackup(wikiId, mode, intervalMinutes);
+    const releaseOperation = acquireGameOperation(wikiId, 'configure auto backup');
+    try {
+        await startAutoBackup(wikiId, mode, intervalMinutes);
+    } finally {
+        releaseOperation();
+    }
 });
 
-ipcMain.handle('stop-auto-backup', (event, wikiId) => {
-    return stopAutoBackup(wikiId, true);
+ipcMain.handle('stop-auto-backup', async (event, wikiId) => {
+    const releaseOperation = acquireGameOperation(wikiId, 'configure auto backup');
+    try {
+        return await stopAutoBackup(wikiId, true);
+    } finally {
+        releaseOperation();
+    }
 });
 
 ipcMain.handle('get-auto-backup-state', () => {

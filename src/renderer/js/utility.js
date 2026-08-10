@@ -5,20 +5,12 @@ window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
 });
 
-window.api.receive('open-export-modal', () => {
-    showExportModal();
-});
-
 window.api.receive('open-import-modal', (gsmPath) => {
     showImportModal(gsmPath);
 });
 
 window.api.receive('update-progress', (progressId, progressTitle, percentage) => {
     updateProgress(progressId, progressTitle, percentage);
-});
-
-window.api.receive('view_account_ids', () => {
-    showAccountModal();
 });
 
 window.api.receive('menu-hidden', () => {
@@ -150,39 +142,38 @@ function showImportModal(gsmPath = '') {
 
 export function updateProgress(progressId, progressTitle, percentage) {
     const progressContainer = document.getElementById('progress-container');
+    const safeProgressId = /^[A-Za-z0-9_-]{1,80}$/.test(progressId) ? progressId : null;
+    if (!progressContainer || !safeProgressId) return;
 
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
-        progressElement.id = progressId;
+        progressElement.id = safeProgressId;
         progressElement.className = "ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl";
         progressElement.innerHTML = `
             <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent">
                 <span class="progress-title"></span>
-                <span id="${progressId}-percentage">0%</span>
+                <span class="progress-percentage">0%</span>
             </div>
             <div class="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                <div id="${progressId}-bar" class="bg-theme-accent w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
+                <div class="progress-bar bg-theme-accent w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
             </div>
         `;
         progressElement.querySelector('.progress-title').textContent = progressTitle;
         progressContainer.appendChild(progressElement);
         return;
     } else if (percentage === 'end') {
-        const progressElement = document.getElementById(progressId);
+        const progressElement = document.getElementById(safeProgressId);
         if (progressElement) progressElement.remove();
         return;
     }
 
-    const progressBar = document.getElementById(`${progressId}-bar`);
-    const progressPercentage = document.getElementById(`${progressId}-percentage`);
-    if (progressBar) progressBar.style.width = `${percentage}%`;
-    if (progressPercentage) progressPercentage.innerText = `${percentage}%`;
+    const progressElement = document.getElementById(safeProgressId);
+    const progressBar = progressElement?.querySelector('.progress-bar');
+    const progressPercentage = progressElement?.querySelector('.progress-percentage');
+    const safePercentage = Math.min(100, Math.max(0, Number(percentage) || 0));
+    if (progressBar) progressBar.style.width = `${safePercentage}%`;
+    if (progressPercentage) progressPercentage.innerText = `${safePercentage}%`;
 }
-
-function showAccountModal() {
-    window.api.send('open-modal-window', 'account');
-}
-
 
 export function wrapNumberInput(input) {
     if (!input || input.type !== 'number' || input.dataset.wrapped) return;

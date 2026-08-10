@@ -6,6 +6,7 @@ import {
     appendRows as appendVirtualRows,
     applyVirtualFilter,
     findVirtualRow,
+    getFilteredVirtualRowIds,
     getFilteredVirtualRows,
     getFilteredVirtualSelectedIds,
     getRowId,
@@ -1006,7 +1007,7 @@ export async function updateSelectedCountAndSize(tabName) {
     let total_selected = 0;
 
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
-    const visibleIds = new Set(visibleRows.map(row => getRowId(row)).filter(Boolean));
+    const visibleIds = getFilteredVirtualRowIds(tableBody);
 
     selectedWikiIds.forEach(wikiId => {
         if (!visibleIds.has(wikiId)) return;
@@ -1018,11 +1019,11 @@ export async function updateSelectedCountAndSize(tabName) {
         }
     });
 
-    selectedCountWidget.innerHTML = await window.i18n.translate('main.selected_games_count', {
+    selectedCountWidget.textContent = await window.i18n.translate('main.selected_games_count', {
         count: total_selected,
         total: total_games_count
     });
-    totalSizeWidget.innerHTML = await window.i18n.translate(`main.total_${tabName}_size`, {
+    totalSizeWidget.textContent = await window.i18n.translate(`main.total_${tabName}_size`, {
         size: formatSize(total_size)
     });
 }

@@ -2,6 +2,7 @@ const { app } = require('electron');
 const { Worker } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
+const { pipeline } = require('stream/promises');
 
 const axios = require('axios');
 const i18next = require('i18next');
@@ -12,8 +13,23 @@ const {
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
 const { dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
+const { acquireGameOperation } = require('./gameOperationLock');
+const { acquireDatabaseRead, acquireDatabaseWrite } = require('./databaseOperationLock');
+const { validateDatabasePatch } = require('./validation');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
+const MAX_DATABASE_DOWNLOAD_BYTES = 256 * 1024 * 1024;
+const MAX_PATCH_DOWNLOAD_BYTES = 16 * 1024 * 1024;
+const INSTALLED_DATABASE_PATH = path.join(process.cwd(), 'database', 'database.db');
+
+function validateReleaseAssetUrl(rawUrl) {
+    const url = new URL(rawUrl);
+    const expectedPrefix = '/leisurefire/OpenGameSave/releases/download/';
+    if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.startsWith(expectedPrefix)) {
+        throw new Error('Release contains an untrusted asset URL');
+    }
+    return url.toString();
+}
 
 function createBackupWorkerContext() {
     const currentGameData = getGameData();
@@ -28,7 +44,7 @@ function createBackupWorkerContext() {
         },
         allUserIds: getAllUserIds(),
         dbPath: path.join(app.getPath("userData"), "OGS Database", "database.db"),
-        installedDbPath: path.join(process.cwd(), 'database', 'database.db'),
+        installedDbPath: INSTALLED_DATABASE_PATH,
         placeholderMapping: placeholder_mapping,
         osKeyMap,
         labels: {
@@ -54,8 +70,8 @@ function runBackupWorkerTask(task, payload = {}, onMessage = null) {
             finish(reject, error);
         });
         worker.once('exit', (code) => {
-            if (!settled && code !== 0) {
-                finish(reject, new Error(`Backup worker stopped with exit code ${code}`));
+            if (!settled) {
+                finish(reject, new Error(`Backup worker stopped before returning a result (exit code ${code})`));
             }
         });
 
@@ -96,7 +112,26 @@ async function getLocalDbVersion(dbPath) {
 /**
  * 将一个补丁 JSON 应用到数据库
  */
-async function applyPatch(dbPath, patch) {
+async function validateDatabaseFile(dbPath) {
+    const stats = await fs.promises.stat(dbPath);
+    if (!stats.isFile() || stats.size === 0 || stats.size > MAX_DATABASE_DOWNLOAD_BYTES) {
+        throw new Error('Downloaded database has an invalid size');
+    }
+    const db = await openDb(dbPath, { readonly: true, fileMustExist: true });
+    try {
+        const integrity = await dbGet(db, 'PRAGMA quick_check');
+        if (!integrity || integrity.quick_check !== 'ok') {
+            throw new Error('Downloaded database failed its integrity check');
+        }
+        const gamesTable = await dbGet(db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'games'");
+        if (!gamesTable) throw new Error('Downloaded database is missing the games table');
+    } finally {
+        await closeDb(db);
+    }
+}
+
+async function applyPatch(dbPath, rawPatch, expectedVersion) {
+    const patch = validateDatabasePatch(rawPatch, expectedVersion);
     const db = await openDb(dbPath, { fileMustExist: true });
     try {
         await dbRun(db, 'BEGIN TRANSACTION');
@@ -132,12 +167,12 @@ async function applyPatch(dbPath, patch) {
         }
 
         // 更新版本号（不能用参数绑定）
-        await dbRun(db, `PRAGMA user_version = ${parseInt(patch.version, 10)}`);
+        await dbRun(db, `PRAGMA user_version = ${patch.version}`);
 
         await dbRun(db, 'COMMIT');
     } catch (err) {
         try {
-            dbRun(db, 'ROLLBACK');
+            await dbRun(db, 'ROLLBACK');
         } catch { }
         throw err;
     } finally {
@@ -151,32 +186,43 @@ async function applyPatch(dbPath, patch) {
 async function downloadFullDatabase(assetUrl, dbPath, progressId, progressTitle) {
     const { data, headers } = await axios({
         method: 'get',
-        url: assetUrl,
+        url: validateReleaseAssetUrl(assetUrl),
         responseType: 'stream',
         timeout: 60000,
+        maxContentLength: MAX_DATABASE_DOWNLOAD_BYTES,
+        maxBodyLength: MAX_DATABASE_DOWNLOAD_BYTES,
         headers: { 'User-Agent': 'OpenGameSave' }
     });
 
     const totalSize = parseInt(headers['content-length'], 10);
+    if (Number.isFinite(totalSize) && (totalSize <= 0 || totalSize > MAX_DATABASE_DOWNLOAD_BYTES)) {
+        data.destroy();
+        throw new Error('Database download is outside the allowed size');
+    }
     let downloadedSize = 0;
+    let lastPercentage = -1;
 
-    await new Promise((resolve, reject) => {
-        const fileStream = fs.createWriteStream(dbPath);
-        data.on('data', (chunk) => {
-            downloadedSize += chunk.length;
-            const pct = Number.isFinite(totalSize) && totalSize > 0
-                ? Math.round((downloadedSize / totalSize) * 100)
-                : 0;
-            getMainWin().webContents.send('update-progress', progressId, progressTitle, pct);
-        });
-        data.on('error', reject);
-        fileStream.on('finish', () => fileStream.close(resolve));
-        fileStream.on('error', reject);
-        data.pipe(fileStream);
+    data.on('data', (chunk) => {
+        downloadedSize += chunk.length;
+        if (downloadedSize > MAX_DATABASE_DOWNLOAD_BYTES) {
+            data.destroy(new Error('Database download exceeded the allowed size'));
+            return;
+        }
+        const percentage = Number.isFinite(totalSize) && totalSize > 0
+            ? Math.min(100, Math.round((downloadedSize / totalSize) * 100))
+            : 0;
+        if (percentage !== lastPercentage) {
+            lastPercentage = percentage;
+            getMainWin().webContents.send('update-progress', progressId, progressTitle, percentage);
+        }
     });
+
+    await fs.promises.rm(dbPath, { force: true });
+    await pipeline(data, fs.createWriteStream(dbPath, { flags: 'wx', mode: 0o600 }));
+    await validateDatabaseFile(dbPath);
 }
 
-async function updateDatabase() {
+async function performDatabaseUpdate() {
     const progressId = 'update-db';
     const progressTitle = i18next.t('alert.updating_database');
     const dbPath = path.join(app.getPath("userData"), "OGS Database", "database.db");
@@ -206,6 +252,7 @@ async function updateDatabase() {
         try {
             const releaseResp = await axios.get(DB_RELEASE_API_URL, {
                 timeout: 15000,
+                maxContentLength: 2 * 1024 * 1024,
                 headers: { 'User-Agent': 'OpenGameSave', 'Accept': 'application/vnd.github+json' }
             });
             releaseData = releaseResp.data;
@@ -213,15 +260,25 @@ async function updateDatabase() {
             throw new Error(`无法获取 Release 信息：${error.message}`);
         }
 
-        const assets = releaseData.assets || [];
-        const releaseTag = releaseData.tag_name || 'latest';
+        if (!releaseData || !Array.isArray(releaseData.assets)) {
+            throw new Error('Release information is malformed');
+        }
+        const assets = releaseData.assets.slice(0, 1000);
+        const releaseTag = String(releaseData.tag_name || 'latest').slice(0, 128);
 
         // ── 步骤2：筛选并解析补丁文件信息 ────────────────────────────────────
         const patchAssets = assets
-            .filter(a => a.name.startsWith('db_patch_v') && a.name.endsWith('.json'))
+            .filter(a => a && typeof a.name === 'string' && a.name.startsWith('db_patch_v') && a.name.endsWith('.json'))
             .map(a => {
                 const match = a.name.match(/^db_patch_v(\d+)\.json$/);
-                return match ? { version: parseInt(match[1], 10), url: a.browser_download_url, name: a.name } : null;
+                if (!match) return null;
+                const version = Number(match[1]);
+                if (!Number.isInteger(version) || version < 1 || version > 2147483647) return null;
+                return {
+                    version,
+                    url: validateReleaseAssetUrl(a.browser_download_url),
+                    name: a.name
+                };
             })
             .filter(Boolean)
             .sort((a, b) => a.version - b.version);
@@ -232,6 +289,12 @@ async function updateDatabase() {
 
         // ── 步骤4：确定需要应用的补丁 ────────────────────────────────────────
         const pendingPatches = patchAssets.filter(p => p.version > localVersion);
+        let expectedVersion = localVersion + 1;
+        const hasPatchGap = pendingPatches.some((patchInfo) => {
+            const isGap = patchInfo.version !== expectedVersion;
+            expectedVersion = patchInfo.version + 1;
+            return isGap;
+        });
 
         // ── 步骤5：判断是否无需更新 ──────────────────────────────────────────
         if (pendingPatches.length === 0 && patchAssets.length > 0) {
@@ -243,9 +306,9 @@ async function updateDatabase() {
         }
 
         // ── 步骤6a：无补丁文件 → 回退到整库下载 ─────────────────────────────
-        if (patchAssets.length === 0) {
-            console.log('Release 中未找到补丁文件，尝试整库下载 database.db');
-            const dbAsset = assets.find(a => a.name === 'database.db');
+        if (patchAssets.length === 0 || hasPatchGap) {
+            console.log('补丁链不完整，尝试整库下载 database.db');
+            const dbAsset = assets.find(a => a && a.name === 'database.db');
             if (!dbAsset) {
                 throw new Error(`Release ${releaseTag} 中既无补丁文件，也无 database.db`);
             }
@@ -271,12 +334,14 @@ async function updateDatabase() {
             // 下载补丁 JSON
             const patchResp = await axios.get(patchInfo.url, {
                 timeout: 30000,
+                maxContentLength: MAX_PATCH_DOWNLOAD_BYTES,
+                maxBodyLength: MAX_PATCH_DOWNLOAD_BYTES,
                 headers: { 'User-Agent': 'OpenGameSave' }
             });
             const patch = patchResp.data;
 
             // 应用补丁到数据库
-            await applyPatch(dbPath, patch);
+            await applyPatch(dbPath, patch, patchInfo.version);
 
             // 报告进度
             const pct = Math.round(((i + 1) / total) * 100);
@@ -294,6 +359,8 @@ async function updateDatabase() {
         console.error(`更新数据库时发生错误：${error.message}`);
         win.webContents.send('show-alert', 'modal', i18next.t('alert.error_during_db_update'), error.message);
 
+        await fs.promises.rm(`${dbPath}.download`, { force: true }).catch(() => { });
+
         // 从备份恢复
         if (fs.existsSync(dbTempPath)) {
             try {
@@ -310,19 +377,37 @@ async function updateDatabase() {
     }
 }
 
+async function updateDatabase() {
+    if (getStatus().updating_db) {
+        return { success: false, busy: true };
+    }
+    updateStatus('updating_db', true);
+    let releaseDatabase;
+    try {
+        releaseDatabase = await acquireDatabaseWrite();
+        return await performDatabaseUpdate();
+    } finally {
+        updateStatus('updating_db', false);
+        releaseDatabase?.();
+    }
+}
+
 async function getGameDataFromDBWorkerBacked(ignoreUninstalled = false, wikiId = null) {
+    const releaseDatabase = await acquireDatabaseRead();
     try {
         const result = await runBackupWorkerTask('getGameDataFromDB', { ignoreUninstalled, wikiId });
         if (Array.isArray(result.remainingUninstalledWikiIds)) {
             const currentUninstalledWikiIds = getSettings().uninstalledGames || [];
             if (JSON.stringify([...result.remainingUninstalledWikiIds].sort()) !== JSON.stringify([...currentUninstalledWikiIds].sort())) {
-                saveSettings('uninstalledGames', result.remainingUninstalledWikiIds);
+                await saveSettings('uninstalledGames', result.remainingUninstalledWikiIds);
             }
         }
         return { games: result.games || [], errors: result.errors || [] };
     } catch (error) {
         console.error(`Backup worker scan failed: ${error.stack || error.message}`);
         return { games: [], errors: [error.message] };
+    } finally {
+        releaseDatabase();
     }
 }
 
@@ -337,6 +422,7 @@ async function getAllGameDataFromDBWorkerBacked() {
 
     mainWin.webContents.send('update-progress', progressId, progressTitle, 'start');
     updateStatus('scanning_full', true);
+    const releaseDatabase = await acquireDatabaseRead();
     try {
         const result = await runBackupWorkerTask('getAllGameDataFromDB', {}, (message) => {
             if (message.type === 'progress') {
@@ -356,17 +442,22 @@ async function getAllGameDataFromDBWorkerBacked() {
         console.error(`Backup worker full scan failed: ${error.stack || error.message}`);
         return { games: [], errors: [error.message] };
     } finally {
+        releaseDatabase();
         updateStatus('scanning_full', false);
         mainWin.webContents.send('update-progress', progressId, progressTitle, 'end');
     }
 }
 
 async function backupGameWorkerBacked(gameObj) {
+    let releaseOperation;
     try {
+        releaseOperation = acquireGameOperation(gameObj?.wiki_page_id, 'backup');
         return await runBackupWorkerTask('backupGame', { gameObj });
     } catch (error) {
         console.error(`Backup worker backup failed: ${error.stack || error.message}`);
         return error.message;
+    } finally {
+        releaseOperation?.();
     }
 }
 

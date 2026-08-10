@@ -22,10 +22,16 @@ export function getFilteredVirtualRows(rowHost) {
     return state ? state.filteredRows : getVirtualRows(rowHost).filter(row => row.style.display !== 'none');
 }
 
+export function getFilteredVirtualRowIds(rowHost) {
+    const state = getVirtualState(rowHost);
+    if (state) return state.filteredIds;
+    return new Set(getFilteredVirtualRows(rowHost).map(row => getRowId(row)).filter(Boolean));
+}
+
 export function findVirtualRow(rowHost, rowId) {
     const state = getVirtualState(rowHost);
     if (!state) return null;
-    return state.allRows.find(row => getRowId(row) === rowId.toString()) || null;
+    return state.rowsById.get(rowId.toString()) || null;
 }
 
 export function appendRows(rowHost, rows, options = {}) {
@@ -47,6 +53,7 @@ export function applyVirtualFilter(rowHost, predicate, { resetScroll = true } = 
     if (!state) return false;
 
     state.filteredRows = state.allRows.filter(predicate);
+    state.filteredIds = new Set(state.filteredRows.map(row => getRowId(row)).filter(Boolean));
     if (resetScroll && state.scrollContainer) {
         state.scrollContainer.scrollTop = 0;
     }
@@ -87,8 +94,12 @@ export function getFilteredVirtualSelectedIds(rowHost) {
     const state = getVirtualState(rowHost);
     if (!state) return [];
 
-    const visibleIds = new Set(state.filteredRows.map(row => getRowId(row)).filter(Boolean));
-    return Array.from(state.selectedIds).filter(rowId => visibleIds.has(rowId));
+    const selectedIds = [];
+    for (const row of state.filteredRows) {
+        const rowId = getRowId(row);
+        if (rowId && state.selectedIds.has(rowId)) selectedIds.push(rowId);
+    }
+    return selectedIds;
 }
 
 export function sortVirtualRows(rowHost, sorter) {
@@ -108,6 +119,8 @@ export function removeVirtualRow(rowHost, rowId) {
     const targetId = rowId.toString();
     state.allRows = state.allRows.filter(row => getRowId(row) !== targetId);
     state.filteredRows = state.filteredRows.filter(row => getRowId(row) !== targetId);
+    state.rowsById.delete(targetId);
+    state.filteredIds.delete(targetId);
     state.selectedIds.delete(targetId);
     renderVirtualRows(rowHost);
     return true;
@@ -126,6 +139,7 @@ export function disableVirtualRows(rowHost) {
     if (!state) return;
 
     state.scrollContainer?.removeEventListener('scroll', state.onScroll);
+    if (state.renderFrame !== null) cancelAnimationFrame(state.renderFrame);
     virtualTableStates.delete(rowHost);
 }
 
@@ -143,11 +157,14 @@ function enableVirtualRows(rowHost, rows, options = {}) {
         scrollContainer,
         allRows: rows,
         filteredRows: rows,
+        filteredIds: new Set(rows.map(row => getRowId(row)).filter(Boolean)),
+        rowsById: new Map(rows.map(row => [getRowId(row), row]).filter(([rowId]) => rowId)),
         selectedIds,
         rowHeight: options.rowHeight || DEFAULT_ROW_HEIGHT,
         buffer: options.buffer ?? DEFAULT_BUFFER,
         createSpacer: options.createSpacer || createTableSpacer,
-        onScroll: () => renderVirtualRows(rowHost)
+        renderFrame: null,
+        onScroll: () => scheduleVirtualRows(rowHost)
     };
 
     virtualTableStates.set(rowHost, state);
@@ -158,9 +175,22 @@ function enableVirtualRows(rowHost, rows, options = {}) {
     renderVirtualRows(rowHost);
 }
 
+function scheduleVirtualRows(rowHost) {
+    const state = getVirtualState(rowHost);
+    if (!state || state.renderFrame !== null) return;
+    state.renderFrame = requestAnimationFrame(() => {
+        const currentState = getVirtualState(rowHost);
+        if (!currentState) return;
+        currentState.renderFrame = null;
+        renderVirtualRows(rowHost);
+    });
+}
+
 function renderVirtualRows(rowHost) {
     const state = getVirtualState(rowHost);
     if (!state) return;
+    if (state.renderFrame !== null) cancelAnimationFrame(state.renderFrame);
+    state.renderFrame = null;
 
     const { scrollContainer, filteredRows, selectedIds, rowHeight, buffer } = state;
     const viewportHeight = scrollContainer?.clientHeight || 0;
@@ -171,7 +201,8 @@ function renderVirtualRows(rowHost) {
     const fragment = document.createDocumentFragment();
 
     fragment.appendChild(state.createSpacer(rowHost, firstVisible * rowHeight));
-    filteredRows.slice(firstVisible, lastVisible).forEach(row => {
+    for (let index = firstVisible; index < lastVisible; index += 1) {
+        const row = filteredRows[index];
         const checkbox = row.querySelector('.row-checkbox');
         const rowId = getRowId(row);
         if (checkbox && rowId) {
@@ -179,7 +210,7 @@ function renderVirtualRows(rowHost) {
         }
         row.style.display = '';
         fragment.appendChild(row);
-    });
+    }
     fragment.appendChild(state.createSpacer(rowHost, (filteredRows.length - lastVisible) * rowHeight));
 
     rowHost.replaceChildren(fragment);

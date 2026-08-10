@@ -3,40 +3,32 @@ const fsOriginal = require('original-fs');
 const os = require('os');
 const path = require('path');
 
-const glob = require('glob');
-const { setSeconds, setMilliseconds } = require('date-fns');
 const vdf = require('vdf-parser');
 const WinReg = require('winreg');
 const yaml = require('js-yaml');
 
-const { getLatestModificationTime: getLatestModificationTimeMs } = require('./fileSystemUtils');
+const { getLatestModificationTimeAsync } = require('./fileSystemUtils');
 
 class GameData {
     constructor() {
         this.steamPath = null;
         this.ubisoftPath = null;
-        this.eaPath = null;
-        this.battleNetPath = null;
 
         this.currentSteamUserId64 = null;
         this.currentSteamUserId3 = null;
-        this.currentSteamAccountName = null;
         this.currentSteamUserName = null;
         this.currentUbisoftUserId = null;
         this.currentEpicUserId = null;
         this.currentXboxUserId = null;
         this.currentRockStarUserId = null;
-        this.currentGogUserId = null;
-        this.currentEAUserId = null;
 
         this.detectedGamePaths = [];
-        this.detectedSteamGameIds = [];
         this.initialized = false;
         this.initializePromise = null;
     }
 
     getRegistryValue(hive, key, valueName) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const regKey = new WinReg({
                 hive: hive,
                 key: key
@@ -44,7 +36,6 @@ class GameData {
 
             regKey.get(valueName, (err, item) => {
                 if (err) {
-                    console.log(`Error reading registry key: ${key}`, err.message);
                     resolve('');
                 } else {
                     resolve(item.value);
@@ -70,50 +61,22 @@ class GameData {
 
     async _initialize() {
         if (process.platform === 'win32') {
-            // Query Steam install path
-            this.steamPath = await this.getRegistryValue(
-                WinReg.HKLM,
-                '\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
-                'InstallPath'
-            );
-
-            // Query Ubisoft install path
-            this.ubisoftPath = await this.getRegistryValue(
-                WinReg.HKLM,
-                '\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher',
-                'InstallDir'
-            );
-
-            // Query EA install path
-            this.eaPath = await this.getRegistryValue(
-                WinReg.HKLM,
-                '\\SOFTWARE\\WOW6432Node\\Electronic Arts\\EA Desktop',
-                'InstallLocation'
-            );
-
-            // Query Battle.net install path
-            this.battleNetPath = await this.getRegistryValue(
-                WinReg.HKLM,
-                '\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Battle.net',
-                'InstallLocation'
-            );
+            [this.steamPath, this.ubisoftPath] = await Promise.all([
+                this.getRegistryValue(
+                    WinReg.HKLM,
+                    '\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
+                    'InstallPath'
+                ),
+                this.getRegistryValue(
+                    WinReg.HKLM,
+                    '\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher',
+                    'InstallDir'
+                )
+            ]);
 
             // Get current logged in user ids
             await this.getCurrentUserIds();
         }
-
-        console.log(
-            'Steam account name: ' + this.currentSteamAccountName + '\n' +
-            'Steam user name: ' + this.currentSteamUserName + '\n' +
-            'Steam id64: ' + this.currentSteamUserId64 + '\n' +
-            'Steam id3: ' + this.currentSteamUserId3 + '\n' +
-            'Ubisoft user id: ' + this.currentUbisoftUserId + '\n' +
-            'Xbox user id: ' + this.currentXboxUserId + '\n' +
-            'Epic user id: ' + this.currentEpicUserId + '\n' +
-            'Rockstar user id: ' + this.currentRockStarUserId + '\n' +
-            'GOG user id: ' + this.currentGogUserId + '\n' +
-            'EA user id: ' + this.currentEAUserId
-        );
 
         this.initialized = true;
     }
@@ -132,7 +95,6 @@ class GameData {
                             const userData = parsedData.users[userId64];
                             if (userData.MostRecent == 1) {
                                 this.currentSteamUserId64 = userId64;
-                                this.currentSteamAccountName = userData.AccountName;
                                 this.currentSteamUserName = userData.PersonaName;
                                 break;
                             }
@@ -181,8 +143,8 @@ class GameData {
         }
 
         // Get current Ubisoft user id
-        const saveGamesPath = path.join(this.ubisoftPath, 'savegames');
-        if (fs.existsSync(saveGamesPath)) {
+        const saveGamesPath = this.ubisoftPath ? path.join(this.ubisoftPath, 'savegames') : null;
+        if (saveGamesPath && fs.existsSync(saveGamesPath)) {
             try {
                 const userFolders = fs.readdirSync(saveGamesPath, { withFileTypes: true })
                     .filter(dirent => dirent.isDirectory())
@@ -193,7 +155,7 @@ class GameData {
 
                 for (const userId of userFolders) {
                     const userFolderPath = path.join(saveGamesPath, userId);
-                    const userFolderTime = getLatestModificationTime(userFolderPath);
+                    const userFolderTime = await getLatestModificationTimeAsync(userFolderPath, fsOriginal);
 
                     if (userFolderTime > latestTime) {
                         latestTime = userFolderTime;
@@ -204,8 +166,6 @@ class GameData {
             } catch (e) {
                 console.log('Error reading or parsing Ubisoft savegames directory:', e);
             }
-        } else {
-            console.log(`No Ubisoft users found at: ${saveGamesPath}`);
         }
 
         // Get current Epic user id
@@ -224,7 +184,7 @@ class GameData {
 
                 for (const fileName of files) {
                     const filePath = path.join(epicDataPath, fileName);
-                    const fileModTime = getLatestModificationTime(filePath);
+                    const fileModTime = await getLatestModificationTimeAsync(filePath, fsOriginal);
 
                     if (fileModTime > latestTime) {
                         latestTime = fileModTime;
@@ -263,7 +223,7 @@ class GameData {
 
                 for (const userId of userFolders) {
                     const userFolderPath = path.join(rStarProfilePath, userId);
-                    const userFolderTime = getLatestModificationTime(userFolderPath);
+                    const userFolderTime = await getLatestModificationTimeAsync(userFolderPath, fsOriginal);
 
                     if (userFolderTime > latestTime) {
                         latestTime = userFolderTime;
@@ -278,27 +238,6 @@ class GameData {
             console.log(`No Rockstar users found at: ${rStarProfilePath}`);
         }
 
-        // --- Normally unused ids ---
-        // Gog user id
-        this.currentGogUserId = await this.getRegistryValue(
-            WinReg.HKCU,
-            '\\Software\\GOG.com\\Galaxy\\settings',
-            'userId'
-        );
-
-        // EA user id
-        const eaSettingsPattern = path.join(
-            process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
-            'Electronic Arts', 'EA Desktop', 'user_*.ini'
-        );
-        const eaFiles = glob.sync(eaSettingsPattern.replace(/\\/g, '/'));
-        if (eaFiles.length > 0) {
-            const fileName = path.basename(eaFiles[0]);
-            const userIdMatch = fileName.match(/user_(.+)\.ini/);
-            if (userIdMatch) {
-                this.currentEAUserId = userIdMatch[1];
-            }
-        }
     }
 
     getAllUserIds() {
@@ -315,7 +254,6 @@ class GameData {
     async detectGamePaths() {
         await this.initialize();
         this.detectedGamePaths = [];
-        this.detectedSteamGameIds = [];
 
         if (process.platform === 'win32') {
             // Detect Steam game installation folders
@@ -326,7 +264,7 @@ class GameData {
                     const parsedData = vdf.parse(vdfContent);
 
                     for (const key in parsedData.libraryfolders) {
-                        if (parsedData.libraryfolders.hasOwnProperty(key)) {
+                        if (Object.prototype.hasOwnProperty.call(parsedData.libraryfolders, key)) {
                             const folder = parsedData.libraryfolders[key];
 
                             // Add the "path" to detectedGamePaths
@@ -337,11 +275,6 @@ class GameData {
                                 }
                             }
 
-                            // Add the first Steam IDs under "apps" to detectedSteamGameIds
-                            if (folder.apps) {
-                                const appIds = Object.keys(folder.apps);
-                                this.detectedSteamGameIds.push(...appIds);
-                            }
                         }
                     }
                 } catch (e) {
@@ -360,7 +293,7 @@ class GameData {
                 try {
                     const fileContents = fs.readFileSync(ubisoftSettingsPath, 'utf8');
                     const settings = yaml.load(fileContents);
-                    const gameInstallationPath = settings.misc.game_installation_path;
+                    const gameInstallationPath = settings?.misc?.game_installation_path;
 
                     if (gameInstallationPath && fs.existsSync(gameInstallationPath)) {
                         this.detectedGamePaths.push(path.normalize(gameInstallationPath));
@@ -410,14 +343,17 @@ class GameData {
             }
 
             // Detect EA game installation folders
-            const eaSettingsPattern = path.join(
+            const eaSettingsDirectory = path.join(
                 process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Local'),
-                'Electronic Arts', 'EA Desktop', 'user_*.ini'
+                'Electronic Arts', 'EA Desktop'
             );
-            const files = glob.sync(eaSettingsPattern.replace(/\\/g, '/'));
-            if (files.length > 0) {
+            const eaSettingsFile = fs.existsSync(eaSettingsDirectory)
+                ? fs.readdirSync(eaSettingsDirectory, { withFileTypes: true })
+                    .find(entry => entry.isFile() && /^user_.+\.ini$/i.test(entry.name))
+                : null;
+            if (eaSettingsFile) {
                 try {
-                    const eaSettingsPath = files[0];
+                    const eaSettingsPath = path.join(eaSettingsDirectory, eaSettingsFile.name);
                     const fileContents = fs.readFileSync(eaSettingsPath, 'utf8');
                     const lines = fileContents.split('\n');
 
@@ -433,7 +369,7 @@ class GameData {
                     console.log('Error reading or parsing EA user_*.ini file:', e);
                 }
             } else {
-                console.log(`EA user_*.ini file not found at ${eaSettingsPattern}`);
+                console.log(`EA user_*.ini file not found at ${eaSettingsDirectory}`);
             }
 
             // Detect GOG game installation folders
@@ -466,7 +402,7 @@ class GameData {
                     const configFile = fs.readFileSync(battleNetConfigPath, 'utf-8');
                     const config = JSON.parse(configFile);
 
-                    const defaultInstallPath = config.Client.Install.DefaultInstallPath;
+                    const defaultInstallPath = config?.Client?.Install?.DefaultInstallPath;
                     if (defaultInstallPath && fs.existsSync(defaultInstallPath)) {
                         this.detectedGamePaths.push(path.normalize(defaultInstallPath));
                     }
@@ -476,13 +412,10 @@ class GameData {
             } else {
                 console.log(`Battle.net config file not found at ${battleNetConfigPath}`);
             }
+
+            this.detectedGamePaths = [...new Set(this.detectedGamePaths)];
         }
     }
-}
-
-function getLatestModificationTime(directory) {
-    const latestTime = getLatestModificationTimeMs(directory, fsOriginal);
-    return latestTime ? setMilliseconds(setSeconds(new Date(latestTime), 0), 0) : new Date(0);
 }
 
 let gameData = new GameData();
@@ -491,6 +424,5 @@ module.exports = {
     getGameData: () => gameData,
     initializeGameData: async () => await gameData.initialize(),
     detectGamePaths: async () => await gameData.detectGamePaths(),
-    getAllUserIds: () => gameData.getAllUserIds(),
-    getLatestModificationTime
+    getAllUserIds: () => gameData.getAllUserIds()
 };

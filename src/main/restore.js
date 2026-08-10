@@ -3,6 +3,7 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { randomUUID } = require('crypto');
 
 const fsOriginal = require('original-fs');
+const os = require('os');
 const path = require('path');
 
 const i18next = require('i18next');
@@ -13,6 +14,7 @@ const {
     getGameDisplayName, placeholder_mapping, getSettings
 } = require('./global');
 const { runWorkerTask } = require('./backup');
+const { assertNoSymlinkAncestors, isPathInside, normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside } = require('./validation');
 
 const RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS = 30000;
 
@@ -26,30 +28,54 @@ async function getGameDataForRestore(wikiId = null) {
     }
 }
 
-async function restoreGame(gameObj, userActionForAll) {
+async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
     let localActionForAll = userActionForAll;
     const pathsToCheck = [];
     let gameNotInstalled = false;
     let steamNotInstalled = false;
     let ubisoftNotInstalled = false;
+    let gameObj = null;
 
     try {
-        const gameBackupPath = path.join(getSettings().backupPath, gameObj.wiki_page_id.toString());
+        const safeWikiId = normalizeWikiId(wikiId);
+        const { games, errors } = await getGameDataForRestore(safeWikiId);
+        if (errors.length > 0) throw new Error(errors.join('; '));
+        gameObj = games[0];
+        if (!gameObj || !Array.isArray(gameObj.backups) || gameObj.backups.length === 0) {
+            throw new Error('No valid backups are available for this game');
+        }
 
-        // Find the latest backup folder based on the backup date
-        const latestBackupFolder = gameObj.backups.sort((a, b) => b.date.localeCompare(a.date))[0];
-        const latestBackupPath = path.join(gameBackupPath, latestBackupFolder.date);
+        const backupRoot = path.resolve(getSettings().backupPath);
+        const gameBackupPath = resolveInside(backupRoot, safeWikiId);
+
+        const selectedBackupDate = requestedBackupDate == null
+            ? null
+            : normalizeBackupDate(requestedBackupDate);
+        const latestBackupFolder = selectedBackupDate
+            ? gameObj.backups.find(backup => backup.date === selectedBackupDate)
+            : [...gameObj.backups].sort((a, b) => b.date.localeCompare(a.date))[0];
+        if (!latestBackupFolder) throw new Error('The requested backup no longer exists');
+        const latestBackupPath = resolveInside(gameBackupPath, normalizeBackupDate(latestBackupFolder.date));
 
         for (const backupPath of latestBackupFolder.backup_paths) {
-            const sourcePath = path.join(latestBackupPath, backupPath.folder_name);
+            const sourcePath = resolveInside(latestBackupPath, backupPath.folder_name);
             const destinationPath = resolveTemplatedRestorePath(backupPath.template, backupPath.install_folder);
 
             if (!fsOriginal.existsSync(sourcePath)) {
                 console.warn(`Source path does not exist: ${sourcePath}`);
                 continue;
             }
+            const sourceStats = fsOriginal.lstatSync(sourcePath);
+            if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
+                throw new Error('Backup source is not a regular directory');
+            }
 
-            if (backupPath.type !== 'reg' && !path.isAbsolute(destinationPath.replace(/^[/\\]+/, ''))) {
+            if (backupPath.type === 'reg' && !isAllowedRegistryRestorePath(destinationPath)) {
+                throw new Error('Backup contains an invalid registry destination');
+            }
+
+            const allowedRoot = backupPath.type === 'reg' ? null : getAllowedRestoreRoot(destinationPath);
+            if (backupPath.type !== 'reg' && (!path.isAbsolute(destinationPath) || !allowedRoot)) {
                 const normalizedTemplate = backupPath.template.toLowerCase();
 
                 if (normalizedTemplate.includes('{{p|game}}')) {
@@ -63,11 +89,20 @@ async function restoreGame(gameObj, userActionForAll) {
                     console.warn(`Xbox UID not found for restore path: ${destinationPath}`);
                 }
 
-                console.warn(`Destination path is not absolute: ${destinationPath}`);
+                console.warn(`Destination path is outside the allowed save roots: ${destinationPath}`);
                 continue;
             }
 
+            if (allowedRoot) await assertNoSymlinkAncestors(allowedRoot, destinationPath, fsOriginal);
+
             pathsToCheck.push({ sourcePath, destinationPath, backupType: backupPath.type });
+        }
+
+        if (pathsToCheck.length === 0) {
+            if (gameNotInstalled) throw Error(i18next.t('alert.game_not_installed'));
+            if (steamNotInstalled) throw Error(i18next.t('alert.steam_not_installed'));
+            if (ubisoftNotInstalled) throw Error(i18next.t('alert.ubisoft_not_installed'));
+            throw new Error('Backup does not contain any restorable paths');
         }
 
         // Check for any conflicts before proceeding with the restore
@@ -93,8 +128,9 @@ async function restoreGame(gameObj, userActionForAll) {
         return { action: localActionForAll, error: null };
 
     } catch (error) {
-        console.error(`Error during restore for game: ${getGameDisplayName(gameObj)}`, error.stack);
-        return { action: localActionForAll, error: `${i18next.t('alert.restore_game_error', { game_name: getGameDisplayName(gameObj) })}: ${error.message}` };
+        const gameDisplayName = gameObj ? getGameDisplayName(gameObj) : String(wikiId || '');
+        console.error(`Error during restore for game: ${gameDisplayName}`, error.stack);
+        return { action: localActionForAll, error: `${i18next.t('alert.restore_game_error', { game_name: gameDisplayName })}: ${error.message}` };
     }
 }
 
@@ -118,7 +154,7 @@ async function requestRestoreConflictDecision(prompt) {
         };
 
         const handleResponse = (event, responseId, response) => {
-            if (responseId !== requestId) return;
+            if (event.sender !== targetWindow.webContents || responseId !== requestId) return;
             finish(response);
         };
         const handleWindowClosed = () => finish({ choice: 'skip', doForAll: false });
@@ -170,7 +206,7 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
 }
 
 function resolveTemplatedRestorePath(templatedPath, installFolder) {
-    let basePath = templatedPath.replace(/\{\{p\|[^\}]+\}\}/gi, match => {
+    const basePath = String(templatedPath || '').replace(/\{\{p\|[^\}]+\}\}/gi, match => {
         const normalizedMatch = match.toLowerCase().replace(/\\/g, '/');
 
         if (normalizedMatch === '{{p|game}}') {
@@ -195,13 +231,43 @@ function resolveTemplatedRestorePath(templatedPath, installFolder) {
         return placeholder_mapping[normalizedMatch] || match;
     });
 
-    return basePath;
+    if (/\{\{p\|[^\}]+\}\}/i.test(basePath) || basePath.includes('\0')) return '';
+    return path.normalize(basePath);
+}
+
+function getAllowedRestoreRoot(destinationPath) {
+    const currentGameData = getGameData();
+    const configuredInstallPaths = Array.isArray(getSettings().gameInstalls) ? getSettings().gameInstalls : [];
+    const allowedRoots = [
+        os.homedir(),
+        process.env.APPDATA,
+        process.env.LOCALAPPDATA,
+        process.env.PROGRAMDATA,
+        process.env.PUBLIC,
+        currentGameData.steamPath,
+        currentGameData.ubisoftPath,
+        ...configuredInstallPaths
+    ].filter(root => typeof root === 'string' && path.isAbsolute(root));
+    return allowedRoots
+        .filter(root => isPathInside(root, destinationPath))
+        .sort((left, right) => right.length - left.length)[0] || null;
+}
+
+function isAllowedRegistryRestorePath(registryPath) {
+    try {
+        normalizeRegistryKeyPath(registryPath);
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 function getGameInstallPath(installFolder) {
     const gameInstallPaths = getSettings().gameInstalls;
+    if (!Array.isArray(gameInstallPaths)) return 'gameNotInstalled';
 
     for (const installPath of gameInstallPaths) {
+        if (!fsOriginal.existsSync(installPath)) continue;
         const directories = fsOriginal.readdirSync(installPath, { withFileTypes: true })
             .filter(dirent => dirent.isDirectory())
             .map(dirent => dirent.name);

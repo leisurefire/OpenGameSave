@@ -15,7 +15,6 @@ const ALLOWED_SEND = new Set([
   'run-scan-full',
   'open-backup-folder',
   'browse-local-save',
-  'migrate-backups',
   'update-status',
   'export-backups',
   'import-backups',
@@ -44,10 +43,8 @@ const ALLOWED_INVOKE = new Set([
   'open-directory',
   'open-dialog',
   'select-path',
-  'sort-games',
   'get-account-data',
   'get-platform',
-  'get-uuid',
   'get-icon-map',
   'get-table-view-model',
   'get-local-save-data',
@@ -73,6 +70,7 @@ const ALLOWED_INVOKE = new Set([
   'stop-auto-backup',
   'get-auto-backup-state',
   'get-accent-color',
+  'migrate-backups',
   'show-confirm-modal-window',
   'show-dialog-modal-window',
   'get-modal-window-data'
@@ -83,7 +81,6 @@ const ALLOWED_RECEIVE = new Set([
   'menu-hidden',
   'set-menu-items',
   'execute-menu-action',
-  'open-export-modal',
   'open-import-modal',
   'show-alert',
   'run-scan-full',
@@ -92,7 +89,6 @@ const ALLOWED_RECEIVE = new Set([
   'collect-selected-wiki-ids',
   'update-progress',
   'apply-language',
-  'view_account_ids',
   'auto-backup-started',
   'auto-backup-stopped',
   'auto-backup-performed',
@@ -100,7 +96,7 @@ const ALLOWED_RECEIVE = new Set([
 ]);
 
 function setAccentColor(color) {
-  if (document.documentElement) {
+  if (document.documentElement && /^#[0-9a-f]{6}$/i.test(color)) {
     document.documentElement.style.setProperty('--system-accent', color);
   }
 }
@@ -118,12 +114,18 @@ async function applyAccentColor() {
 // Apply accent color as early as possible, before the window is shown,
 // to prevent a flash of the wrong color on modal windows (e.g. settings)
 // that are pre-loaded hidden and shown only after content is ready.
-const _earlyColorPromise = applyAccentColor();
+const _earlyColorPromise = applyAccentColor().catch((error) => {
+  console.error('Failed to apply accent color:', error);
+});
 
 // Re-apply once the DOM is ready in case the variable was set before
 // the <html> element was available (edge case on very fast loads).
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => _earlyColorPromise);
+  document.addEventListener('DOMContentLoaded', () => {
+    void _earlyColorPromise.then(() => applyAccentColor()).catch((error) => {
+      console.error('Failed to reapply accent color:', error);
+    });
+  }, { once: true });
 }
 
 ipcRenderer.on('accent-color-changed', (event, color) => {
@@ -141,7 +143,12 @@ contextBridge.exposeInMainWorld('api', {
     if (!ALLOWED_RECEIVE.has(channel)) {
       throw new Error(`Blocked IPC receive channel: ${channel}`);
     }
-    return ipcRenderer.on(channel, (event, ...args) => func(...args));
+    if (typeof func !== 'function') {
+      throw new TypeError('IPC receive callback must be a function');
+    }
+    const listener = (event, ...args) => func(...args);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
   },
   invoke: (channel, ...args) => {
     if (!ALLOWED_INVOKE.has(channel)) {

@@ -7,8 +7,7 @@ import { appendRows as appendVirtualRows, disableVirtualRows } from '../virtualT
  * Architecture:
  *  - Shadow DOM: container styling (border, bg, radius), sticky header
  *  - Light DOM: all rows live here so FA icons & global CSS work
- *  - MutationObserver: watches light DOM for new <tr> nodes and
- *    automatically applies table-row display + alignment styles
+ *  - appendRows(): normalizes rows once before adding them to the light DOM
  *
  * Column alignment (Windows 11 convention):
  *  - widget first col: col[0,1] left, col[2..n-2] center, col[n-1] right
@@ -19,17 +18,14 @@ class DataTable extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this._columns = [];
-        this._observer = null;
         this._render();
     }
 
     connectedCallback() {
         this._renderHeader();
-        this._startObserver();
     }
 
     disconnectedCallback() {
-        this._observer?.disconnect();
         disableVirtualRows(this);
     }
 
@@ -41,7 +37,6 @@ class DataTable extends HTMLElement {
 
     /**
      * Parse trHtml, process each <tr> and append to this element (light DOM).
-     * MutationObserver will pick up the additions automatically.
      * @param {string} trHtml
      */
     appendRows(trHtml) {
@@ -49,9 +44,6 @@ class DataTable extends HTMLElement {
         temp.innerHTML = trHtml;
         const aligns = this._computeAligns();
         const rows = Array.from(temp.querySelectorAll('tr'));
-
-        // Disconnect observer while appending to avoid double-processing
-        this._observer?.disconnect();
 
         rows.forEach(tr => {
             this._processRow(tr, aligns);
@@ -61,9 +53,6 @@ class DataTable extends HTMLElement {
             scrollContainer: this.closest('.modal-window-content') || this.shadowRoot.querySelector('.dt-body'),
             rowHeight: 49
         });
-
-        // Reconnect observer for future dynamic additions
-        this._startObserver();
     }
 
     clearRows() {
@@ -72,20 +61,6 @@ class DataTable extends HTMLElement {
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
-
-    _startObserver() {
-        this._observer = new MutationObserver(mutations => {
-            const aligns = this._computeAligns();
-            mutations.forEach(m => {
-                m.addedNodes.forEach(node => {
-                    if (node.nodeType === 1 && node.tagName === 'TR') {
-                        this._processRow(node, aligns);
-                    }
-                });
-            });
-        });
-        this._observer.observe(this, { childList: true });
-    }
 
     _processRow(tr, aligns) {
         if (tr.dataset.virtualSpacer) {

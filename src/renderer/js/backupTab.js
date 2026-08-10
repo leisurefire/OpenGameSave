@@ -220,7 +220,6 @@ async function updateDatabase() {
 
     const start = await operationStartCheck('update-db');
     if (start) {
-        window.api.send('update-status', 'updating_db', true);
         await setActionButtonState({
             button: updateButton,
             icon: updateButtonIcon,
@@ -230,17 +229,18 @@ async function updateDatabase() {
             busy: true
         });
 
-        await window.api.invoke('update-database');
-
-        window.api.send('update-status', 'updating_db', false);
-        await setActionButtonState({
-            button: updateButton,
-            icon: updateButtonIcon,
-            text: updateButtonText,
-            iconClass: 'fa-rotate',
-            i18nKey: 'main.update_database',
-            busy: false
-        });
-        updateBackupTable(true);
+        try {
+            const result = await window.api.invoke('update-database');
+            if (result?.success) updateBackupTable(true);
+        } finally {
+            await setActionButtonState({
+                button: updateButton,
+                icon: updateButtonIcon,
+                text: updateButtonText,
+                iconClass: 'fa-rotate',
+                i18nKey: 'main.update_database',
+                busy: false
+            });
+        }
     }
 }

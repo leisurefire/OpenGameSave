@@ -74,38 +74,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Auto-save function
-    async function autoSave() {
-        const previousSettings = await window.api.invoke('get-settings');
+    let autoSaveQueue = Promise.resolve();
+    let maxBackupsSaveTimer = null;
+    function autoSave() {
+        autoSaveQueue = autoSaveQueue.catch(() => undefined).then(async () => {
+            const previousSettings = await window.api.invoke('get-settings');
 
-        // Collect current paths
-        const newGameInstallPaths = [];
-        document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
-            const path = input.value.trim();
-            if (path) newGameInstallPaths.push(path);
+            const newGameInstallPaths = [];
+            document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
+                const path = input.value.trim();
+                if (path) newGameInstallPaths.push(path);
+            });
+
+            const areArraysEqual = (arr1 = [], arr2 = []) => {
+                if (arr1.length !== arr2.length) return false;
+                const sortedLeft = [...arr1].sort();
+                const sortedRight = [...arr2].sort();
+                return sortedLeft.every((value, index) => value === sortedRight[index]);
+            };
+
+            if (!areArraysEqual(previousSettings.gameInstalls, newGameInstallPaths)) {
+                window.api.send('save-settings', 'gameInstalls', newGameInstallPaths);
+            }
+
+            if (previousSettings.saveUninstalledGames !== saveUninstalledCheckbox.checked) {
+                window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
+            }
+
+            if (previousSettings.syncAccentColor !== syncAccentColorCheckbox.checked) {
+                window.api.send('save-settings', 'syncAccentColor', syncAccentColorCheckbox.checked);
+                window.api.send('apply-accent-color-setting', syncAccentColorCheckbox.checked);
+            }
+
+            const maxBackups = Number(maxBackupsInput.value);
+            if (previousSettings.maxBackups !== maxBackups) {
+                window.api.send('save-settings', 'maxBackups', maxBackups);
+            }
+            if (previousSettings.autoAppUpdate !== autoAppUpdateCheckbox.checked) {
+                window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
+            }
+            if (previousSettings.autoDbUpdate !== autoDbUpdateCheckbox.checked) {
+                window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
+            }
         });
-
-        const areArraysEqual = (arr1, arr2) => {
-            if (arr1.length !== arr2.length) return false;
-            return [...arr1].sort().every((v, i) => v === [...arr2].sort()[i]);
-        };
-
-        // Save individual fields if changed
-        if (!areArraysEqual(previousSettings.gameInstalls, newGameInstallPaths)) {
-            window.api.send('save-settings', 'gameInstalls', newGameInstallPaths);
-        }
-
-        if (previousSettings.saveUninstalledGames !== saveUninstalledCheckbox.checked) {
-            window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
-        }
-
-        if (previousSettings.syncAccentColor !== syncAccentColorCheckbox.checked) {
-            window.api.send('save-settings', 'syncAccentColor', syncAccentColorCheckbox.checked);
-            window.api.send('apply-accent-color-setting', syncAccentColorCheckbox.checked);
-        }
-
-        window.api.send('save-settings', 'maxBackups', maxBackupsInput.value);
-        window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
-        window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
+        return autoSaveQueue;
     }
 
     // Event listeners for auto-save
@@ -138,7 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const value = parseInt(this.value, 10);
         if (isNaN(value) || value < 1) this.value = 1;
         else if (value > 1000) this.value = 1000;
-        autoSave();
+        clearTimeout(maxBackupsSaveTimer);
+        maxBackupsSaveTimer = setTimeout(autoSave, 250);
     });
 
     autoDetectButton.addEventListener('click', () => {
@@ -166,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newPath = document.createElement('div');
         newPath.className = 'flex gap-2 game-path-item';
         newPath.innerHTML = `
-            <input type="text" readonly value="${installPath}"
+            <input type="text" readonly
                 class="display-path grow text-xs font-mono" />
                         <button type="button" class="select-path home-action-button px-4 py-2">
                 <i class="fa-solid fa-ellipsis"></i>
@@ -180,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectPathButton = newPath.querySelector('.select-path');
         const pathInput = newPath.querySelector('.display-path');
         const removePathButton = newPath.querySelector('.remove-path');
+        pathInput.value = installPath;
 
         selectPathButton.addEventListener('click', async () => {
             const result = await window.api.invoke('open-dialog');

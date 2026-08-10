@@ -5,6 +5,7 @@ const { format } = require('date-fns');
 
 const { getSettings, saveSettings, getMainWin } = require('./global');
 const { getGameDataFromDB, backupGame } = require('./backup');
+const { normalizeAutoBackupInterval, normalizeAutoBackupMode, normalizeWikiId } = require('./validation');
 
 // Active auto-backup entries: Map<wikiId, { mode, intervalMinutes, timer?, watcher?, logs[] }>
 const activeAutoBackups = new Map();
@@ -17,9 +18,30 @@ const MAX_AUTO_BACKUP_LOGS = 100;
 
 function addAutoBackupLog(entry, logEntry) {
     entry.logs.push(logEntry);
+    if (!logEntry.success) entry.failCount += 1;
     if (entry.logs.length > MAX_AUTO_BACKUP_LOGS) {
-        entry.logs.splice(0, entry.logs.length - MAX_AUTO_BACKUP_LOGS);
+        const removed = entry.logs.splice(0, entry.logs.length - MAX_AUTO_BACKUP_LOGS);
+        entry.failCount -= removed.filter(log => !log.success).length;
     }
+}
+
+async function disposeAutoBackupEntry(wikiId, entry) {
+    if (entry.timer) {
+        clearInterval(entry.timer);
+        entry.timer = null;
+    }
+    if (entry.watcher) {
+        try {
+            await entry.watcher.close();
+        } catch (error) {
+            console.error(`Error closing file watcher for ${wikiId}:`, error.message);
+        }
+        entry.watcher = null;
+    }
+    const cooldown = watcherCooldowns.get(wikiId);
+    if (cooldown) clearTimeout(cooldown);
+    watcherCooldowns.delete(wikiId);
+    pendingWatcherBackups.delete(wikiId);
 }
 
 /**
@@ -29,40 +51,50 @@ function addAutoBackupLog(entry, logEntry) {
  * @param {number} intervalMinutes - only used for 'interval' mode
  */
 async function startAutoBackup(wikiId, mode, intervalMinutes) {
+    const safeWikiId = normalizeWikiId(wikiId);
+    const safeMode = normalizeAutoBackupMode(mode);
+    const safeIntervalMinutes = safeMode === 'interval' ? normalizeAutoBackupInterval(intervalMinutes) : null;
+    const { games } = await getGameDataFromDB(false, safeWikiId);
+    if (!games?.[0]) throw new Error('Game data is no longer available');
+
     // Stop any existing auto backup for this game first
-    stopAutoBackup(wikiId, false);
+    await stopAutoBackup(safeWikiId, false);
 
     const entry = {
-        mode,
-        intervalMinutes: mode === 'interval' ? intervalMinutes : null,
+        mode: safeMode,
+        intervalMinutes: safeIntervalMinutes,
         timer: null,
         watcher: null,
         logs: [],
-        backupInProgress: false
+        backupInProgress: false,
+        failCount: 0
     };
 
-    if (mode === 'interval') {
-        // Perform backup immediately on start, then at interval
-        const intervalMs = intervalMinutes * 60 * 1000;
-        entry.timer = setInterval(() => {
-            performSilentBackup(wikiId);
-        }, intervalMs);
-    } else if (mode === 'watcher') {
-        await setupFileWatcher(wikiId, entry);
+    try {
+        if (safeMode === 'interval') {
+            const intervalMs = safeIntervalMinutes * 60 * 1000;
+            entry.timer = setInterval(() => {
+                void performSilentBackup(safeWikiId);
+            }, intervalMs);
+        } else {
+            await setupFileWatcher(safeWikiId, entry);
+        }
+
+        activeAutoBackups.set(safeWikiId, entry);
+        const settings = getSettings();
+        const autoBackupGames = { ...(settings.autoBackupGames || {}) };
+        autoBackupGames[safeWikiId] = { mode: safeMode, intervalMinutes: safeIntervalMinutes };
+        await saveSettings('autoBackupGames', autoBackupGames);
+    } catch (error) {
+        activeAutoBackups.delete(safeWikiId);
+        await disposeAutoBackupEntry(safeWikiId, entry);
+        throw error;
     }
-
-    activeAutoBackups.set(wikiId, entry);
-
-    // Save setting
-    const settings = getSettings();
-    const autoBackupGames = settings.autoBackupGames || {};
-    autoBackupGames[wikiId] = { mode, intervalMinutes: mode === 'interval' ? intervalMinutes : null };
-    saveSettings('autoBackupGames', autoBackupGames);
 
     // Notify renderer to update timer icon
     const win = getMainWin();
     if (win && !win.isDestroyed()) {
-        win.webContents.send('auto-backup-started', wikiId);
+        win.webContents.send('auto-backup-started', safeWikiId);
     }
 }
 
@@ -72,45 +104,26 @@ async function startAutoBackup(wikiId, mode, intervalMinutes) {
  * @param {boolean} showSummary - whether to show disable summary
  * @returns {object|null} - logs if showSummary is true
  */
-function stopAutoBackup(wikiId, showSummary = true) {
-    const entry = activeAutoBackups.get(wikiId);
+async function stopAutoBackup(wikiId, showSummary = true) {
+    const safeWikiId = normalizeWikiId(wikiId);
+    const entry = activeAutoBackups.get(safeWikiId);
     if (!entry) return null;
 
-    // Clear timer
-    if (entry.timer) {
-        clearInterval(entry.timer);
-        entry.timer = null;
-    }
-
-    // Close watcher. chokidar.close() is asynchronous, but do not await it in
-    // normal UI paths; stopAllAutoBackups() handles graceful shutdown on quit.
-    if (entry.watcher) {
-        entry.watcher.close().catch((error) => {
-            console.error(`Error closing file watcher for ${wikiId}:`, error.message);
-        });
-        entry.watcher = null;
-    }
-
-    // Clear cooldown
-    if (watcherCooldowns.has(wikiId)) {
-        clearTimeout(watcherCooldowns.get(wikiId));
-        watcherCooldowns.delete(wikiId);
-    }
-    pendingWatcherBackups.delete(wikiId);
+    await disposeAutoBackupEntry(safeWikiId, entry);
 
     const logs = [...entry.logs];
-    activeAutoBackups.delete(wikiId);
+    activeAutoBackups.delete(safeWikiId);
 
     // Remove from settings
     const settings = getSettings();
-    const autoBackupGames = settings.autoBackupGames || {};
-    delete autoBackupGames[wikiId];
-    saveSettings('autoBackupGames', autoBackupGames);
+    const autoBackupGames = { ...(settings.autoBackupGames || {}) };
+    delete autoBackupGames[safeWikiId];
+    await saveSettings('autoBackupGames', autoBackupGames);
 
     // Notify renderer to update timer icon
     const win = getMainWin();
     if (win && !win.isDestroyed()) {
-        win.webContents.send('auto-backup-stopped', wikiId);
+        win.webContents.send('auto-backup-stopped', safeWikiId);
     }
 
     if (showSummary) {
@@ -125,10 +138,10 @@ function stopAutoBackup(wikiId, showSummary = true) {
 async function setupFileWatcher(wikiId, entry) {
     try {
         const { games } = await getGameDataFromDB(false, wikiId);
-        if (!games || games.length === 0) return;
+        if (!games || games.length === 0) throw new Error('Game data is no longer available');
 
         const gameData = games[0];
-        if (!gameData.resolved_paths || gameData.resolved_paths.length === 0) return;
+        if (!gameData.resolved_paths || gameData.resolved_paths.length === 0) throw new Error('Game has no save paths to watch');
 
         const pathsToWatch = [];
         for (const resolvedPathObj of gameData.resolved_paths) {
@@ -139,7 +152,7 @@ async function setupFileWatcher(wikiId, entry) {
             }
         }
 
-        if (pathsToWatch.length === 0) return;
+        if (pathsToWatch.length === 0) throw new Error('Game has no file-system save paths to watch');
 
         const watcher = chokidar.watch(pathsToWatch, {
             persistent: true,
@@ -150,7 +163,7 @@ async function setupFileWatcher(wikiId, entry) {
             }
         });
 
-        watcher.on('all', (event, filePath) => {
+        watcher.on('all', () => {
             // Throttle: backup immediately on first change, then cooldown
             if (watcherCooldowns.has(wikiId)) {
                 // Mark that changes happened during cooldown
@@ -158,24 +171,29 @@ async function setupFileWatcher(wikiId, entry) {
                 return;
             }
 
-            performSilentBackup(wikiId);
-            watcherCooldowns.set(wikiId, setTimeout(() => {
-                watcherCooldowns.delete(wikiId);
-                // If changes occurred during cooldown, perform backup now
-                if (pendingWatcherBackups.has(wikiId)) {
-                    pendingWatcherBackups.delete(wikiId);
-                    performSilentBackup(wikiId);
-                    watcherCooldowns.set(wikiId, setTimeout(() => {
-                        watcherCooldowns.delete(wikiId);
-                    }, WATCHER_COOLDOWN_MS));
-                }
-            }, WATCHER_COOLDOWN_MS));
+            void performSilentBackup(wikiId);
+            startWatcherCooldown(wikiId);
+        });
+        watcher.on('error', (error) => {
+            console.error(`File watcher error for ${wikiId}:`, error.message);
         });
 
         entry.watcher = watcher;
     } catch (error) {
         console.error(`Error setting up file watcher for ${wikiId}:`, error.message);
+        throw error;
     }
+}
+
+function startWatcherCooldown(wikiId) {
+    const existingTimer = watcherCooldowns.get(wikiId);
+    if (existingTimer) clearTimeout(existingTimer);
+    watcherCooldowns.set(wikiId, setTimeout(() => {
+        watcherCooldowns.delete(wikiId);
+        if (!activeAutoBackups.has(wikiId) || !pendingWatcherBackups.delete(wikiId)) return;
+        void performSilentBackup(wikiId);
+        startWatcherCooldown(wikiId);
+    }, WATCHER_COOLDOWN_MS));
 }
 
 /**
@@ -243,9 +261,9 @@ async function performSilentBackup(wikiId) {
         if (activeAutoBackups.has(wikiId)) {
             const activeEntry = activeAutoBackups.get(wikiId);
             activeEntry.backupInProgress = false;
-            if (pendingWatcherBackups.has(wikiId)) {
+            if (pendingWatcherBackups.has(wikiId) && !watcherCooldowns.has(wikiId)) {
                 pendingWatcherBackups.delete(wikiId);
-                performSilentBackup(wikiId);
+                void performSilentBackup(wikiId);
             }
         }
     }
@@ -262,7 +280,7 @@ function getAutoBackupState() {
             mode: entry.mode,
             intervalMinutes: entry.intervalMinutes,
             logCount: entry.logs.length,
-            failCount: entry.logs.filter(l => !l.success).length
+            failCount: entry.failCount
         };
     }
     return state;
@@ -288,29 +306,9 @@ async function restoreAutoBackups() {
  * Stop all auto backups (for app quit) - cleanup only, preserves settings
  */
 async function stopAllAutoBackups() {
-    const closePromises = [];
-
-    for (const [wikiId, entry] of activeAutoBackups) {
-        if (entry.timer) {
-            clearInterval(entry.timer);
-            entry.timer = null;
-        }
-        if (entry.watcher) {
-            closePromises.push(
-                entry.watcher.close().catch((error) => {
-                    console.error(`Error closing file watcher for ${wikiId}:`, error.message);
-                })
-            );
-            entry.watcher = null;
-        }
-        if (watcherCooldowns.has(wikiId)) {
-            clearTimeout(watcherCooldowns.get(wikiId));
-            watcherCooldowns.delete(wikiId);
-        }
-        pendingWatcherBackups.delete(wikiId);
-    }
+    const closePromises = [...activeAutoBackups]
+        .map(([wikiId, entry]) => disposeAutoBackupEntry(wikiId, entry));
     activeAutoBackups.clear();
-
     await Promise.allSettled(closePromises);
 }
 

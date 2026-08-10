@@ -20,8 +20,11 @@ const {
     readBackupFolder
 } = require('./fileSystemUtils');
 const { dbAll, openDb, closeDb, stmtAll } = require('./sqliteUtils');
+const { normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside, validateBackupMetadata } = require('./validation');
 
 const execFilePromise = util.promisify(execFile);
+const MAX_GLOB_MATCHES = 10000;
+const MAX_UID_PLACEHOLDERS = 4;
 
 let context = null;
 
@@ -367,22 +370,33 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         return finalTemplate;
     }
 
-    function generateUidCombinations(count, uidValues) {
-        if (count === 0) return [[]];
-        if (count === 1) return uidValues.map(uid => [uid]);
-
-        const smaller = generateUidCombinations(count - 1, uidValues);
-        const result = [];
-        for (const combo of smaller) {
-            for (const uid of uidValues) {
-                result.push([...combo, uid]);
-            }
+    function* generateUidCombinations(count, uidValues, current = []) {
+        if (current.length === count) {
+            yield current;
+            return;
         }
-        return result;
+        for (const uid of uidValues) {
+            yield* generateUidCombinations(count, uidValues, [...current, uid]);
+        }
+    }
+
+    function findGlobMatches(testPath) {
+        const files = [];
+        for (const filePath of glob.globIterateSync(testPath.replace(/\\/g, '/'), {
+            follow: false,
+            maxDepth: 64,
+            windowsPathsNoEscape: true
+        })) {
+            if (files.length >= MAX_GLOB_MATCHES) {
+                throw new Error('Save path pattern matched too many files');
+            }
+            files.push(filePath);
+        }
+        return files;
     }
 
     function tryGlobAndReturnPaths(testPath) {
-        const files = glob.sync(testPath.replace(/\\/g, '/'));
+        const files = findGlobMatches(testPath);
         if (files.length === 0) return null;
         return files
             .filter(filePath => fsOriginal.existsSync(filePath))
@@ -435,8 +449,10 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const uidCount = (uidMatches ? uidMatches.length : 0) + (xboxUidMatches ? xboxUidMatches.length : 0);
     if (uidCount === 0) return [];
 
-    const uidValues = Object.values(allUserIds()).filter(uid => uid && uid !== 'N/A');
-    const uidCombinations = generateUidCombinations(uidCount, uidValues);
+    const uidValues = [...new Set(Object.values(allUserIds()).filter(uid => uid && uid !== 'N/A'))];
+    const uidCombinations = uidCount <= MAX_UID_PLACEHOLDERS
+        ? generateUidCombinations(uidCount, uidValues)
+        : [];
 
     for (const uidCombo of uidCombinations) {
         let testPath = contextAwarePath;
@@ -451,7 +467,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const wildcardPath = basePath
         .replace(/\{\{p\|uid\}\}/gi, '*')
         .replace(/\{\{p\|xbox_uid\}\}/gi, '*');
-    const wildcardResolvedPaths = glob.sync(wildcardPath.replace(/\\/g, '/'));
+    const wildcardResolvedPaths = findGlobMatches(wildcardPath);
     if (wildcardResolvedPaths.length === 0) return [];
 
     const latestPath = await findLatestModifiedPath(wildcardResolvedPaths);
@@ -478,11 +494,31 @@ async function findLatestModifiedPath(paths) {
 }
 
 async function backupGame(gameObj) {
-    const gameBackupPath = path.join(settings().backupPath, gameObj.wiki_page_id.toString());
-    const backupInstanceFolder = format(new Date(), 'yyyy-MM-dd_HH-mm');
-    const backupInstancePath = path.join(gameBackupPath, backupInstanceFolder);
+    const backupRoot = path.resolve(settings().backupPath);
+    const wikiId = normalizeWikiId(gameObj.wiki_page_id);
+    const gameBackupPath = resolveInside(backupRoot, wikiId);
+    let backupTime = new Date();
+    let backupInstanceFolder = format(backupTime, 'yyyy-MM-dd_HH-mm-ss');
+    while (fsOriginal.existsSync(resolveInside(gameBackupPath, backupInstanceFolder))) {
+        backupTime = new Date(backupTime.getTime() + 1000);
+        backupInstanceFolder = format(backupTime, 'yyyy-MM-dd_HH-mm-ss');
+    }
+    const backupInstancePath = resolveInside(gameBackupPath, backupInstanceFolder);
+    let backupInstanceCreated = false;
 
     try {
+        fsOriginal.mkdirSync(backupRoot, { recursive: true });
+        const backupRootStats = fsOriginal.lstatSync(backupRoot);
+        if (!backupRootStats.isDirectory() || backupRootStats.isSymbolicLink()) {
+            throw new Error('Backup root is not a regular directory');
+        }
+        fsOriginal.mkdirSync(gameBackupPath, { recursive: true });
+        const gameBackupStats = fsOriginal.lstatSync(gameBackupPath);
+        if (!gameBackupStats.isDirectory() || gameBackupStats.isSymbolicLink()) {
+            throw new Error('Game backup path is not a regular directory');
+        }
+        fsOriginal.mkdirSync(backupInstancePath);
+        backupInstanceCreated = true;
         const backupConfig = {
             title: gameObj.title,
             zh_CN: gameObj.zh_CN || null,
@@ -497,7 +533,8 @@ async function backupGame(gameObj) {
 
             if (resolvedPathObj.type === 'reg') {
                 const registryFilePath = path.join(targetPath, 'registry_backup.reg');
-                await execFilePromise('reg.exe', ['export', resolvedPath, registryFilePath, '/y'], { windowsHide: true });
+                const registryPath = normalizeRegistryKeyPath(resolvedPath);
+                await execFilePromise('reg.exe', ['export', registryPath, registryFilePath, '/y'], { windowsHide: true });
                 backupConfig.backup_paths.push({
                     folder_name: pathFolderName,
                     template: resolvedPathObj.finalTemplate,
@@ -505,8 +542,8 @@ async function backupGame(gameObj) {
                     install_folder: gameObj.install_folder || null
                 });
             } else {
-                ensureWritable(resolvedPath);
-                const stats = fsOriginal.statSync(resolvedPath);
+                const stats = fsOriginal.lstatSync(resolvedPath);
+                if (stats.isSymbolicLink()) throw new Error(`Refusing to back up symbolic link: ${resolvedPath}`);
                 let dataType;
 
                 if (stats.isDirectory()) {
@@ -527,13 +564,25 @@ async function backupGame(gameObj) {
             }
         }
 
-        await fse.writeJson(path.join(backupInstancePath, 'backup_info.json'), backupConfig, { spaces: 4 });
+        await fse.writeJson(resolveInside(backupInstancePath, 'backup_info.json'), validateBackupMetadata(backupConfig), { spaces: 4, mode: 0o600 });
 
         const nonPermanentBackups = [];
-        for (const backup of fsOriginal.readdirSync(gameBackupPath).sort((a, b) => a.localeCompare(b))) {
-            const backupConfigPath = path.join(gameBackupPath, backup, 'backup_info.json');
+        const backupFolders = fsOriginal.readdirSync(gameBackupPath, { withFileTypes: true })
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name)
+            .filter((backupDate) => {
+                try {
+                    normalizeBackupDate(backupDate);
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            })
+            .sort((a, b) => a.localeCompare(b));
+        for (const backup of backupFolders) {
+            const backupConfigPath = resolveInside(gameBackupPath, backup, 'backup_info.json');
             if (fsOriginal.existsSync(backupConfigPath)) {
-                const existingConfig = await fse.readJson(backupConfigPath);
+                const existingConfig = validateBackupMetadata(await fse.readJson(backupConfigPath));
                 if (!existingConfig.is_permanent) {
                     nonPermanentBackups.push(backup);
                 }
@@ -550,6 +599,9 @@ async function backupGame(gameObj) {
             }
         }
     } catch (error) {
+        if (backupInstanceCreated) {
+            await fsOriginal.promises.rm(backupInstancePath, { recursive: true, force: true }).catch(() => undefined);
+        }
         console.error(`Error during backup for game ${getGameDisplayName(gameObj)}: ${error.stack}`);
         return `Error during backup for ${getGameDisplayName(gameObj)}: ${error.message}`;
     }
@@ -558,20 +610,33 @@ async function backupGame(gameObj) {
 }
 
 async function getGameDataForRestore({ wikiId = null }) {
-    const backupPath = settings().backupPath;
+    const backupPath = path.resolve(settings().backupPath);
     fsOriginal.mkdirSync(backupPath, { recursive: true });
     const errors = [];
+    const backupRootStats = fsOriginal.lstatSync(backupPath);
+    if (!backupRootStats.isDirectory() || backupRootStats.isSymbolicLink()) {
+        throw new Error('Backup root is not a regular directory');
+    }
 
     if (wikiId) {
-        const wikiIdFolderPath = path.join(backupPath, wikiId.toString());
-        const { gameData, errors: fetchErrors } = await readBackupFolder(wikiIdFolderPath, wikiId, { fsAdapter: fsOriginal });
+        const safeWikiId = normalizeWikiId(wikiId);
+        const wikiIdFolderPath = resolveInside(backupPath, safeWikiId);
+        const { gameData, errors: fetchErrors } = await readBackupFolder(wikiIdFolderPath, safeWikiId, { fsAdapter: fsOriginal });
         errors.push(...fetchErrors);
         return { games: gameData ? [gameData] : [], errors };
     }
 
     const gameFolders = fsOriginal.readdirSync(backupPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+        .map(dirent => dirent.name)
+        .filter((gameFolder) => {
+            try {
+                normalizeWikiId(gameFolder);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        });
     const games = [];
 
     for (const gameFolder of gameFolders) {
@@ -598,6 +663,7 @@ async function restorePaths(pathsToRestore) {
             fsOriginal.copyFileSync(path.join(sourcePath, path.basename(destinationPath)), destinationPath);
         } else if (backupType === 'reg') {
             const registryFilePath = path.join(sourcePath, 'registry_backup.reg');
+            validateRegistryBackupFile(registryFilePath, destinationPath);
             await execFilePromise('reg.exe', ['import', registryFilePath], { windowsHide: true });
         } else {
             console.warn(`Unknown backup type: ${backupType}`);
@@ -605,6 +671,29 @@ async function restorePaths(pathsToRestore) {
     }
 
     return null;
+}
+
+function validateRegistryBackupFile(registryFilePath, destinationPath) {
+    const stats = fsOriginal.lstatSync(registryFilePath);
+    if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 10 * 1024 * 1024) {
+        throw new Error('Registry backup file is invalid');
+    }
+    const buffer = fsOriginal.readFileSync(registryFilePath);
+    const text = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe
+        ? buffer.subarray(2).toString('utf16le')
+        : buffer.toString('utf8');
+    const expectedKey = String(destinationPath || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    const headerPattern = /^\s*\[(-?)(HKEY_[^\]]+)\]\s*$/gim;
+    let headerCount = 0;
+    let match;
+    while ((match = headerPattern.exec(text)) !== null) {
+        headerCount += 1;
+        const actualKey = match[2].replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+        if (match[1] === '-' || (actualKey !== expectedKey && !actualKey.startsWith(`${expectedKey}\\`))) {
+            throw new Error('Registry backup targets an unexpected key');
+        }
+    }
+    if (headerCount === 0) throw new Error('Registry backup has no key headers');
 }
 
 async function getRestoreConflictTimes(pathsToCheck) {

@@ -36,7 +36,7 @@ async function setWindowTitle(title) {
 
 async function setModalLoading(root) {
     const loadingText = await window.i18n.translate('main.loading');
-    root.innerHTML = `<div class="modal-loading-state">${createLoadingIndicator(escapeHtml(loadingText))}</div>`;
+    root.innerHTML = `<div class="modal-loading-state">${createLoadingIndicator(loadingText)}</div>`;
 }
 
 async function requestConfirmModal(title, message) {
@@ -244,8 +244,9 @@ async function renderAccountModal(root) {
 }
 
 function formatBackupDate(backupDate) {
-    return String(backupDate || '').replace(/(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})/, (match, year, month, day, hour, minute) => {
-        return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return String(backupDate || '').replace(/^(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})(?:-(\d{1,2}))?$/, (match, year, month, day, hour, minute, second) => {
+        const formatted = `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        return second == null ? formatted : `${formatted}:${String(second).padStart(2, '0')}`;
     });
 }
 
