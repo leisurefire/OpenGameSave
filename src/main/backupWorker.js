@@ -21,12 +21,14 @@ const {
 } = require('./fileSystemUtils');
 const { dbAll, openDb, closeDb, stmtAll } = require('./sqliteUtils');
 const { normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside, validateBackupMetadata } = require('./validation');
+const { buildXgpEntryIndex, mergeXgpEntriesIntoGameRow, normalizeTitleKey } = require('./xgpSourceFormat');
 
 const execFilePromise = util.promisify(execFile);
 const MAX_GLOB_MATCHES = 10000;
 const MAX_UID_PLACEHOLDERS = 4;
 
 let context = null;
+let xgpEntryIndex = new Map();
 
 function settings() {
     return context.settings;
@@ -71,6 +73,7 @@ function parseDbRow(row) {
     row.wiki_page_id = row.wiki_page_id.toString();
     row.platform = JSON.parse(row.platform);
     row.save_location = JSON.parse(row.save_location);
+    mergeXgpEntriesIntoGameRow(row, xgpEntryIndex);
     row.latest_backup = getNewestBackup(row.wiki_page_id);
 }
 
@@ -91,6 +94,27 @@ async function processAndPushGame(row, games) {
     const processed = await processGame(row);
     if (processed.resolved_paths.length !== 0) {
         games.push(processed);
+    }
+}
+
+async function processXgpCandidateGames(db, games, errors) {
+    if (xgpEntryIndex.size === 0) return;
+
+    const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
+    const rows = await dbAll(db, 'SELECT * FROM games');
+    for (const row of rows) {
+        const wikiPageId = String(row.wiki_page_id);
+        if (processedWikiIds.has(wikiPageId) || !xgpEntryIndex.has(normalizeTitleKey(row.title))) continue;
+
+        try {
+            parseDbRow(row);
+            const previousLength = games.length;
+            await processAndPushGame(row, games);
+            if (games.length > previousLength) processedWikiIds.add(wikiPageId);
+        } catch (error) {
+            console.error(`Error processing experimental XgpSaveTools game ${row.title}: ${error.stack}`);
+            errors.push(`Error processing ${row.title}: ${error.message}`);
+        }
     }
 }
 
@@ -167,6 +191,8 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
         }
 
         stmtInstallFolder = null;
+
+        await processXgpCandidateGames(db, games, errors);
 
         if (!ignoreUninstalled && settings().saveUninstalledGames) {
             const uninstalledWikiIds = settings().uninstalledGames || [];
@@ -717,6 +743,7 @@ async function getRestoreConflictTimes(pathsToCheck) {
 
 parentPort.on('message', async (message) => {
     context = message.context;
+    xgpEntryIndex = buildXgpEntryIndex(context.experimentalXgpEntries);
 
     try {
         let result;

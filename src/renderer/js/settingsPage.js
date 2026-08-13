@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
     const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
+    const experimentalXgpSourceCheckbox = document.getElementById('experimental-xgp-source');
+    const xgpSourceProjectButton = document.getElementById('xgp-source-project');
     // toggle-switch exposes .checked as a property, same interface as <input type="checkbox">
     const autoDetectButton = document.getElementById('auto-detect-paths');
     const gamePathsContainer = document.getElementById('game-paths-container');
@@ -48,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
             syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
+            experimentalXgpSourceCheckbox.checked = settings.experimentalXgpSource ?? false;
             // ToggleSwitch uses the same .checked property, so no extra logic needed.
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
@@ -145,6 +148,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     // ToggleSwitch dispatches a bubbling 'change' event, same as <input type="checkbox">,
     // so the listeners registered above already handle all four toggles correctly.
+
+    let xgpSourceToggleBusy = false;
+    experimentalXgpSourceCheckbox.addEventListener('change', async () => {
+        if (xgpSourceToggleBusy) return;
+        xgpSourceToggleBusy = true;
+        experimentalXgpSourceCheckbox.disabled = true;
+        const requestedState = experimentalXgpSourceCheckbox.checked;
+        try {
+            const result = await window.api.invoke('set-experimental-xgp-source', requestedState);
+            experimentalXgpSourceCheckbox.checked = result.enabled === true;
+            if (result.enabled && result.available) {
+                showAlert('success', await window.i18n.translate('settings.xgp_source_enabled', { count: result.entryCount }));
+                window.api.send('update-backup-table');
+            } else if (result.enabled && !result.available) {
+                showAlert('warning', await window.i18n.translate('settings.xgp_source_fetch_failed'));
+            }
+        } catch (error) {
+            console.error('Failed to change experimental XgpSaveTools source:', error);
+            const latestSettings = await window.api.invoke('get-settings');
+            experimentalXgpSourceCheckbox.checked = latestSettings.experimentalXgpSource === true;
+            showAlert('error', await window.i18n.translate('settings.xgp_source_change_failed'));
+        } finally {
+            experimentalXgpSourceCheckbox.disabled = false;
+            xgpSourceToggleBusy = false;
+            autoResizeWindow();
+        }
+    });
+
+    xgpSourceProjectButton.addEventListener('click', () => {
+        window.api.invoke('open-url', 'https://github.com/brodrigz/XgpSaveTools');
+    });
 
     maxBackupsInput.addEventListener('input', function () {
         const value = parseInt(this.value, 10);

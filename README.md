@@ -22,6 +22,10 @@ Soon, your saves will go wherever you do. Upcoming updates will let you customiz
 ### Universally compatible.
 Powered by the PCGamingWiki database, OpenGameSave effortlessly recognizes save locations for over 14,000 games right out of the box.
 
+Database paths are also additively synchronized from the MIT-licensed Ludusavi Manifest through a reviewed pull-request workflow. See [database sources and Xbox format notes](database/SOURCES.md).
+
+An optional, default-off experimental setting can fetch XgpSaveTools WGS/PGS mappings at runtime after an explicit third-party license-status and terms warning. Its upstream repository currently declares no open-source license, so the data is not bundled and availability is not guaranteed.
+
 ### Seamless migration.
 Upgraded your PC? Just export a sleek .gsmr archive and bring your entire gaming history to your new device with one simple click.
 

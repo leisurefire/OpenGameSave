@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source": {
+    "name": "mtkennerly/ludusavi-manifest",
+    "url": "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml",
+    "license": "MIT",
+    "license_url": "https://github.com/mtkennerly/ludusavi-manifest/blob/master/LICENSE",
+    "sha256": "70b1cbdf3b249b1bb47a147e08101f466de7821c42e3ac2215413a0f12567a3a"
+  },
+  "mode": "merge-existing-games-only"
+}

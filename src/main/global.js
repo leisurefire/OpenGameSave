@@ -1129,6 +1129,7 @@ async function deleteLocalSave(resolvedPaths) {
 
 const placeholder_mapping = {
     // Windows
+    '{{p|systemdrive}}': process.env.SystemDrive || path.parse(process.env.WINDIR || 'C:\\Windows').root.replace(/[\\/]$/, '') || 'C:',
     '{{p|username}}': os.userInfo().username,
     '{{p|userprofile}}': process.env.USERPROFILE || os.homedir(),
     '{{p|userprofile/documents}}': path.join(process.env.USERPROFILE || os.homedir(), 'Documents'),
@@ -1205,6 +1206,7 @@ const loadSettings = () => {
         autoAppUpdate: true,
         autoDbUpdate: false,
         syncAccentColor: false,
+        experimentalXgpSource: false,
         backupAllAccounts: false,
         saveUninstalledGames: true,
         gameInstalls: 'uninitialized',
@@ -1248,7 +1250,7 @@ function saveSettings(key, value) {
             await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
         }
 
-        if ((key === 'gameInstalls' || key === 'saveUninstalledGames') && win && !win.isDestroyed()) {
+        if ((key === 'gameInstalls' || key === 'saveUninstalledGames' || key === 'experimentalXgpSource') && win && !win.isDestroyed()) {
             win.webContents.send('update-backup-table');
             win.webContents.send('update-restore-table');
         }

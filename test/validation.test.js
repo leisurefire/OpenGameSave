@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const {
+    isXboxPgsPath,
     normalizeAutoBackupGames,
     normalizeBackupRoot,
     normalizeBackupDate,
@@ -13,6 +14,13 @@ const {
     validateBackupMetadata,
     validateDatabasePatch
 } = require('../src/main/validation');
+
+test('Xbox PGS paths are identified for backup-only handling', () => {
+    assert.equal(isXboxPgsPath('C:\\XboxGames\\GameSave\\pgs\\u_1_ABC'), true);
+    assert.equal(isXboxPgsPath('{{p|systemdrive}}/XboxGames/GameSave/pgs/u_1_ABC'), true);
+    assert.equal(isXboxPgsPath('C:\\XboxGames\\SomeGame\\Content'), false);
+    assert.equal(isXboxPgsPath('{{p|localappdata}}\\Packages\\Game\\SystemAppData\\wgs'), false);
+});
 
 test('backup dates are calendar-valid and support second precision', () => {
     assert.equal(normalizeBackupDate('2026-08-10_12-34'), '2026-08-10_12-34');
@@ -48,6 +56,8 @@ test('auto-backup settings discard malformed jobs and zero-delay intervals', () 
     assert.equal(normalized['123'].intervalMinutes, 15);
     assert.equal(normalized.watcher.intervalMinutes, null);
     assert.throws(() => sanitizeSettingValue('__proto__', true, false));
+    assert.equal(sanitizeSettingValue('experimentalXgpSource', true, false), true);
+    assert.equal(sanitizeSettingValue('experimentalXgpSource', 'yes', false), false);
 });
 
 test('backup metadata and archive paths reject traversal or forged folder names', () => {

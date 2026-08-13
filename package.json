@@ -12,6 +12,8 @@
     "build": "npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
+    "db:sync:ludusavi": "node scripts/sync-ludusavi-manifest.js --report dist/ludusavi-sync-report.json",
+    "db:sync:ludusavi:apply": "node scripts/sync-ludusavi-manifest.js --apply --report dist/ludusavi-sync-report.json",
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {

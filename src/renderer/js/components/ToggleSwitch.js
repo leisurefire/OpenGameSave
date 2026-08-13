@@ -33,9 +33,18 @@ class ToggleSwitch extends HTMLElement {
         this._updateVisual();
     }
 
+    get disabled() {
+        return this.hasAttribute('disabled');
+    }
+
+    set disabled(value) {
+        this.toggleAttribute('disabled', !!value);
+    }
+
     connectedCallback() {
         const track = this.shadowRoot.querySelector('.toggle-track');
         track.addEventListener('click', () => {
+            if (this.disabled) return;
             this.checked = !this.checked;
             this.dispatchEvent(new Event('change', { bubbles: true }));
         });
@@ -58,6 +67,11 @@ class ToggleSwitch extends HTMLElement {
             <style>
                 :host {
                     display: inline-block;
+                }
+
+                :host([disabled]) {
+                    opacity: 0.55;
+                    pointer-events: none;
                 }
 
                 .toggle-track {

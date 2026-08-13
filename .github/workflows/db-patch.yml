@@ -1,109 +1,132 @@
-name: Publish Database Patch
+name: Publish Database Update
 
 'on':
+  push:
+    paths:
+      - database/database.db
+      - scripts/generate-db-patch.js
+      - .github/workflows/db-patch.yml
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: '要上传补丁到的 Release Tag（留空则使用 latest）'
-        required: false
-        default: ''
+
+concurrency:
+  group: publish-database-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
-  generate-and-publish:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATABASE_TAG: database
 
     steps:
-      - name: 检出代码
+      - name: Check out the default branch
         uses: actions/checkout@v4
 
-      - name: 设置 Node.js 24
+      - name: Set up Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
 
-      - name: 安装 better-sqlite3
-        run: npm install better-sqlite3@12.11.1 --no-save
-
-      - name: 确定目标 Release Tag
-        id: resolve_tag
+      - name: Install database tooling
         run: |
-          INPUT_TAG="${{ github.event.inputs.release_tag }}"
-          if [ -z "$INPUT_TAG" ]; then
-            RESOLVED_TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
-            if [ -z "$RESOLVED_TAG" ]; then
-              echo "错误：未找到任何 Release，请先创建一个 Release 或指定 release_tag 参数。"
-              exit 1
-            fi
-            echo "使用 latest release tag: $RESOLVED_TAG"
-          else
-            RESOLVED_TAG="$INPUT_TAG"
-            echo "使用指定 release tag: $RESOLVED_TAG"
-          fi
-          echo "tag=$RESOLVED_TAG" >> "$GITHUB_OUTPUT"
+          npm ci --omit=dev --ignore-scripts
+          npm rebuild better-sqlite3
 
-      - name: 尝试下载上一个 Release 的 database.db
-        id: download_old_db
+      - name: Download the currently published database
+        id: previous
+        shell: bash
         run: |
-          ALL_TAGS=$(gh release list --json tagName -q '.[].tagName' 2>/dev/null || echo "")
-          CURRENT_TAG="${{ steps.resolve_tag.outputs.tag }}"
-
-          PREV_TAG=""
-          FOUND_CURRENT=false
-          while IFS= read -r tag; do
-            if [ "$FOUND_CURRENT" = "true" ]; then
-              PREV_TAG="$tag"
-              break
-            fi
-            if [ "$tag" = "$CURRENT_TAG" ]; then
-              FOUND_CURRENT=true
-            fi
-          done <<< "$ALL_TAGS"
-
-          if [ -n "$PREV_TAG" ]; then
-            echo "找到上一个 release: $PREV_TAG，尝试下载 database.db"
-            gh release download "$PREV_TAG" --pattern "database.db" --output old_database.db 2>/dev/null && \
-              echo "old_db_exists=true" >> "$GITHUB_OUTPUT" || \
-              echo "old_db_exists=false" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
+            gh release download "$DATABASE_TAG" \
+              --pattern database.db \
+              --output old_database.db \
+              --clobber
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "未找到上一个 release（首次发布）"
-            echo "old_db_exists=false" >> "$GITHUB_OUTPUT"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 准备输出目录
-        run: mkdir -p dist
-
-      - name: 生成数据库补丁
+      - name: Generate the next sequential patch
+        shell: bash
         run: |
-          OLD_DB_EXISTS="${{ steps.download_old_db.outputs.old_db_exists }}"
-          if [ "$OLD_DB_EXISTS" = "true" ]; then
-            echo "使用旧数据库生成差异补丁..."
+          set -euo pipefail
+          mkdir -p dist/database-update
+          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then
             node scripts/generate-db-patch.js \
               --from old_database.db \
               --to database/database.db \
-              --output dist/
+              --output dist/database-update
           else
-            echo "首次发布，将所有记录生成为初始补丁..."
             node scripts/generate-db-patch.js \
               --from "" \
               --to database/database.db \
-              --output dist/
+              --output dist/database-update
           fi
 
-      - name: 列出生成的补丁文件
-        run: ls -lh dist/
-
-      - name: 上传补丁和数据库到 Release
+      - name: Validate database update artifacts
+        id: artifacts
+        shell: bash
         run: |
-          TARGET_TAG="${{ steps.resolve_tag.outputs.tag }}"
-          echo "上传文件到 Release: $TARGET_TAG"
-
-          PATCH_FILES=$(ls dist/db_patch_v*.json 2>/dev/null || echo "")
-          if [ -z "$PATCH_FILES" ]; then
-            echo "错误：未找到任何补丁文件"
+          set -euo pipefail
+          PATCH_FILE=$(find dist/database-update -maxdepth 1 -type f -name 'db_patch_v*.json' -print -quit)
+          if [ -z "$PATCH_FILE" ]; then
+            echo "No database patch was generated."
             exit 1
           fi
+          PATCH_NAME=$(basename "$PATCH_FILE")
+          VERSION=$(node -e "const Database=require('better-sqlite3');const db=new Database('database/database.db',{readonly:true});const check=db.pragma('quick_check',{simple:true});const version=db.pragma('user_version',{simple:true});db.close();if(check!=='ok'||!Number.isInteger(version)||version<1)process.exit(1);process.stdout.write(String(version));")
+          PATCH_VERSION=$(node -e "const patch=require('./$PATCH_FILE');if(patch.version!==Number(process.argv[1]))process.exit(1);process.stdout.write(String(patch.version));" "$VERSION")
+          echo "patch_file=$PATCH_FILE" >> "$GITHUB_OUTPUT"
+          echo "patch_name=$PATCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$PATCH_VERSION" >> "$GITHUB_OUTPUT"
 
-          gh release upload "$TARGET_TAG" $PATCH_FILES database/database.db --clobber
-          echo "文件已成功上传到 Release $TARGET_TAG"
+      - name: Create the database release when missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
+            gh release create "$DATABASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "OpenGameSave Database" \
+              --notes "Machine-consumed database updates for OpenGameSave. This release is maintained by GitHub Actions." \
+              --latest=false
+          fi
+
+      - name: Publish patch and full database
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$DATABASE_TAG" \
+            "${{ steps.artifacts.outputs.patch_file }}" \
+            database/database.db \
+            --clobber
+
+      - name: Add the publication summary
+        shell: bash
+        run: |
+          {
+            echo "## Database update published"
+            echo
+            echo "- Release tag: \`$DATABASE_TAG\`"
+            echo "- Database version: ${{ steps.artifacts.outputs.version }}"
+            echo "- Patch: \`${{ steps.artifacts.outputs.patch_name }}\`"
+            echo "- Full fallback: \`database.db\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-update-v${{ steps.artifacts.outputs.version }}
+          path: |
+            ${{ steps.artifacts.outputs.patch_file }}
+            database/database.db
+          if-no-files-found: error
+          retention-days: 30

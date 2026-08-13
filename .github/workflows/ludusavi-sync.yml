@@ -1,0 +1,109 @@
+name: Sync Ludusavi Database
+
+'on':
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ludusavi-database-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    if: github.repository == 'leisurefire/OpenGameSave'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install sync dependencies
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          npm rebuild better-sqlite3
+
+      - name: Download the Ludusavi manifest
+        run: |
+          mkdir -p dist
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 20 --max-time 180 \
+            --output dist/ludusavi-manifest.yaml \
+            https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml
+
+      - name: Merge the Ludusavi manifest into the database
+        run: |
+          node scripts/sync-ludusavi-manifest.js \
+            --apply \
+            --manifest-file dist/ludusavi-manifest.yaml \
+            --source-url https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml \
+            --database database/database.db \
+            --state database/sources/ludusavi.json \
+            --report dist/ludusavi-sync-report.json
+
+      - name: Add the sync summary
+        run: |
+          node -e "const r=require('./dist/ludusavi-sync-report.json'); const s=r.summary; process.stdout.write(['## Ludusavi database sync','', '- Source SHA-256: `'+r.source.sha256+'`','- Matched games: '+s.matchedGames,'- Updated games: '+s.updatedGames,'- Added paths: '+s.addedPaths,'- Normalized Xbox PGS paths: '+s.normalizedXboxPgsPaths,'- Unsupported paths skipped: '+s.unsupportedPaths,'- Match conflicts: '+r.conflicts.length,''].join('\n'))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the detailed sync report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ludusavi-sync-report-${{ github.run_id }}
+          path: dist/ludusavi-sync-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check for database changes
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet -- database/database.db database/sources/ludusavi.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update the database sync pull request
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BRANCH="automation/ludusavi-manifest"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add database/database.db database/sources/ludusavi.json
+          git commit -m "chore(database): sync Ludusavi manifest"
+
+          REMOTE_SHA=$(git ls-remote --heads origin "refs/heads/$BRANCH" | awk '{print $1}')
+          if [ -n "$REMOTE_SHA" ]; then
+            git push --force-with-lease="refs/heads/$BRANCH:$REMOTE_SHA" origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          printf -v PR_BODY '%s\n\nDetailed conversion report: %s' \
+            'Automated additive sync from [mtkennerly/ludusavi-manifest](https://github.com/mtkennerly/ludusavi-manifest). Existing games are matched by stable store IDs first and exact title second; unmatched and ambiguous entries are not imported. Xbox PGS paths remain backup-only.' \
+            "$RUN_URL"
+          PR_URL=$(gh pr list --head "$BRANCH" --base "$BASE_BRANCH" --state open --json url --jq '.[0].url')
+          if [ -n "$PR_URL" ]; then
+            gh pr edit "$PR_URL" --title "chore(database): sync Ludusavi manifest" --body "$PR_BODY"
+          else
+            gh pr create --head "$BRANCH" --base "$BASE_BRANCH" --title "chore(database): sync Ludusavi manifest" --body "$PR_BODY"
+          fi

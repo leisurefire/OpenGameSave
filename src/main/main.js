@@ -24,6 +24,7 @@ const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } =
 const {
     assertNoSymlinkAncestors,
     isPathInside,
+    isXboxPgsPath,
     normalizeBackupDate,
     normalizeRegistryKeyPath,
     normalizeWikiId,
@@ -32,6 +33,10 @@ const {
 } = require('./validation');
 const { denyUnexpectedPermissions, hardenBrowserWindow } = require('./windowSecurity');
 const { acquireGameOperation, acquireGlobalOperation } = require('./gameOperationLock');
+const {
+    clearExperimentalXgpCache,
+    refreshExperimentalXgpSource
+} = require('./xgpExperimentalSource');
 
 
 function logFatalError(error) {
@@ -439,6 +444,20 @@ app.whenReady().then(async () => {
             enqueueStartupIdleTask('check-app-update', () => checkAppUpdate(), 2500);
         }
 
+        if (getSettings().experimentalXgpSource) {
+            enqueueStartupIdleTask('refresh-experimental-xgp-source', async () => {
+                try {
+                    const result = await refreshExperimentalXgpSource();
+                    if (result.refreshed && mainWin && !mainWin.isDestroyed()) {
+                        mainWin.webContents.send('update-backup-table');
+                        mainWin.webContents.send('update-restore-table');
+                    }
+                } catch (error) {
+                    console.warn(`Unable to refresh experimental XgpSaveTools source: ${error.message}`);
+                }
+            }, 1800);
+        }
+
         startStartupIdleQueue(250);
     });
 
@@ -520,9 +539,11 @@ async function getVerifiedLocalSavePaths(wikiId, selectedIndexes = null) {
 
     const currentGameData = getGameData();
     const configuredInstallPaths = Array.isArray(getSettings().gameInstalls) ? getSettings().gameInstalls : [];
+    const systemDrive = process.env.SystemDrive || path.parse(process.env.WINDIR || 'C:\\Windows').root.replace(/[\\/]$/, '') || 'C:';
+    const xboxPgsRoot = path.join(systemDrive, 'XboxGames', 'GameSave', 'pgs');
     const allowedRoots = [
         os.homedir(), process.env.APPDATA, process.env.LOCALAPPDATA, process.env.PROGRAMDATA,
-        process.env.PUBLIC, currentGameData.steamPath, currentGameData.ubisoftPath,
+        process.env.PUBLIC, currentGameData.steamPath, currentGameData.ubisoftPath, xboxPgsRoot,
         ...configuredInstallPaths
     ].filter(root => typeof root === 'string' && path.isAbsolute(root));
 
@@ -601,6 +622,9 @@ ipcMain.handle('change-language', async (event, language) => {
 
 ipcMain.on('save-settings', async (event, key, value) => {
     try {
+        if (key === 'experimentalXgpSource') {
+            throw new Error('Experimental XgpSaveTools source must be changed through its consent prompt');
+        }
         await saveSettings(key, value);
     } catch (error) {
         console.error('Failed to save setting:', error);
@@ -613,6 +637,47 @@ ipcMain.on('save-settings', async (event, key, value) => {
 
 ipcMain.handle("get-settings", () => {
     return getSettings();
+});
+
+ipcMain.handle('set-experimental-xgp-source', async (event, enabled) => {
+    if (typeof enabled !== 'boolean') throw new Error('Expected a boolean');
+
+    if (!enabled) {
+        await saveSettings('experimentalXgpSource', false);
+        await clearExperimentalXgpCache().catch(error => {
+            console.warn(`Unable to remove experimental XgpSaveTools cache: ${error.message}`);
+        });
+        return { enabled: false, accepted: true, available: false };
+    }
+
+    if (!getSettings().experimentalXgpSource) {
+        const parentWindow = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+        const promptResult = await dialog.showMessageBox(parentWindow, {
+            type: 'warning',
+            title: i18next.t('settings.xgp_source_consent_title'),
+            message: i18next.t('settings.xgp_source_consent_message'),
+            detail: i18next.t('settings.xgp_source_consent_detail'),
+            buttons: [
+                i18next.t('settings.xgp_source_cancel'),
+                i18next.t('settings.xgp_source_accept')
+            ],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true
+        });
+        if (promptResult.response !== 1) {
+            return { enabled: false, accepted: false, available: false };
+        }
+    }
+
+    await saveSettings('experimentalXgpSource', true);
+    try {
+        const result = await refreshExperimentalXgpSource({ force: true });
+        return { enabled: true, accepted: true, ...result };
+    } catch (error) {
+        console.warn(`Unable to enable experimental XgpSaveTools source immediately: ${error.message}`);
+        return { enabled: true, accepted: true, available: false, error: 'fetch-failed' };
+    }
 });
 
 ipcMain.handle("get-detected-game-paths", async () => {
@@ -993,6 +1058,9 @@ ipcMain.handle('delete-local-save', async (event, wikiId) => {
     try {
         releaseOperation = acquireGameOperation(wikiId, 'delete local save');
         const resolvedPaths = await getVerifiedLocalSavePaths(wikiId);
+        if (resolvedPaths.some(pathObject => pathObject.type !== 'reg' && isXboxPgsPath(pathObject.resolved))) {
+            throw new Error(i18next.t('alert.xbox_pgs_delete_blocked'));
+        }
         return await deleteLocalSave(resolvedPaths);
     } catch (error) {
         console.error('Error validating local save delete request:', error.message);

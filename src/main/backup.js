@@ -16,8 +16,9 @@ const { dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
 const { acquireGameOperation } = require('./gameOperationLock');
 const { acquireDatabaseRead, acquireDatabaseWrite } = require('./databaseOperationLock');
 const { validateDatabasePatch } = require('./validation');
+const { getExperimentalXgpEntries } = require('./xgpExperimentalSource');
 
-const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
+const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/tags/database';
 const MAX_DATABASE_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const MAX_PATCH_DOWNLOAD_BYTES = 16 * 1024 * 1024;
 const INSTALLED_DATABASE_PATH = path.join(process.cwd(), 'database', 'database.db');
@@ -33,9 +34,10 @@ function validateReleaseAssetUrl(rawUrl) {
 
 function createBackupWorkerContext() {
     const currentGameData = getGameData();
+    const currentSettings = getSettings();
 
     return {
-        settings: getSettings(),
+        settings: currentSettings,
         gameData: {
             steamPath: currentGameData.steamPath,
             ubisoftPath: currentGameData.ubisoftPath,
@@ -47,6 +49,7 @@ function createBackupWorkerContext() {
         installedDbPath: INSTALLED_DATABASE_PATH,
         placeholderMapping: placeholder_mapping,
         osKeyMap,
+        experimentalXgpEntries: getExperimentalXgpEntries(currentSettings.experimentalXgpSource),
         labels: {
             noBackups: i18next.t('main.no_backups'),
             missingDatabase: i18next.t('alert.missing_database_file_message')

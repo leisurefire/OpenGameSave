@@ -37,6 +37,7 @@ const ALLOWED_INVOKE = new Set([
   'translate',
   'change-language',
   'get-settings',
+  'set-experimental-xgp-source',
   'get-detected-game-paths',
   'open-url',
   'open-backup-dialog',

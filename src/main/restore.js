@@ -14,7 +14,7 @@ const {
     getGameDisplayName, placeholder_mapping, getSettings
 } = require('./global');
 const { runWorkerTask } = require('./backup');
-const { assertNoSymlinkAncestors, isPathInside, normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside } = require('./validation');
+const { assertNoSymlinkAncestors, isPathInside, isXboxPgsPath, normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside } = require('./validation');
 
 const RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS = 30000;
 
@@ -72,6 +72,14 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
 
             if (backupPath.type === 'reg' && !isAllowedRegistryRestorePath(destinationPath)) {
                 throw new Error('Backup contains an invalid registry destination');
+            }
+
+            // PGS metadata and the active snapshot are managed transactionally by Xbox
+            // Gaming Services. A raw folder copy is useful as a backup, but writing it
+            // back while cloud synchronization is active can corrupt or overwrite saves.
+            if (backupPath.type !== 'reg' && isXboxPgsPath(destinationPath)) {
+                console.warn(`Automatic Xbox PGS restore is blocked: ${destinationPath}`);
+                throw Error(i18next.t('alert.xbox_pgs_restore_blocked'));
             }
 
             const allowedRoot = backupPath.type === 'reg' ? null : getAllowedRestoreRoot(destinationPath);

@@ -3,7 +3,8 @@
 __pycache__
 /node_modules
 /dist
-/scripts
+/scripts/*
+!/scripts/sync-ludusavi-manifest.js
 *.ps1
 secret_config.js
 tailwind-output.css

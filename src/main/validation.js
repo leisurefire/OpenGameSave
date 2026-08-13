@@ -15,6 +15,7 @@ const BOOLEAN_SETTING_KEYS = new Set([
     'autoAppUpdate',
     'autoDbUpdate',
     'syncAccentColor',
+    'experimentalXgpSource',
     'backupAllAccounts',
     'saveUninstalledGames',
     'blockedGameTipDismissed',
@@ -112,6 +113,12 @@ function normalizeRegistryKeyPath(registryPath) {
         throw new Error('Unsupported registry hive');
     }
     return `${hive}\\${segments.slice(1).join('\\')}`;
+}
+
+function isXboxPgsPath(value) {
+    if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) return false;
+    const normalized = value.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase();
+    return /^(?:[a-z]:|\{\{p\|systemdrive\}\})\/xboxgames\/gamesave\/pgs(?:\/|$)/.test(normalized);
 }
 
 function isPathInside(rootPath, targetPath) {
@@ -440,6 +447,7 @@ module.exports = {
     ALLOWED_SETTING_KEYS,
     BACKUP_DATE_PATTERN,
     assertNoSymlinkAncestors,
+    isXboxPgsPath,
     normalizeAbsolutePath,
     normalizeAutoBackupGames,
     normalizeAutoBackupInterval,
