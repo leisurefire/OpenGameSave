@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -88,26 +88,24 @@ jobs:
           echo "patch_name=$PATCH_NAME" >> "$GITHUB_OUTPUT"
           echo "version=$PATCH_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create the database release when missing
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
-            gh release create "$DATABASE_TAG" \
-              --target "$GITHUB_SHA" \
-              --title "OpenGameSave Database" \
-              --notes "Machine-consumed database updates for OpenGameSave. This release is maintained by GitHub Actions." \
-              --latest=false
-          fi
-
       - name: Publish patch and full database
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "$DATABASE_TAG" \
-            "${{ steps.artifacts.outputs.patch_file }}" \
-            database/database.db \
-            --clobber
+          if gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$DATABASE_TAG" \
+              "${{ steps.artifacts.outputs.patch_file }}" \
+              database/database.db \
+              --clobber
+          else
+            gh release create "$DATABASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "OpenGameSave Database" \
+              --notes "Machine-consumed database updates for OpenGameSave. This release is maintained by GitHub Actions." \
+              --latest=false \
+              "${{ steps.artifacts.outputs.patch_file }}" \
+              database/database.db
+          fi
 
       - name: Add the publication summary
         shell: bash

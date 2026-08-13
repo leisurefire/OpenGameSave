@@ -41,3 +41,9 @@ npm run db:sync:ludusavi:apply
 ```
 
 The sync is additive by design. Upstream removals require human review in OpenGameSave.
+
+## Application database updates
+
+When `database/database.db` changes on the default branch, `.github/workflows/db-patch.yml` automatically compares it with the database currently published in the dedicated `database` GitHub Release. It increments SQLite `user_version`, publishes the next `db_patch_vN.json`, retains older sequential patches, and replaces the full `database.db` fallback asset.
+
+When **Update database automatically** is enabled, OpenGameSave checks that dedicated release at startup. It applies every missing sequential patch under a database write lock. If the patch chain is incomplete, it downloads and validates the full database instead. The previous user database is retained until integrity validation succeeds and is restored if an update fails. Manual updates use the same path through the sidebar button.

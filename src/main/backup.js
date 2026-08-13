@@ -234,11 +234,18 @@ async function performDatabaseUpdate() {
     const win = getMainWin();
     win.webContents.send('update-progress', progressId, progressTitle, 'start');
 
-    // 备份当前数据库
+    // 首次运行时，用户数据库可能尚未由扫描 worker 初始化。先复制随应用
+    // 分发的数据库，使增量补丁可以从其 user_version 安全开始。
     try {
         if (!fs.existsSync(path.dirname(dbPath))) {
             fs.mkdirSync(path.dirname(dbPath), { recursive: true });
         }
+        if (!fs.existsSync(dbPath) && fs.existsSync(INSTALLED_DATABASE_PATH)) {
+            fs.copyFileSync(INSTALLED_DATABASE_PATH, dbPath);
+            await validateDatabaseFile(dbPath);
+        }
+
+        // 备份当前数据库，任何下载、验证或补丁失败都可回滚。
         if (fs.existsSync(dbPath)) {
             fs.copyFileSync(dbPath, dbTempPath);
         }
@@ -319,6 +326,7 @@ async function performDatabaseUpdate() {
             const downloadTempPath = `${dbPath}.download`;
             await downloadFullDatabase(dbAsset.browser_download_url, downloadTempPath, progressId, progressTitle);
             fs.copyFileSync(downloadTempPath, dbPath);
+            await validateDatabaseFile(dbPath);
             fs.unlinkSync(downloadTempPath);
 
             // 清理旧备份
@@ -349,6 +357,12 @@ async function performDatabaseUpdate() {
             // 报告进度
             const pct = Math.round(((i + 1) / total) * 100);
             win.webContents.send('update-progress', progressId, progressTitle, pct);
+        }
+
+        await validateDatabaseFile(dbPath);
+        const appliedVersion = await getLocalDbVersion(dbPath);
+        if (appliedVersion !== pendingPatches[pendingPatches.length - 1].version) {
+            throw new Error('Database version does not match the applied patch chain');
         }
 
         // 清理旧备份
