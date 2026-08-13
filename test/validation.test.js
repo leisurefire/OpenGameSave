@@ -74,6 +74,7 @@ test('backup metadata and archive paths reject traversal or forged folder names'
 test('database patches are bounded, typed and tied to the asset version', () => {
     const patch = validateDatabasePatch({
         version: 7,
+        from_version: 6,
         upsert: [{
             wiki_page_id: 123,
             title: 'Game',
@@ -85,9 +86,10 @@ test('database patches are bounded, typed and tied to the asset version', () => 
             save_location: JSON.stringify({ win: ['C:\\Save'], reg: [], linux: [], mac: [] })
         }],
         delete: [456, 456]
-    }, 7);
+    }, 7, 6);
     assert.equal(patch.upsert[0].wiki_page_id, 123);
     assert.deepEqual(patch.delete, [456]);
-    assert.throws(() => validateDatabasePatch({ version: 8, upsert: [], delete: [] }, 7));
-    assert.throws(() => validateDatabasePatch({ version: 7, upsert: [{ wiki_page_id: 1, title: 'x', save_location: '{' }], delete: [] }, 7));
+    assert.throws(() => validateDatabasePatch({ version: 8, from_version: 7, upsert: [], delete: [] }, 7));
+    assert.throws(() => validateDatabasePatch({ version: 7, from_version: 5, upsert: [], delete: [] }, 7, 6));
+    assert.throws(() => validateDatabasePatch({ version: 7, from_version: 6, upsert: [{ wiki_page_id: 1, title: 'x', save_location: '{' }], delete: [] }, 7));
 });

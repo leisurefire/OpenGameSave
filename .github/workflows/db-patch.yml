@@ -5,6 +5,7 @@ name: Publish Database Update
     paths:
       - database/database.db
       - scripts/generate-db-patch.js
+      - scripts/build-db-release.js
       - .github/workflows/db-patch.yml
   workflow_dispatch:
 
@@ -25,11 +26,9 @@ jobs:
       DATABASE_TAG: database
 
     steps:
-      - name: Check out the default branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
@@ -39,92 +38,136 @@ jobs:
           npm ci --omit=dev --ignore-scripts
           npm rebuild better-sqlite3
 
-      - name: Download the currently published database
+      - name: Download and verify the current immutable publication
         id: previous
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
-            gh release download "$DATABASE_TAG" \
-              --pattern database.db \
-              --output old_database.db \
-              --clobber
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          mkdir -p previous
+          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "legacy=false" >> "$GITHUB_OUTPUT"
+            echo "same_source=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          if ! gh release download "$DATABASE_TAG" --pattern current.json --dir previous 2>/dev/null; then
+            gh release download "$DATABASE_TAG" --pattern database.db --output previous/database.db
+            node - <<'NODE'
+          const Database=require('better-sqlite3');
+          const db=new Database('previous/database.db',{readonly:true});
+          if(db.pragma('quick_check',{simple:true})!=='ok'||db.pragma('user_version',{simple:true})<1)process.exit(1);
+          db.close();
+          NODE
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "legacy=true" >> "$GITHUB_OUTPUT"
+            echo "same_source=false" >> "$GITHUB_OUTPUT"
+            echo "database=previous/database.db" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          MANIFEST=$(node -e "const p=require('./previous/current.json');if(!/^manifest_v[0-9]+\\.json$/.test(p.manifest))process.exit(1);process.stdout.write(p.manifest)")
+          gh release download "$DATABASE_TAG" --pattern "$MANIFEST" --dir previous
+          DATABASE=$(node -e "const m=require('./previous/' + process.argv[1]);process.stdout.write(m.database.name)" "$MANIFEST")
+          gh release download "$DATABASE_TAG" --pattern "$DATABASE" --dir previous
+          node -e "const m=require('./previous/' + process.argv[1]);for(const p of m.patches||[])console.log(p.name)" "$MANIFEST" > previous/patch-names.txt
+          while IFS= read -r PATCH; do
+            [ -z "$PATCH" ] || gh release download "$DATABASE_TAG" --pattern "$PATCH" --dir previous
+          done < previous/patch-names.txt
+          node - "$MANIFEST" "$DATABASE" <<'NODE'
+          const fs=require('fs'),crypto=require('crypto'),Database=require('better-sqlite3');
+          const manifest=JSON.parse(fs.readFileSync('previous/'+process.argv[2]));
+          const file='previous/'+process.argv[3];
+          const verify=(descriptor)=>{const p='previous/'+descriptor.name,b=fs.readFileSync(p),digest=crypto.createHash('sha256').update(b).digest('hex');if(digest!==descriptor.sha256||b.length!==descriptor.size)process.exit(1)};
+          verify(manifest.database);
+          let previousTo=null;
+          for(const patch of manifest.patches||[]){if(patch.to!==patch.from+1||(previousTo!==null&&patch.from!==previousTo))process.exit(1);verify(patch);previousTo=patch.to}
+          const db=new Database(file,{readonly:true});
+          if(db.pragma('quick_check',{simple:true})!=='ok'||db.pragma('user_version',{simple:true})!==manifest.latest_version)process.exit(1);
+          db.close();
+          NODE
+          SOURCE_SHA=$(node -e "const m=require('./previous/' + process.argv[1]);process.stdout.write(m.source_sha)" "$MANIFEST")
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "legacy=false" >> "$GITHUB_OUTPUT"
+          echo "manifest=previous/$MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "database=previous/$DATABASE" >> "$GITHUB_OUTPUT"
+          if [ "$SOURCE_SHA" = "$GITHUB_SHA" ]; then echo "same_source=true" >> "$GITHUB_OUTPUT"; else echo "same_source=false" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Generate the next sequential patch
+      - name: Generate semantic database update
+        if: steps.previous.outputs.same_source != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/database-update
-          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then
-            node scripts/generate-db-patch.js \
-              --from old_database.db \
-              --to database/database.db \
-              --output dist/database-update
-          else
-            node scripts/generate-db-patch.js \
-              --from "" \
-              --to database/database.db \
-              --output dist/database-update
-          fi
+          mkdir -p dist/generated dist/database-update
+          FROM=""
+          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then FROM="${{ steps.previous.outputs.database }}"; fi
+          node scripts/generate-db-patch.js --from "$FROM" --to database/database.db --output dist/generated --source-sha "$GITHUB_SHA"
 
-      - name: Validate database update artifacts
-        id: artifacts
+      - name: Read generation result
+        id: generated
+        if: steps.previous.outputs.same_source != 'true'
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs=require('fs'),Database=require('better-sqlite3');
+          const r=require('./dist/generated/generation-result.json');
+          if(process.env.LEGACY==='true'&&!r.changed){
+            const db=new Database('database/database.db');
+            db.pragma(`user_version = ${r.version}`);
+            db.close();
+            r.changed=true;
+            r.requires_full_database=true;
+            fs.writeFileSync('dist/generated/generation-result.json',JSON.stringify(r,null,2));
+          }
+          console.log(`changed=${r.changed}`);
+          console.log(`version=${r.version}`);
+          NODE
+        env:
+          LEGACY: ${{ steps.previous.outputs.legacy }}
+
+      - name: Build immutable assets and current pointer
+        if: steps.generated.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          PATCH_FILE=$(find dist/database-update -maxdepth 1 -type f -name 'db_patch_v*.json' -print -quit)
-          if [ -z "$PATCH_FILE" ]; then
-            echo "No database patch was generated."
-            exit 1
-          fi
-          PATCH_NAME=$(basename "$PATCH_FILE")
-          VERSION=$(node -e "const Database=require('better-sqlite3');const db=new Database('database/database.db',{readonly:true});const check=db.pragma('quick_check',{simple:true});const version=db.pragma('user_version',{simple:true});db.close();if(check!=='ok'||!Number.isInteger(version)||version<1)process.exit(1);process.stdout.write(String(version));")
-          PATCH_VERSION=$(node -e "const patch=require('./$PATCH_FILE');if(patch.version!==Number(process.argv[1]))process.exit(1);process.stdout.write(String(patch.version));" "$VERSION")
-          echo "patch_file=$PATCH_FILE" >> "$GITHUB_OUTPUT"
-          echo "patch_name=$PATCH_NAME" >> "$GITHUB_OUTPUT"
-          echo "version=$PATCH_VERSION" >> "$GITHUB_OUTPUT"
+          PREVIOUS_ARGS=()
+          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then PREVIOUS_ARGS=(--previous-manifest "${{ steps.previous.outputs.manifest }}"); fi
+          node scripts/build-db-release.js --database database/database.db --result dist/generated/generation-result.json --output dist/database-update --source-sha "$GITHUB_SHA" "${PREVIOUS_ARGS[@]}"
 
-      - name: Publish patch and full database
+      - name: Publish immutable assets, then atomically advance current.json
+        if: steps.generated.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$DATABASE_TAG" \
-              "${{ steps.artifacts.outputs.patch_file }}" \
-              database/database.db \
-              --clobber
-          else
-            gh release create "$DATABASE_TAG" \
-              --target "$GITHUB_SHA" \
-              --title "OpenGameSave Database" \
-              --notes "Machine-consumed database updates for OpenGameSave. This release is maintained by GitHub Actions." \
-              --latest=false \
-              "${{ steps.artifacts.outputs.patch_file }}" \
-              database/database.db
+          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
+            gh release create "$DATABASE_TAG" --target "$GITHUB_SHA" --title "OpenGameSave Database" --notes "Machine-consumed immutable database updates." --latest=false
           fi
+          publish_immutable() {
+            local file="$1" name existing
+            name=$(basename "$file")
+            existing=$(mktemp)
+            if gh release download "$DATABASE_TAG" --pattern "$name" --output "$existing" 2>/dev/null; then
+              cmp --silent "$file" "$existing" || { echo "Immutable asset conflict: $name"; exit 1; }
+            else
+              gh release upload "$DATABASE_TAG" "$file"
+            fi
+            rm -f "$existing"
+          }
+          while IFS= read -r -d '' file; do publish_immutable "$file"; done < <(find dist/database-update -maxdepth 1 -type f ! -name current.json -print0)
+          gh release upload "$DATABASE_TAG" dist/database-update/current.json --clobber
+          gh release edit "$DATABASE_TAG" --target "$GITHUB_SHA"
 
-      - name: Add the publication summary
+      - name: Add publication summary
         shell: bash
         run: |
-          {
-            echo "## Database update published"
-            echo
-            echo "- Release tag: \`$DATABASE_TAG\`"
-            echo "- Database version: ${{ steps.artifacts.outputs.version }}"
-            echo "- Patch: \`${{ steps.artifacts.outputs.patch_name }}\`"
-            echo "- Full fallback: \`database.db\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.previous.outputs.same_source }}" = "true" ]; then STATUS="already published for this source SHA";
+          elif [ "${{ steps.generated.outputs.changed }}" = "true" ]; then STATUS="published version ${{ steps.generated.outputs.version }}";
+          else STATUS="no semantic database changes"; fi
+          printf '## Database publication\n\n- Status: %s\n- Source: `%s`\n' "$STATUS" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload workflow artifacts
+        if: steps.generated.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: database-update-v${{ steps.artifacts.outputs.version }}
-          path: |
-            ${{ steps.artifacts.outputs.patch_file }}
-            database/database.db
+          name: database-update-v${{ steps.generated.outputs.version }}
+          path: dist/database-update
           if-no-files-found: error
           retention-days: 30

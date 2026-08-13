@@ -1,5 +1,6 @@
 const { app } = require('electron');
 const { Worker } = require('worker_threads');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
@@ -12,16 +13,41 @@ const {
     placeholder_mapping, osKeyMap, getSettings, saveSettings, showBackgroundNotification
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
-const { dbRun, dbGet, openDb, closeDb } = require('./sqliteUtils');
+const { dbRun, dbGet, dbAll, openDb, closeDb } = require('./sqliteUtils');
 const { acquireGameOperation } = require('./gameOperationLock');
-const { acquireDatabaseRead, acquireDatabaseWrite } = require('./databaseOperationLock');
+const { acquireDatabaseWrite, runWithDatabaseRead } = require('./databaseOperationLock');
 const { validateDatabasePatch } = require('./validation');
+const {
+    atomicInstallDatabase,
+    createNewDatabasePath,
+    normalizeSha256,
+    recoverDatabaseFiles,
+    verifyFileDescriptor
+} = require('./databaseUpdateFiles');
+const {
+    MAX_DATABASE_DOWNLOAD_BYTES,
+    MAX_PATCH_DOWNLOAD_BYTES,
+    validateAssetDescriptor,
+    validateDatabaseManifest
+} = require('./databaseManifest');
 const { getExperimentalXgpEntries } = require('./xgpExperimentalSource');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/tags/database';
-const MAX_DATABASE_DOWNLOAD_BYTES = 256 * 1024 * 1024;
-const MAX_PATCH_DOWNLOAD_BYTES = 16 * 1024 * 1024;
-const INSTALLED_DATABASE_PATH = path.join(process.cwd(), 'database', 'database.db');
+const DATABASE_READ_WORKER_TASKS = new Set([
+    'getGameDataFromDB',
+    'getAllGameDataFromDB',
+    'getGameDataForRestore'
+]);
+
+function getInstalledDatabasePath() {
+    return app.isPackaged
+        ? path.join(path.dirname(app.getPath('exe')), 'database', 'database.db')
+        : path.join(app.getAppPath(), 'database', 'database.db');
+}
+
+function getUserDatabasePath() {
+    return path.join(app.getPath('userData'), 'OGS Database', 'database.db');
+}
 
 function validateReleaseAssetUrl(rawUrl) {
     const url = new URL(rawUrl);
@@ -45,8 +71,8 @@ function createBackupWorkerContext() {
             currentUbisoftUserId: currentGameData.currentUbisoftUserId
         },
         allUserIds: getAllUserIds(),
-        dbPath: path.join(app.getPath("userData"), "OGS Database", "database.db"),
-        installedDbPath: INSTALLED_DATABASE_PATH,
+        dbPath: getUserDatabasePath(),
+        installedDbPath: getInstalledDatabasePath(),
         placeholderMapping: placeholder_mapping,
         osKeyMap,
         experimentalXgpEntries: getExperimentalXgpEntries(currentSettings.experimentalXgpSource),
@@ -115,7 +141,7 @@ async function getLocalDbVersion(dbPath) {
 /**
  * 将一个补丁 JSON 应用到数据库
  */
-async function validateDatabaseFile(dbPath) {
+async function validateDatabaseFile(dbPath, expectedVersion, expectedSchemaVersion) {
     const stats = await fs.promises.stat(dbPath);
     if (!stats.isFile() || stats.size === 0 || stats.size > MAX_DATABASE_DOWNLOAD_BYTES) {
         throw new Error('Downloaded database has an invalid size');
@@ -126,17 +152,49 @@ async function validateDatabaseFile(dbPath) {
         if (!integrity || integrity.quick_check !== 'ok') {
             throw new Error('Downloaded database failed its integrity check');
         }
-        const gamesTable = await dbGet(db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'games'");
-        if (!gamesTable) throw new Error('Downloaded database is missing the games table');
+        const requiredTables = await dbGet(db, `
+            SELECT COUNT(*) AS count FROM sqlite_master
+            WHERE type = 'table' AND name IN ('games', 'metadata')
+        `);
+        if (!requiredTables || requiredTables.count !== 2) {
+            throw new Error('Downloaded database is missing a required table');
+        }
+        const gameColumns = await dbAll(db, 'PRAGMA table_info(games)');
+        const metadataColumns = await dbAll(db, 'PRAGMA table_info(metadata)');
+        const requiredGameColumns = ['wiki_page_id', 'title', 'zh_CN', 'install_folder', 'steam_id', 'gog_id', 'platform', 'save_location'];
+        const gameColumnNames = new Set(gameColumns.map(column => column.name));
+        if (requiredGameColumns.some(column => !gameColumnNames.has(column))
+            || !metadataColumns.some(column => column.name === 'key')
+            || !metadataColumns.some(column => column.name === 'value')) {
+            throw new Error('Downloaded database has an unsupported table structure');
+        }
+        const schemaRows = await dbAll(db, `
+            SELECT type, name, tbl_name, sql FROM sqlite_master
+            WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name
+        `);
+        const schemaVersion = crypto.createHash('sha256').update(JSON.stringify(schemaRows)).digest('hex');
+        if (expectedSchemaVersion !== undefined && schemaVersion !== expectedSchemaVersion) {
+            throw new Error('Downloaded database schema does not match the manifest');
+        }
+        const versionRow = await dbGet(db, 'PRAGMA user_version');
+        const version = versionRow?.user_version || 0;
+        if (expectedVersion !== undefined && version !== expectedVersion) {
+            throw new Error('Downloaded database user_version does not match the manifest');
+        }
+        return { version, schemaVersion };
     } finally {
         await closeDb(db);
     }
 }
 
-async function applyPatch(dbPath, rawPatch, expectedVersion) {
-    const patch = validateDatabasePatch(rawPatch, expectedVersion);
+async function applyPatch(dbPath, rawPatch, expectedVersion, expectedFromVersion) {
+    const patch = validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion);
     const db = await openDb(dbPath, { fileMustExist: true });
     try {
+        const currentVersion = (await dbGet(db, 'PRAGMA user_version'))?.user_version || 0;
+        if (currentVersion !== patch.from_version) {
+            throw new Error('Database patch source version does not match the staged database');
+        }
         await dbRun(db, 'BEGIN TRANSACTION');
 
         // upsert
@@ -169,6 +227,14 @@ async function applyPatch(dbPath, rawPatch, expectedVersion) {
             );
         }
 
+        for (const row of patch.metadata_upsert || []) {
+            await dbRun(db, 'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [row.key, row.value]);
+        }
+        if (patch.metadata_delete?.length > 0) {
+            const placeholders = patch.metadata_delete.map(() => '?').join(',');
+            await dbRun(db, `DELETE FROM metadata WHERE key IN (${placeholders})`, patch.metadata_delete);
+        }
+
         // 更新版本号（不能用参数绑定）
         await dbRun(db, `PRAGMA user_version = ${patch.version}`);
 
@@ -186,10 +252,73 @@ async function applyPatch(dbPath, rawPatch, expectedVersion) {
 /**
  * 下载整个 database.db 文件（首次发布或无补丁时的回退方案）
  */
-async function downloadFullDatabase(assetUrl, dbPath, progressId, progressTitle) {
+function findReleaseAsset(assets, name) {
+    const matches = assets.filter(asset => asset?.name === name);
+    if (matches.length !== 1) throw new Error(`Release must contain exactly one ${name} asset`);
+    return matches[0];
+}
+
+function verifyReleaseAssetMetadata(asset, descriptor) {
+    if (asset.size !== descriptor.size) throw new Error(`${descriptor.name} size differs from the Release API`);
+    const releaseDigest = normalizeSha256(asset.digest);
+    if (!releaseDigest || releaseDigest !== descriptor.sha256) {
+        throw new Error(`${descriptor.name} digest differs from the Release API`);
+    }
+    return validateReleaseAssetUrl(asset.browser_download_url);
+}
+
+async function downloadJsonAsset(asset, descriptor, maxBytes) {
+    const url = verifyReleaseAssetMetadata(asset, descriptor);
+    const response = await axios.get(url, {
+        responseType: 'arraybuffer', timeout: 30000,
+        maxContentLength: maxBytes, maxBodyLength: maxBytes,
+        headers: { 'User-Agent': 'OpenGameSave' }
+    });
+    const buffer = Buffer.from(response.data);
+    if (buffer.length !== descriptor.size || calculateBufferSha256(buffer) !== descriptor.sha256) {
+        throw new Error(`${descriptor.name} failed its size or SHA-256 check`);
+    }
+    try {
+        return JSON.parse(buffer.toString('utf8'));
+    } catch (_) {
+        throw new Error(`${descriptor.name} is not valid JSON`);
+    }
+}
+
+function calculateBufferSha256(buffer) {
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+async function loadPublishedManifest(assets) {
+    const currentAsset = findReleaseAsset(assets, 'current.json');
+    const currentDescriptor = {
+        name: 'current.json',
+        size: currentAsset.size,
+        sha256: normalizeSha256(currentAsset.digest)
+    };
+    if (!currentDescriptor.sha256) throw new Error('current.json is missing a Release digest');
+    const current = await downloadJsonAsset(currentAsset, currentDescriptor, 64 * 1024);
+    if (!current || typeof current.manifest !== 'string' || !/^manifest_v\d+\.json$/.test(current.manifest)) {
+        throw new Error('Invalid current database pointer');
+    }
+    const manifestAsset = findReleaseAsset(assets, current.manifest);
+    const manifestDescriptor = validateAssetDescriptor({
+        name: current.manifest,
+        size: current.size,
+        sha256: current.sha256
+    }, current.manifest, 1024 * 1024);
+    const manifest = validateDatabaseManifest(await downloadJsonAsset(manifestAsset, manifestDescriptor, 1024 * 1024));
+    if (current.latest_version !== manifest.latest_version || current.manifest !== `manifest_v${manifest.latest_version}.json`) {
+        throw new Error('Current pointer and database manifest versions differ');
+    }
+    return manifest;
+}
+
+async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progressTitle, expectedSchemaVersion) {
+    const assetUrl = verifyReleaseAssetMetadata(asset, descriptor);
     const { data, headers } = await axios({
         method: 'get',
-        url: validateReleaseAssetUrl(assetUrl),
+        url: assetUrl,
         responseType: 'stream',
         timeout: 60000,
         maxContentLength: MAX_DATABASE_DOWNLOAD_BYTES,
@@ -220,44 +349,23 @@ async function downloadFullDatabase(assetUrl, dbPath, progressId, progressTitle)
         }
     });
 
-    await fs.promises.rm(dbPath, { force: true });
     await pipeline(data, fs.createWriteStream(dbPath, { flags: 'wx', mode: 0o600 }));
-    await validateDatabaseFile(dbPath);
+    await verifyFileDescriptor(dbPath, descriptor, { maxBytes: MAX_DATABASE_DOWNLOAD_BYTES });
+    await validateDatabaseFile(dbPath, descriptor.user_version, expectedSchemaVersion);
 }
 
 async function performDatabaseUpdate() {
     const progressId = 'update-db';
     const progressTitle = i18next.t('alert.updating_database');
-    const dbPath = path.join(app.getPath("userData"), "OGS Database", "database.db");
-    const dbTempPath = `${dbPath}.temp`;
+    const dbPath = getUserDatabasePath();
+    let stagedPath = null;
 
     const win = getMainWin();
     win.webContents.send('update-progress', progressId, progressTitle, 'start');
 
-    // 首次运行时，用户数据库可能尚未由扫描 worker 初始化。先复制随应用
-    // 分发的数据库，使增量补丁可以从其 user_version 安全开始。
     try {
-        if (!fs.existsSync(path.dirname(dbPath))) {
-            fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-        }
-        if (!fs.existsSync(dbPath) && fs.existsSync(INSTALLED_DATABASE_PATH)) {
-            fs.copyFileSync(INSTALLED_DATABASE_PATH, dbPath);
-            await validateDatabaseFile(dbPath);
-        }
+        await recoverDatabaseFiles(dbPath, validateDatabaseFile);
 
-        // 备份当前数据库，任何下载、验证或补丁失败都可回滚。
-        if (fs.existsSync(dbPath)) {
-            fs.copyFileSync(dbPath, dbTempPath);
-        }
-    } catch (error) {
-        console.error(`备份数据库失败：${error.message}`);
-        win.webContents.send('show-alert', 'modal', i18next.t('alert.error_during_db_update'), error.message);
-        win.webContents.send('update-progress', progressId, progressTitle, 'end');
-        return { success: false, error: error.message };
-    }
-
-    try {
-        // ── 步骤1：获取 latest release 的所有 assets ──────────────────────────
         let releaseData;
         try {
             const releaseResp = await axios.get(DB_RELEASE_API_URL, {
@@ -274,99 +382,58 @@ async function performDatabaseUpdate() {
             throw new Error('Release information is malformed');
         }
         const assets = releaseData.assets.slice(0, 1000);
-        const releaseTag = String(releaseData.tag_name || 'latest').slice(0, 128);
-
-        // ── 步骤2：筛选并解析补丁文件信息 ────────────────────────────────────
-        const patchAssets = assets
-            .filter(a => a && typeof a.name === 'string' && a.name.startsWith('db_patch_v') && a.name.endsWith('.json'))
-            .map(a => {
-                const match = a.name.match(/^db_patch_v(\d+)\.json$/);
-                if (!match) return null;
-                const version = Number(match[1]);
-                if (!Number.isInteger(version) || version < 1 || version > 2147483647) return null;
-                return {
-                    version,
-                    url: validateReleaseAssetUrl(a.browser_download_url),
-                    name: a.name
-                };
-            })
-            .filter(Boolean)
-            .sort((a, b) => a.version - b.version);
-
-        // ── 步骤3：读取本地数据库版本 ─────────────────────────────────────────
+        const manifest = await loadPublishedManifest(assets);
         const localVersion = await getLocalDbVersion(dbPath);
         console.log(`本地数据库版本：${localVersion}`);
-
-        // ── 步骤4：确定需要应用的补丁 ────────────────────────────────────────
-        const pendingPatches = patchAssets.filter(p => p.version > localVersion);
-        let expectedVersion = localVersion + 1;
-        const hasPatchGap = pendingPatches.some((patchInfo) => {
-            const isGap = patchInfo.version !== expectedVersion;
-            expectedVersion = patchInfo.version + 1;
-            return isGap;
-        });
-
-        // ── 步骤5：判断是否无需更新 ──────────────────────────────────────────
-        if (pendingPatches.length === 0 && patchAssets.length > 0) {
-            console.log('数据库已是最新版本');
-            win.webContents.send('update-progress', progressId, progressTitle, 'end');
-            // 清理临时备份文件（不需要恢复）
-            if (fs.existsSync(dbTempPath)) fs.unlinkSync(dbTempPath);
-            return { success: true, alreadyLatest: true };
-        }
-
-        // ── 步骤6a：无补丁文件 → 回退到整库下载 ─────────────────────────────
-        if (patchAssets.length === 0 || hasPatchGap) {
-            console.log('补丁链不完整，尝试整库下载 database.db');
-            const dbAsset = assets.find(a => a && a.name === 'database.db');
-            if (!dbAsset) {
-                throw new Error(`Release ${releaseTag} 中既无补丁文件，也无 database.db`);
+        if (localVersion === manifest.latest_version) {
+            try {
+                await validateDatabaseFile(dbPath, manifest.latest_version, manifest.schema_version);
+                console.log('数据库已是最新版本');
+                win.webContents.send('update-progress', progressId, progressTitle, 'end');
+                return { success: true, alreadyLatest: true };
+            } catch (error) {
+                console.warn(`本地数据库版本相同但内容无效，将下载完整数据库：${error.message}`);
             }
-            // 下载到临时文件后替换
-            const downloadTempPath = `${dbPath}.download`;
-            await downloadFullDatabase(dbAsset.browser_download_url, downloadTempPath, progressId, progressTitle);
-            fs.copyFileSync(downloadTempPath, dbPath);
-            await validateDatabaseFile(dbPath);
-            fs.unlinkSync(downloadTempPath);
+        }
+        if (localVersion > manifest.latest_version) throw new Error('Local database is newer than the published manifest');
 
-            // 清理旧备份
-            if (fs.existsSync(dbTempPath)) fs.unlinkSync(dbTempPath);
-            win.webContents.send('update-progress', progressId, progressTitle, 'end');
-            win.webContents.send('show-alert', 'success', i18next.t('alert.update_db_success'));
-            return { success: true };
+        const pendingPatches = [];
+        let nextVersion = localVersion + 1;
+        while (nextVersion <= manifest.latest_version) {
+            const patch = manifest.patches.find(item => item.from === nextVersion - 1 && item.to === nextVersion);
+            if (!patch) break;
+            pendingPatches.push(patch);
+            nextVersion += 1;
+        }
+        let localSchemaMatches = false;
+        if (fs.existsSync(dbPath)) {
+            try {
+                await validateDatabaseFile(dbPath, localVersion, manifest.schema_version);
+                localSchemaMatches = true;
+            } catch (_) { }
+        }
+        const canPatch = localSchemaMatches && localVersion < manifest.latest_version && nextVersion === manifest.latest_version + 1;
+        const newPath = createNewDatabasePath(dbPath);
+        stagedPath = newPath;
+
+        if (!canPatch) {
+            console.log('本地数据库不存在或补丁链不完整，下载完整数据库');
+            const databaseAsset = findReleaseAsset(assets, manifest.database.name);
+            await downloadFullDatabase(databaseAsset, manifest.database, newPath, progressId, progressTitle, manifest.schema_version);
+        } else {
+            await fs.promises.copyFile(dbPath, newPath, fs.constants.COPYFILE_EXCL);
+            for (let i = 0; i < pendingPatches.length; i++) {
+                const descriptor = pendingPatches[i];
+                const patchAsset = findReleaseAsset(assets, descriptor.name);
+                const patch = await downloadJsonAsset(patchAsset, descriptor, MAX_PATCH_DOWNLOAD_BYTES);
+                await applyPatch(newPath, patch, descriptor.to, descriptor.from);
+                win.webContents.send('update-progress', progressId, progressTitle, Math.round(((i + 1) / pendingPatches.length) * 100));
+            }
+            await validateDatabaseFile(newPath, manifest.latest_version, manifest.schema_version);
         }
 
-        // ── 步骤6b：依次下载并应用补丁 ───────────────────────────────────────
-        const total = pendingPatches.length;
-        for (let i = 0; i < total; i++) {
-            const patchInfo = pendingPatches[i];
-            console.log(`正在应用补丁 ${patchInfo.name}（${i + 1}/${total}）`);
-
-            // 下载补丁 JSON
-            const patchResp = await axios.get(patchInfo.url, {
-                timeout: 30000,
-                maxContentLength: MAX_PATCH_DOWNLOAD_BYTES,
-                maxBodyLength: MAX_PATCH_DOWNLOAD_BYTES,
-                headers: { 'User-Agent': 'OpenGameSave' }
-            });
-            const patch = patchResp.data;
-
-            // 应用补丁到数据库
-            await applyPatch(dbPath, patch, patchInfo.version);
-
-            // 报告进度
-            const pct = Math.round(((i + 1) / total) * 100);
-            win.webContents.send('update-progress', progressId, progressTitle, pct);
-        }
-
-        await validateDatabaseFile(dbPath);
-        const appliedVersion = await getLocalDbVersion(dbPath);
-        if (appliedVersion !== pendingPatches[pendingPatches.length - 1].version) {
-            throw new Error('Database version does not match the applied patch chain');
-        }
-
-        // 清理旧备份
-        if (fs.existsSync(dbTempPath)) fs.unlinkSync(dbTempPath);
+        await atomicInstallDatabase(newPath, dbPath, candidate => validateDatabaseFile(candidate, manifest.latest_version, manifest.schema_version));
+        stagedPath = null;
 
         win.webContents.send('update-progress', progressId, progressTitle, 'end');
         win.webContents.send('show-alert', 'success', i18next.t('alert.update_db_success'));
@@ -375,19 +442,7 @@ async function performDatabaseUpdate() {
     } catch (error) {
         console.error(`更新数据库时发生错误：${error.message}`);
         win.webContents.send('show-alert', 'modal', i18next.t('alert.error_during_db_update'), error.message);
-
-        await fs.promises.rm(`${dbPath}.download`, { force: true }).catch(() => { });
-
-        // 从备份恢复
-        if (fs.existsSync(dbTempPath)) {
-            try {
-                fs.copyFileSync(dbTempPath, dbPath);
-                fs.unlinkSync(dbTempPath);
-                console.log('已从备份恢复数据库');
-            } catch (restoreErr) {
-                console.error(`恢复数据库失败：${restoreErr.message}`);
-            }
-        }
+        if (stagedPath) await fs.promises.rm(stagedPath, { force: true }).catch(() => undefined);
 
         win.webContents.send('update-progress', progressId, progressTitle, 'end');
         return { success: false, error: error.message };
@@ -409,10 +464,31 @@ async function updateDatabase() {
     }
 }
 
-async function getGameDataFromDBWorkerBacked(ignoreUninstalled = false, wikiId = null) {
-    const releaseDatabase = await acquireDatabaseRead();
+async function initializeDatabaseStorage() {
+    const releaseDatabase = await acquireDatabaseWrite();
     try {
-        const result = await runBackupWorkerTask('getGameDataFromDB', { ignoreUninstalled, wikiId });
+        const dbPath = getUserDatabasePath();
+        const recovered = await recoverDatabaseFiles(dbPath, validateDatabaseFile);
+        const installedPath = getInstalledDatabasePath();
+        if (!fs.existsSync(dbPath) && fs.existsSync(installedPath)) {
+            const newPath = createNewDatabasePath(dbPath);
+            try {
+                await fs.promises.copyFile(installedPath, newPath, fs.constants.COPYFILE_EXCL);
+                await atomicInstallDatabase(newPath, dbPath, validateDatabaseFile);
+            } catch (error) {
+                await fs.promises.rm(newPath, { force: true }).catch(() => undefined);
+                throw error;
+            }
+        }
+        return recovered;
+    } finally {
+        releaseDatabase();
+    }
+}
+
+async function getGameDataFromDBWorkerBacked(ignoreUninstalled = false, wikiId = null) {
+    try {
+        const result = await runWorkerTask('getGameDataFromDB', { ignoreUninstalled, wikiId });
         if (Array.isArray(result.remainingUninstalledWikiIds)) {
             const currentUninstalledWikiIds = getSettings().uninstalledGames || [];
             if (JSON.stringify([...result.remainingUninstalledWikiIds].sort()) !== JSON.stringify([...currentUninstalledWikiIds].sort())) {
@@ -423,8 +499,6 @@ async function getGameDataFromDBWorkerBacked(ignoreUninstalled = false, wikiId =
     } catch (error) {
         console.error(`Backup worker scan failed: ${error.stack || error.message}`);
         return { games: [], errors: [error.message] };
-    } finally {
-        releaseDatabase();
     }
 }
 
@@ -439,9 +513,8 @@ async function getAllGameDataFromDBWorkerBacked() {
 
     mainWin.webContents.send('update-progress', progressId, progressTitle, 'start');
     updateStatus('scanning_full', true);
-    const releaseDatabase = await acquireDatabaseRead();
     try {
-        const result = await runBackupWorkerTask('getAllGameDataFromDB', {}, (message) => {
+        const result = await runWorkerTask('getAllGameDataFromDB', {}, (message) => {
             if (message.type === 'progress') {
                 mainWin.webContents.send('update-progress', progressId, progressTitle, message.value);
             }
@@ -459,7 +532,6 @@ async function getAllGameDataFromDBWorkerBacked() {
         console.error(`Backup worker full scan failed: ${error.stack || error.message}`);
         return { games: [], errors: [error.message] };
     } finally {
-        releaseDatabase();
         updateStatus('scanning_full', false);
         mainWin.webContents.send('update-progress', progressId, progressTitle, 'end');
     }
@@ -479,13 +551,15 @@ async function backupGameWorkerBacked(gameObj) {
 }
 
 async function runWorkerTask(task, payload = {}, onMessage = null) {
-    return await runBackupWorkerTask(task, payload, onMessage);
+    const operation = () => runBackupWorkerTask(task, payload, onMessage);
+    return DATABASE_READ_WORKER_TASKS.has(task) ? await runWithDatabaseRead(operation) : await operation();
 }
 
 module.exports = {
     getGameDataFromDB: getGameDataFromDBWorkerBacked,
     getAllGameDataFromDB: getAllGameDataFromDBWorkerBacked,
     backupGame: backupGameWorkerBacked,
+    initializeDatabaseStorage,
     updateDatabase,
     runWorkerTask
 };

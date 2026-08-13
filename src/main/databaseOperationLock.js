@@ -48,7 +48,17 @@ function enqueue(type) {
     });
 }
 
+async function runWithDatabaseRead(operation) {
+    const release = await enqueue('read');
+    try {
+        return await operation();
+    } finally {
+        release();
+    }
+}
+
 module.exports = {
     acquireDatabaseRead: () => enqueue('read'),
-    acquireDatabaseWrite: () => enqueue('write')
+    acquireDatabaseWrite: () => enqueue('write'),
+    runWithDatabaseRead
 };

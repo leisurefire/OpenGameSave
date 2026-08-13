@@ -403,7 +403,7 @@ function validateSaveLocationJson(value) {
     return serialized;
 }
 
-function validateDatabasePatch(rawPatch, expectedVersion) {
+function validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion) {
     if (!rawPatch || typeof rawPatch !== 'object' || Array.isArray(rawPatch)) {
         throw new Error('Invalid database patch');
     }
@@ -411,9 +411,19 @@ function validateDatabasePatch(rawPatch, expectedVersion) {
     if (expectedVersion !== undefined && version !== expectedVersion) {
         throw new Error('Database patch version does not match its asset name');
     }
+    const fromVersion = normalizeBoundedInteger(rawPatch.from_version, 0, 2147483646);
+    if (version !== fromVersion + 1) {
+        throw new Error('Database patch must advance exactly one version');
+    }
+    if (expectedFromVersion !== undefined && fromVersion !== expectedFromVersion) {
+        throw new Error('Database patch source version does not match the local database');
+    }
     const upsert = rawPatch.upsert === undefined ? [] : rawPatch.upsert;
     const deleted = rawPatch.delete === undefined ? [] : rawPatch.delete;
-    if (!Array.isArray(upsert) || !Array.isArray(deleted) || upsert.length + deleted.length > MAX_DATABASE_PATCH_ROWS) {
+    const metadataUpsert = rawPatch.metadata_upsert === undefined ? [] : rawPatch.metadata_upsert;
+    const metadataDelete = rawPatch.metadata_delete === undefined ? [] : rawPatch.metadata_delete;
+    if (!Array.isArray(upsert) || !Array.isArray(deleted) || !Array.isArray(metadataUpsert) || !Array.isArray(metadataDelete)
+        || upsert.length + deleted.length + metadataUpsert.length + metadataDelete.length > MAX_DATABASE_PATCH_ROWS) {
         throw new Error('Database patch contains too many rows');
     }
 
@@ -440,7 +450,24 @@ function validateDatabasePatch(rawPatch, expectedVersion) {
         return normalized;
     });
 
-    return { version, upsert: normalizedUpserts, delete: [...new Set(normalizedDeletes)] };
+    const normalizedMetadataUpserts = metadataUpsert.map(row => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid metadata patch row');
+        return {
+            key: normalizeDatabaseText(row.key, 'metadata key', 256, { required: true }),
+            value: normalizeDatabaseText(row.value, 'metadata value', 4096)
+        };
+    });
+    const normalizedMetadataDeletes = metadataDelete.map(key =>
+        normalizeDatabaseText(key, 'metadata key', 256, { required: true }));
+
+    return {
+        version,
+        from_version: fromVersion,
+        upsert: normalizedUpserts,
+        delete: [...new Set(normalizedDeletes)],
+        metadata_upsert: normalizedMetadataUpserts,
+        metadata_delete: [...new Set(normalizedMetadataDeletes)]
+    };
 }
 
 module.exports = {

@@ -1,203 +1,181 @@
 #!/usr/bin/env node
-/**
- * generate-db-patch.js
- * 
- * CI/CD 脚本：比较两个 SQLite 数据库的 games 表差异，生成增量补丁 JSON 文件。
- * 
- * 用法：
- *   node scripts/generate-db-patch.js --from <旧db路径> --to <新db路径> --output <输出目录>
- * 
- * 说明：
- *   --from  旧版本数据库路径（若为空字符串或文件不存在，则视为首次发布，所有记录作为 upsert）
- *   --to    新版本数据库路径
- *   --output 输出目录（补丁文件写入此目录）
- */
-
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-// ─── Promise 封装 ────────────────────────────────────────────────────────────
-
-function openDb(dbPath, options = {}) {
-    return new Database(dbPath, {
-        timeout: 5000,
-        fileMustExist: true,
-        ...options
-    });
-}
-
-function closeDb(db) {
-    db.close();
-}
-
-function dbRun(db, sql, params = []) {
-    if (params.length === 0) {
-        return db.exec(sql);
-    }
-    return db.prepare(sql).run(...params);
-}
-
-function dbAll(db, sql, params = []) {
-    return db.prepare(sql).all(...params);
-}
-
-function dbGet(db, sql, params = []) {
-    return db.prepare(sql).get(...params);
-}
-
-// ─── 参数解析 ─────────────────────────────────────────────────────────────────
+const SUPPORTED_TABLES = ['games', 'metadata'];
 
 function parseArgs(argv) {
     const args = {};
-    for (let i = 2; i < argv.length; i++) {
-        if (argv[i].startsWith('--')) {
-            const key = argv[i].slice(2);
-            args[key] = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')
-                ? argv[++i]
-                : true;
-        }
+    for (let index = 2; index < argv.length; index++) {
+        if (!argv[index].startsWith('--')) continue;
+        const key = argv[index].slice(2);
+        args[key] = argv[index + 1] !== undefined && !argv[index + 1].startsWith('--') ? argv[++index] : true;
     }
     return args;
 }
 
-// ─── 核心逻辑 ─────────────────────────────────────────────────────────────────
-
-/**
- * 从数据库读取所有 games 行，以 wiki_page_id 为键返回 Map
- */
-async function loadGamesMap(db) {
-    const rows = await dbAll(db, 'SELECT * FROM games');
-    const map = new Map();
-    for (const row of rows) {
-        map.set(row.wiki_page_id, row);
-    }
-    return map;
+function normalizeSql(sql) {
+    return String(sql || '').replace(/\s+/g, ' ').trim();
 }
 
-/**
- * 读取 PRAGMA user_version
- */
-async function getUserVersion(db) {
-    const row = await dbGet(db, 'PRAGMA user_version');
-    return row ? row.user_version : 0;
+function canonicalValue(value) {
+    if (Buffer.isBuffer(value)) return { $blob: value.toString('base64') };
+    return value;
 }
 
-/**
- * 设置 PRAGMA user_version（不能用参数绑定，必须字符串拼接）
- */
-async function setUserVersion(db, version) {
-    await dbRun(db, `PRAGMA user_version = ${parseInt(version, 10)}`);
+function canonicalRows(db, table) {
+    return db.prepare(`SELECT * FROM "${table}"`).all()
+        .map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, canonicalValue(value)])))
+        .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
 
-/**
- * 比较两行记录是否相同（字段级比较）
- */
-function rowsAreEqual(oldRow, newRow) {
-    const fields = ['title', 'zh_CN', 'install_folder', 'steam_id', 'gog_id', 'platform', 'save_location'];
-    for (const field of fields) {
-        // 统一转换为字符串比较，处理 null/undefined
-        const oldVal = oldRow[field] === null || oldRow[field] === undefined ? null : String(oldRow[field]);
-        const newVal = newRow[field] === null || newRow[field] === undefined ? null : String(newRow[field]);
-        if (oldVal !== newVal) return false;
+function databaseSnapshot(db) {
+    const integrity = db.pragma('quick_check', { simple: true });
+    if (integrity !== 'ok') throw new Error('Database failed quick_check');
+    const schema = db.prepare(`
+        SELECT type, name, tbl_name, sql FROM sqlite_master
+        WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name
+    `).all().map(row => ({ ...row, sql: normalizeSql(row.sql) }));
+    const tableNames = new Set(schema.filter(row => row.type === 'table').map(row => row.name));
+    for (const table of SUPPORTED_TABLES) {
+        if (!tableNames.has(table)) throw new Error(`Database is missing supported table: ${table}`);
     }
-    return true;
+    const rows = Object.fromEntries(SUPPORTED_TABLES.map(table => [table, canonicalRows(db, table)]));
+    return { schema, rows };
 }
 
-async function main() {
-    const args = parseArgs(process.argv);
+function snapshotsEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
 
-    const fromPath = args['from'] || '';
-    const toPath = args['to'];
-    const outputDir = args['output'];
+function mapBy(rows, key) {
+    return new Map(rows.map(row => [row[key], row]));
+}
 
-    // 参数校验
-    if (!toPath) {
-        console.error('错误：必须指定 --to <新db路径>');
-        process.exit(1);
+function diffRows(oldRows, newRows, key) {
+    const oldMap = mapBy(oldRows, key);
+    const newMap = mapBy(newRows, key);
+    const upsert = [];
+    const deleted = [];
+    for (const [id, row] of newMap) {
+        if (!oldMap.has(id) || JSON.stringify(oldMap.get(id)) !== JSON.stringify(row)) upsert.push(row);
     }
-    if (!outputDir) {
-        console.error('错误：必须指定 --output <输出目录>');
-        process.exit(1);
-    }
-    if (!fs.existsSync(toPath)) {
-        console.error(`错误：新数据库文件不存在：${toPath}`);
-        process.exit(1);
-    }
+    for (const id of oldMap.keys()) if (!newMap.has(id)) deleted.push(id);
+    return { upsert, delete: deleted };
+}
 
-    // 确保输出目录存在
+function applyPatchForVerification(db, patch) {
+    const gameColumns = Object.keys(patch.upsert[0] || {});
+    const transaction = db.transaction(() => {
+        if (gameColumns.length > 0) {
+            const columns = gameColumns.map(column => `"${column}"`).join(', ');
+            const values = gameColumns.map(column => `@${column}`).join(', ');
+            const statement = db.prepare(`INSERT OR REPLACE INTO games (${columns}) VALUES (${values})`);
+            for (const row of patch.upsert) statement.run(row);
+        }
+        const deleteGame = db.prepare('DELETE FROM games WHERE wiki_page_id = ?');
+        for (const id of patch.delete) deleteGame.run(id);
+        const upsertMetadata = db.prepare('INSERT INTO metadata (key, value) VALUES (@key, @value) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+        for (const row of patch.metadata_upsert) upsertMetadata.run(row);
+        const deleteMetadata = db.prepare('DELETE FROM metadata WHERE key = ?');
+        for (const key of patch.metadata_delete) deleteMetadata.run(key);
+        db.pragma(`user_version = ${patch.version}`);
+    });
+    transaction();
+}
+
+function verifyPatchEquivalence(fromPath, targetSnapshot, patch, outputDir) {
+    const verificationPath = path.join(outputDir, `.verify-${crypto.randomUUID()}.db`);
+    fs.copyFileSync(fromPath, verificationPath, fs.constants.COPYFILE_EXCL);
+    try {
+        const db = new Database(verificationPath);
+        applyPatchForVerification(db, patch);
+        const rebuiltSnapshot = databaseSnapshot(db);
+        const rebuiltVersion = db.pragma('user_version', { simple: true });
+        db.close();
+        if (rebuiltVersion !== patch.version || !snapshotsEqual(rebuiltSnapshot, targetSnapshot)) {
+            throw new Error('Generated patch does not rebuild a database equivalent to the target');
+        }
+    } finally {
+        fs.rmSync(verificationPath, { force: true });
+    }
+}
+
+function generate({ fromPath, toPath, outputDir, sourceSha = '' }) {
+    if (!toPath || !fs.existsSync(toPath)) throw new Error('A valid --to database is required');
+    if (!outputDir) throw new Error('--output is required');
     fs.mkdirSync(outputDir, { recursive: true });
 
-    // 判断是否为首次发布
-    const isFirstRelease = !fromPath || !fs.existsSync(fromPath);
-
-    // 打开新数据库
-    const newDb = await openDb(toPath);
-    const newVersion = await getUserVersion(newDb);
-    const newGamesMap = await loadGamesMap(newDb);
-
+    const targetDb = new Database(toPath);
+    const targetSnapshot = databaseSnapshot(targetDb);
+    const firstRelease = !fromPath || !fs.existsSync(fromPath);
     let fromVersion = 0;
-    let upsertRows = [];
-    let deleteIds = [];
-
-    if (isFirstRelease) {
-        console.log('首次发布模式：将所有记录作为 upsert，from_version = 0');
-        fromVersion = 0;
-        upsertRows = Array.from(newGamesMap.values());
-        deleteIds = [];
-    } else {
-        // 打开旧数据库
-        const oldDb = await openDb(fromPath, { readonly: true });
-        fromVersion = await getUserVersion(oldDb);
-        const oldGamesMap = await loadGamesMap(oldDb);
-        await closeDb(oldDb);
-
-        // 找出新增和修改的记录（upsert）
-        for (const [id, newRow] of newGamesMap) {
-            const oldRow = oldGamesMap.get(id);
-            if (!oldRow || !rowsAreEqual(oldRow, newRow)) {
-                upsertRows.push(newRow);
-            }
-        }
-
-        // 找出删除的记录
-        for (const [id] of oldGamesMap) {
-            if (!newGamesMap.has(id)) {
-                deleteIds.push(id);
-            }
-        }
+    let oldSnapshot = null;
+    if (!firstRelease) {
+        const oldDb = new Database(fromPath, { readonly: true, fileMustExist: true });
+        fromVersion = oldDb.pragma('user_version', { simple: true });
+        oldSnapshot = databaseSnapshot(oldDb);
+        oldDb.close();
     }
 
-    // 计算新版本号
-    const patchVersion = fromVersion + 1;
+    const changed = firstRelease || !snapshotsEqual(oldSnapshot, targetSnapshot);
+    const result = { changed, source_sha: sourceSha || null, from_version: fromVersion };
+    if (!changed) {
+        targetDb.close();
+        result.version = fromVersion;
+        fs.writeFileSync(path.join(outputDir, 'generation-result.json'), JSON.stringify(result, null, 2));
+        return result;
+    }
 
-    // 将新数据库的 user_version 更新为新版本号
-    await setUserVersion(newDb, patchVersion);
-    await closeDb(newDb);
+    const version = fromVersion + 1;
+    targetDb.pragma(`user_version = ${version}`);
+    targetDb.close();
+    result.version = version;
+    result.requires_full_database = firstRelease || JSON.stringify(oldSnapshot.schema) !== JSON.stringify(targetSnapshot.schema);
 
-    console.log(`旧版本：${fromVersion}，新版本：${patchVersion}`);
-    console.log(`upsert 记录数：${upsertRows.length}，delete 记录数：${deleteIds.length}`);
-
-    // 构建补丁对象
-    const patch = {
-        version: patchVersion,
-        from_version: fromVersion,
-        timestamp: new Date().toISOString(),
-        upsert: upsertRows,
-        delete: deleteIds
-    };
-
-    // 输出补丁文件
-    const patchFileName = `db_patch_v${patchVersion}.json`;
-    const patchFilePath = path.join(outputDir, patchFileName);
-    fs.writeFileSync(patchFilePath, JSON.stringify(patch, null, 2), 'utf8');
-
-    console.log(`补丁文件已生成：${patchFilePath}`);
+    if (!result.requires_full_database) {
+        const gameDiff = diffRows(oldSnapshot.rows.games, targetSnapshot.rows.games, 'wiki_page_id');
+        const metadataDiff = diffRows(oldSnapshot.rows.metadata, targetSnapshot.rows.metadata, 'key');
+        const patch = {
+            version,
+            from_version: fromVersion,
+            source_sha: sourceSha || null,
+            upsert: gameDiff.upsert,
+            delete: gameDiff.delete,
+            metadata_upsert: metadataDiff.upsert,
+            metadata_delete: metadataDiff.delete
+        };
+        const patchName = `db_patch_v${version}.json`;
+        fs.writeFileSync(path.join(outputDir, patchName), JSON.stringify(patch, null, 2));
+        verifyPatchEquivalence(fromPath, targetSnapshot, patch, outputDir);
+        result.patch = patchName;
+    }
+    fs.writeFileSync(path.join(outputDir, 'generation-result.json'), JSON.stringify(result, null, 2));
+    return result;
 }
 
-main().catch((err) => {
-    console.error('生成补丁时发生错误：', err);
-    process.exit(1);
-});
+function main() {
+    const args = parseArgs(process.argv);
+    const result = generate({
+        fromPath: args.from || '',
+        toPath: args.to,
+        outputDir: args.output,
+        sourceSha: args['source-sha'] || ''
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+}
+
+if (require.main === module) {
+    try {
+        main();
+    } catch (error) {
+        console.error(`Failed to generate database update: ${error.stack || error.message}`);
+        process.exit(1);
+    }
+}
+
+module.exports = { databaseSnapshot, generate, snapshotsEqual };

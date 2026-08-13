@@ -4,7 +4,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const { acquireGameOperation, acquireGlobalOperation } = require('../src/main/gameOperationLock');
-const { acquireDatabaseRead, acquireDatabaseWrite } = require('../src/main/databaseOperationLock');
+const { acquireDatabaseRead, acquireDatabaseWrite, runWithDatabaseRead } = require('../src/main/databaseOperationLock');
 const { isRendererFileUrl } = require('../src/main/windowSecurity');
 
 test('renderer navigation only accepts files under the renderer root', () => {
@@ -59,4 +59,27 @@ test('database writes wait for readers and do not starve behind new reads', asyn
     await lateReadAcquired;
     assert.deepEqual(order, ['write', 'read']);
     releaseLateRead();
+});
+
+test('a worker-backed database read holds the lock until its handle closes', async () => {
+    let closeHandle;
+    const handleClosed = new Promise(resolve => { closeHandle = resolve; });
+    let workerStarted;
+    const started = new Promise(resolve => { workerStarted = resolve; });
+    const read = runWithDatabaseRead(async () => {
+        workerStarted();
+        await handleClosed;
+    });
+    await started;
+    let writeAcquired = false;
+    const write = acquireDatabaseWrite().then(release => {
+        writeAcquired = true;
+        release();
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(writeAcquired, false);
+    closeHandle();
+    await read;
+    await write;
+    assert.equal(writeAcquired, true);
 });

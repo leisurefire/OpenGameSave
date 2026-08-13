@@ -17,7 +17,7 @@ const {
     moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, isNewerAppVersion, updateApp
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
-const { getGameDataFromDB, getAllGameDataFromDB, backupGame, updateDatabase } = require('./backup');
+const { getGameDataFromDB, getAllGameDataFromDB, backupGame, initializeDatabaseStorage, updateDatabase } = require('./backup');
 const { getGameDataForRestore, restoreGame } = require("./restore");
 const { startAutoBackup, stopAutoBackup, getAutoBackupState, restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
 const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } = require('./githubSync');
@@ -425,6 +425,7 @@ app.whenReady().then(async () => {
 
     loadSettings();
     await initializeI18next(getSettings().language);
+    await initializeDatabaseStorage();
 
     await createMainWindow();
     const mainWin = getMainWin();
