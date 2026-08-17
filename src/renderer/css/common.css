@@ -3,14 +3,63 @@ body,
 html {
     background: transparent !important;
     font-family: var(--font-sans);
-    color: #ffffff;
+    color: rgba(255, 255, 255, 0.9);
     overflow: hidden;
     user-select: none;
     height: 100vh;
+    font-size: 14px;
+    line-height: 1.4;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+[data-lucide-icon] {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.lucide-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    pointer-events: none;
+}
+
+.is-spinning .lucide-icon,
+.lucide-icon.is-spinning {
+    animation: icon-spin 0.8s linear infinite;
+}
+
+@keyframes icon-spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.loading-indicator .lucide-icon {
+    width: 24px;
+    height: 24px;
 }
 
 .surface-effect {
-    backdrop-filter: blur(25px) saturate(120%);
+    backdrop-filter: blur(24px) saturate(110%);
     background-color: var(--color-win-surface);
     border: 1px solid var(--color-win-border);
     border-radius: var(--radius-win);
@@ -18,16 +67,16 @@ html {
 }
 
 .floating-surface {
-    backdrop-filter: blur(40px) saturate(140%);
+    backdrop-filter: blur(32px) saturate(115%);
     background-color: var(--color-win-surface-bright);
     border: 1px solid var(--color-win-border-bright);
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
     border-radius: var(--radius-win);
 }
 
 ::-webkit-scrollbar {
-    width: 14px;
-    height: 14px;
+    width: 10px;
+    height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -75,14 +124,14 @@ button:disabled,
 
 button {
     border-radius: var(--radius-win-sm) !important;
+    font: inherit;
 }
 
 .home-action-button {
     background: var(--color-win-surface);
     border: 1px solid var(--color-win-border);
-    border-top: 1px solid var(--color-win-border-bright);
     color: rgba(255, 255, 255, 0.9);
-    transition: background-color 0.1s ease, border-color 0.1s ease;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     border-radius: var(--radius-win-sm);
 }
 
@@ -93,7 +142,24 @@ button {
 .home-action-button:active {
     background: var(--color-win-surface-active);
     color: rgba(255, 255, 255, 0.7);
-    border-top: 1px solid var(--color-win-border);
+}
+
+.compact-action-button {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 11px !important;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+}
+
+.compact-action-button .lucide-icon {
+    width: 15px;
+    height: 15px;
 }
 
 .primary-button {
@@ -102,7 +168,7 @@ button {
     font-weight: 600;
     border-radius: var(--radius-win-sm);
     border: 1px solid transparent;
-    transition: background-color 0.1s ease, opacity 0.1s ease;
+    transition: background-color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
 }
 
 .primary-button:hover {
@@ -117,14 +183,14 @@ button {
 input[type="text"],
 input[type="number"],
 select {
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: rgba(255, 255, 255, 0.045) !important;
     border: 1px solid var(--color-win-border) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
     border-radius: var(--radius-win-sm) !important;
     color: #ffffff !important;
-    min-height: 38px;
-    padding: 8px 12px;
-    transition: all 0.1s ease;
+    min-height: 36px;
+    padding: 7px 11px;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 select {
@@ -147,12 +213,72 @@ input[type="number"]:focus {
     border-bottom-width: 2px !important;
     background: rgba(30, 30, 30, 0.8) !important;
     outline: none;
-    padding-bottom: 7px; /* Compensate for thicker border */
+    padding-bottom: 5px; /* Compensate for thicker border */
 }
 
 input[type="checkbox"],
 input[type="radio"] {
     accent-color: var(--color-theme-accent-bright);
+    width: 16px;
+    height: 16px;
+}
+
+.number-input-wrapper {
+    position: relative;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+}
+
+.number-input-field {
+    width: 100%;
+    padding-right: 38px !important;
+}
+
+.number-input-controls {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    width: 34px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 0 8px 8px 0;
+}
+
+.number-input-stepper {
+    min-height: 0;
+    display: grid;
+    flex: 1 1 50%;
+    place-items: center;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.42);
+    border-radius: 0 !important;
+}
+
+.number-input-stepper + .number-input-stepper {
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.number-input-stepper:hover {
+    color: rgba(255, 255, 255, 0.84);
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.number-input-stepper .lucide-icon {
+    width: 11px;
+    height: 11px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[role="tab"]:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-theme-accent-bright) 72%, white);
+    outline-offset: 2px;
 }
 
 .text-theme-accent {
@@ -161,4 +287,147 @@ input[type="radio"] {
 
 .bg-theme-accent {
     background-color: var(--color-theme-accent-bright);
+}
+
+.app-toast {
+    display: flex;
+    width: min(360px, calc(100vw - 24px));
+    min-height: 50px;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px 9px 12px;
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(43, 43, 43, 0.97);
+    backdrop-filter: blur(32px) saturate(115%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+}
+
+#alert-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.notification-region {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 60;
+    width: min(360px, calc(100vw - 24px));
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+}
+
+#progress-container {
+    width: 100%;
+    pointer-events: auto;
+}
+
+#alert-container > * + * {
+    margin-top: 0 !important;
+}
+
+.app-toast-icon {
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.app-toast-icon .lucide-icon {
+    width: 17px;
+    height: 17px;
+}
+
+.app-toast[data-status="success"] .app-toast-icon {
+    color: color-mix(in srgb, var(--system-accent) 72%, white);
+}
+
+.app-toast[data-status="warning"] .app-toast-icon {
+    color: rgb(250, 204, 21);
+}
+
+.app-toast[data-status="error"] .app-toast-icon,
+.app-toast[data-status="dialog"] .app-toast-icon {
+    color: rgb(248, 113, 113);
+}
+
+.app-toast-content {
+    min-width: 0;
+    flex: 1 1 auto;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.app-toast-close {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    place-items: center;
+    color: inherit;
+    border-radius: 8px !important;
+    opacity: 0.52;
+}
+
+.app-toast-close:hover {
+    background: rgba(255, 255, 255, 0.07);
+    opacity: 1;
+}
+
+.app-toast-more {
+    min-height: 30px;
+    flex: 0 0 auto;
+    padding: 0 9px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 8px !important;
+}
+
+.app-toast-more:hover {
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.app-progress {
+    width: 288px;
+    margin: 0 0 0 auto;
+    padding: 14px;
+}
+
+.app-progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.app-progress-track {
+    width: 100%;
+    height: 4px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.09);
+    border-radius: 999px;
+}
+
+.app-progress-track .progress-bar {
+    width: 0;
+    height: 100%;
+    background: var(--system-accent);
+    border-radius: inherit;
+    transition: width 180ms ease;
 }

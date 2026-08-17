@@ -6,7 +6,7 @@ import { appendRows as appendVirtualRows, disableVirtualRows } from '../virtualT
  *
  * Architecture:
  *  - Shadow DOM: container styling (border, bg, radius), sticky header
- *  - Light DOM: all rows live here so FA icons & global CSS work
+ *  - Light DOM: all rows live here so shared icons and global CSS work
  *  - appendRows(): normalizes rows once before adding them to the light DOM
  *
  * Column alignment (Windows 11 convention):
@@ -32,6 +32,8 @@ class DataTable extends HTMLElement {
     /** @param {{ label: string, align?: string, widget?: boolean }[]} columns */
     setColumns(columns) {
         this._columns = columns;
+        const template = columns.map(column => column.width || 'minmax(0, 1fr)').join(' ');
+        this.style.setProperty('--dt-columns', template || 'minmax(0, 1fr)');
         this._renderHeader();
     }
 
@@ -51,7 +53,7 @@ class DataTable extends HTMLElement {
 
         appendVirtualRows(this, rows, {
             scrollContainer: this.closest('.modal-window-content') || this.shadowRoot.querySelector('.dt-body'),
-            rowHeight: 49
+            rowHeight: 54
         });
     }
 
@@ -82,7 +84,9 @@ class DataTable extends HTMLElement {
                 actionBtn.setAttribute('variant', btn.classList.contains('btn-danger') ? 'danger' : 'default');
                 // Copy data attributes and semantic class names (but not btn-action/btn-danger)
                 Array.from(btn.attributes).forEach(attr => {
-                    if (attr.name.startsWith('data-')) actionBtn.setAttribute(attr.name, attr.value);
+                    if (attr.name.startsWith('data-') || attr.name.startsWith('aria-') || attr.name === 'title' || attr.name === 'disabled') {
+                        actionBtn.setAttribute(attr.name, attr.value);
+                    }
                 });
                 // Preserve semantic classes like 'delete-backup-btn', but strip 'btn-action'/'btn-danger'
                 const semanticClasses = Array.from(btn.classList).filter(cls =>
@@ -129,10 +133,10 @@ class DataTable extends HTMLElement {
             <style>
                 :host {
                     display: block;
-                    --_surface:    var(--color-win-surface,        rgba(30,30,30,0.1));
-                    --_surface-hd: var(--color-win-surface-bright, rgba(50,50,50,1));
+                    --_surface:    rgba(255,255,255,0.04);
+                    --_surface-hd: rgba(32,32,32,0.96);
                     --_border:     var(--color-win-border,         rgba(255,255,255,0.08));
-                    --_radius:     var(--radius-win,               8px);
+                    --_radius:     14px;
                     --_font:       var(--font-sans,                "Segoe UI", sans-serif);
                 }
 
@@ -143,7 +147,7 @@ class DataTable extends HTMLElement {
                     overflow: hidden;
                     font-family: var(--_font);
                     color: rgba(255,255,255,0.9);
-                    font-size: 0.875rem;
+                    font-size: 13px;
                 }
 
                 /* Sticky header inside Shadow DOM */
@@ -156,17 +160,17 @@ class DataTable extends HTMLElement {
                 }
 
                 #head-row {
-                    display: flex;
+                    display: grid;
+                    grid-template-columns: var(--dt-columns, repeat(3, minmax(0, 1fr)));
                 }
 
                 .dt-th {
-                    flex: 1;
-                    padding: 0.625rem 1rem;
+                    min-width: 0;
+                    padding: 8px 14px;
                     font-weight: 600;
-                    text-transform: uppercase;
-                    font-size: 0.7rem;
-                    letter-spacing: 0.06em;
-                    color: rgba(255,255,255,0.45);
+                    font-size: 11px;
+                    letter-spacing: 0.02em;
+                    color: rgba(255,255,255,0.4);
                     white-space: nowrap;
                 }
 
@@ -176,13 +180,18 @@ class DataTable extends HTMLElement {
                 }
 
                 ::slotted(tr.dt-row) {
-                    display: flex;
-                    border-bottom: 1px solid rgba(255,255,255,0.04);
+                    display: grid;
+                    grid-template-columns: var(--dt-columns, repeat(3, minmax(0, 1fr)));
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
                     transition: background-color 0.1s ease;
                 }
 
                 ::slotted(tr.dt-row:hover) {
-                    background-color: rgba(255,255,255,0.04);
+                    background-color: rgba(255,255,255,0.035);
+                }
+
+                ::slotted(tr.dt-row:last-child) {
+                    border-bottom: 0;
                 }
             </style>
             <div class="dt-container">

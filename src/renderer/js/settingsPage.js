@@ -1,6 +1,6 @@
-import { updateTranslations, showAlert, wrapNumberInput, autoResizeWindow } from './utility.js';
+import { updateTranslations, showAlert, wrapNumberInput } from './utility.js';
 import './components/ToggleSwitch.js';
-import './components/ActionButton.js';
+import './components/DropdownSelect.js';
 
 // Guard: track whether DOMContentLoaded initialisation has finished.
 // If apply-language arrives before the page is ready (e.g. the user
@@ -22,7 +22,6 @@ window.api.receive('apply-language', async () => {
         languageSelect.value = settings.language;
     }
     await updateTranslations(document);
-    autoResizeWindow();
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -61,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         await updateTranslations(document);
         document.body.style.visibility = 'visible';
-        autoResizeWindow();
 
         // Mark DOM as ready, then flush any language update that arrived early.
         _domReady = true;
@@ -72,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 languageSelect.value = latestSettings.language;
             }
             await updateTranslations(document);
-            autoResizeWindow();
         }
     });
 
@@ -146,8 +143,16 @@ document.addEventListener('DOMContentLoaded', () => {
     [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
         el.addEventListener('change', autoSave);
     });
-    // ToggleSwitch dispatches a bubbling 'change' event, same as <input type="checkbox">,
-    // so the listeners registered above already handle all four toggles correctly.
+
+    document.querySelectorAll('.settings-toggle-row').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('toggle-switch, button, a')) return;
+            const toggle = row.querySelector('toggle-switch');
+            if (!toggle || toggle.disabled) return;
+            toggle.checked = !toggle.checked;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
 
     let xgpSourceToggleBusy = false;
     experimentalXgpSourceCheckbox.addEventListener('change', async () => {
@@ -172,7 +177,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             experimentalXgpSourceCheckbox.disabled = false;
             xgpSourceToggleBusy = false;
-            autoResizeWindow();
         }
     });
 
@@ -211,16 +215,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addGameInstallPath(installPath = '', triggerSave = true) {
         const newPath = document.createElement('div');
-        newPath.className = 'flex gap-2 game-path-item';
+        newPath.className = 'game-path-item';
         newPath.innerHTML = `
             <input type="text" readonly
                 class="display-path grow text-xs font-mono" />
-                        <button type="button" class="select-path home-action-button px-4 py-2">
-                <i class="fa-solid fa-ellipsis"></i>
+            <button type="button" class="select-path settings-icon-button" aria-label="Select path">
+                <span data-lucide-icon="folder-search"></span>
             </button>
-                        <action-button class="remove-path" variant="danger" style="align-self:stretch">
-                <i class="fa-solid fa-trash-can"></i>
-            </action-button>
+            <button type="button" class="remove-path settings-icon-button danger" aria-label="Remove path">
+                <span data-lucide-icon="trash-2"></span>
+            </button>
         `;
         gamePathsContainer.appendChild(newPath);
 
@@ -244,11 +248,9 @@ document.addEventListener('DOMContentLoaded', () => {
         removePathButton.addEventListener('click', () => {
             newPath.remove();
             autoSave();
-            autoResizeWindow();
         });
 
         if (triggerSave) autoSave();
-        autoResizeWindow();
     }
 
     function duplicatePathCheck(newPath, currentInput) {

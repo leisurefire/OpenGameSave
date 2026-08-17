@@ -1,5 +1,5 @@
 const DEFAULT_THRESHOLD = 200;
-const DEFAULT_ROW_HEIGHT = 57;
+const DEFAULT_ROW_HEIGHT = 42;
 const DEFAULT_BUFFER = 8;
 
 const virtualTableStates = new WeakMap();

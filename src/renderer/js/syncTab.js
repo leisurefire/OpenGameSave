@@ -55,9 +55,7 @@ async function refreshGitHubSyncStatus() {
 
     const status = await window.api.invoke('github-sync-status', pathInput.value);
     statusMessage.textContent = status.message || '';
-    statusMessage.className = status.isGitRepo && status.hasRemote
-        ? 'text-sm font-bold text-theme-accent'
-        : 'text-sm font-bold text-yellow-400';
+    statusMessage.dataset.ready = String(Boolean(status.isGitRepo && status.hasRemote));
 
     const remoteUrl = formatRemoteUrl(status.remoteUrl);
     statusDetails.textContent = remoteUrl
@@ -98,8 +96,8 @@ async function runGitHubSync(direction) {
         if (!document.getElementById(progressId)) {
             const progressElement = document.createElement('div');
             progressElement.id = progressId;
-            progressElement.className = 'ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl';
-            progressElement.innerHTML = '<div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent"><span class="sync-progress-title"></span><span>Git</span></div><div class="sync-progress-hint text-xs opacity-60"></div>';
+            progressElement.className = 'app-progress floating-surface animate-fadeIn';
+            progressElement.innerHTML = '<div class="app-progress-header"><span class="sync-progress-title"></span><span>Git</span></div><div class="sync-progress-hint text-xs opacity-60"></div>';
             progressElement.querySelector('.sync-progress-title').textContent = progressTitle;
             progressElement.querySelector('.sync-progress-hint').textContent = await window.i18n.translate('alert.github_sync_progress_hint');
             progressContainer.appendChild(progressElement);

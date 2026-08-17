@@ -457,12 +457,12 @@ const openAboutWindow = () => {
 
 // Main window
 const createMainWindow = async () => {
-    let main_window_size = [1150, 750];
+    const mainWindowSize = [1080, 680];
     win = new BrowserWindow({
-        width: main_window_size[0],
-        height: main_window_size[1],
-        minWidth: main_window_size[0],
-        minHeight: main_window_size[1],
+        width: mainWindowSize[0],
+        height: mainWindowSize[1],
+        minWidth: 780,
+        minHeight: 540,
         icon: path.join(__dirname, "../assets/logo.ico"),
         ...windowVisualEffect,
         webPreferences: {

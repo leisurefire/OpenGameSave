@@ -121,7 +121,7 @@ function setupBackupTabButtons() {
             button: backupButton,
             icon: backupIcon,
             text: backupText,
-            iconClass: 'fa-bolt',
+            iconName: 'shield-check',
             i18nKey: 'main.backup_in_progress',
             busy: true
         });
@@ -133,7 +133,7 @@ function setupBackupTabButtons() {
             button: backupButton,
             icon: backupIcon,
             text: backupText,
-            iconClass: 'fa-bolt',
+            iconName: 'shield-check',
             i18nKey: 'main.backup_selected',
             busy: false
         });
@@ -147,7 +147,7 @@ function setupBackupTabButtons() {
                 button: backupButton,
                 icon: backupIcon,
                 text: backupText,
-                iconClass: 'fa-bolt',
+                iconName: 'shield-check',
                 i18nKey: 'main.updating_backup',
                 busy: true
             });
@@ -161,7 +161,7 @@ function setupBackupTabButtons() {
                 button: backupButton,
                 icon: backupIcon,
                 text: backupText,
-                iconClass: 'fa-bolt',
+                iconName: 'shield-check',
                 i18nKey: 'main.backup_selected',
                 busy: false
             });
@@ -224,7 +224,7 @@ async function updateDatabase() {
             button: updateButton,
             icon: updateButtonIcon,
             text: updateButtonText,
-            iconClass: 'fa-rotate',
+            iconName: 'database-zap',
             i18nKey: 'alert.updating_database',
             busy: true
         });
@@ -237,7 +237,7 @@ async function updateDatabase() {
                 button: updateButton,
                 icon: updateButtonIcon,
                 text: updateButtonText,
-                iconClass: 'fa-rotate',
+                iconName: 'database-zap',
                 i18nKey: 'main.update_database',
                 busy: false
             });

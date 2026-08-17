@@ -1,4 +1,4 @@
-import "../../node_modules/@fortawesome/fontawesome-free/css/all.min.css"
+import "./js/icons.js"
 import "./tailwind-output.css"
 import "./css/common.css"
 import "./css/settings.css"

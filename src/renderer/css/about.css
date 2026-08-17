@@ -5,7 +5,33 @@
     align-items: center;
     justify-content: flex-start;
     text-align: center;
-    padding: 2rem;
-    gap: 1.5rem;
+    padding: 24px;
+    gap: 16px;
     overflow: hidden !important;
+}
+
+.about-hero {
+    gap: 16px;
+}
+
+.about-logo {
+    width: 64px;
+    border-radius: 14px;
+}
+
+.about-title {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.about-details {
+    padding: 14px !important;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 14px;
+}
+
+.about-footer {
+    margin-top: auto !important;
+    letter-spacing: 0.08em;
 }

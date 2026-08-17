@@ -230,9 +230,8 @@ let menuParentWindow = null;
 let isMenuOpen = false;
 
 const MENU_MIN_WIDTH = 196;
-const MENU_MAX_WIDTH = 376;
-const MENU_POSITION_OFFSET_X = 2;
-const MENU_POSITION_OFFSET_Y = 2;
+// Includes the transparent shadow gutter reported by menu.entry.js.
+const MENU_MAX_WIDTH = 400;
 const MENU_HIDDEN_BOUNDS = { x: -10000, y: -10000, width: 1, height: 1 };
 
 function detachMenuParentListeners() {
@@ -354,7 +353,11 @@ ipcMain.on('show-popup-menu', (event, payload = {}) => {
         return;
     }
 
-    const [winX, winY] = parentWindow.getPosition();
+    // getBoundingClientRect() is relative to the renderer's content area, not
+    // the outer BrowserWindow frame. Using getPosition() here omitted the
+    // native title-bar inset and shifted every popup upward by roughly one
+    // title-bar height on Windows.
+    const parentContentBounds = parentWindow.getContentBounds();
 
     // Ensure we hide menu if main window loses focus or starts moving. Remove
     // these listeners on hide so later window dragging does not repeatedly run
@@ -365,8 +368,8 @@ ipcMain.on('show-popup-menu', (event, payload = {}) => {
     menuParentWindow.on('move', hideMenuWindow);
 
     // Store target coordinates in a property so the resize event can use them
-    menuWindow.targetScreenX = Math.round(winX + x + MENU_POSITION_OFFSET_X);
-    menuWindow.targetScreenY = Math.round(winY + y + MENU_POSITION_OFFSET_Y);
+    menuWindow.targetScreenX = Math.round(parentContentBounds.x + x);
+    menuWindow.targetScreenY = Math.round(parentContentBounds.y + y);
     menuWindow.menuDirection = direction === 'up' ? 'up' : 'down';
 
     if (menuWindow.webContents.isLoading()) {
@@ -391,12 +394,24 @@ ipcMain.on('resize-and-show-menu', (event, size) => {
     if (menuWindow && !menuWindow.isDestroyed() && event.sender === menuWindow.webContents) {
         const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
         const height = Math.min(Math.max(Math.ceil(size?.height || 1), 1), 1000);
+        const clampInset = (value) => Math.min(Math.max(Math.ceil(Number(value) || 0), 0), 48);
+        const inset = {
+            top: clampInset(size?.inset?.top),
+            right: clampInset(size?.inset?.right),
+            bottom: clampInset(size?.inset?.bottom),
+            left: clampInset(size?.inset?.left)
+        };
+        // targetScreenX/Y describe the menu content edge. The transparent
+        // BrowserWindow extends beyond it only to give the CSS shadow room to
+        // paint, so its gutter must not shift the visible menu away from the
+        // trigger.
+        const x = Math.round(menuWindow.targetScreenX - inset.left);
         const y = menuWindow.menuDirection === 'up'
-            ? Math.round(menuWindow.targetScreenY - height)
-            : menuWindow.targetScreenY;
+            ? Math.round(menuWindow.targetScreenY - height + inset.bottom)
+            : Math.round(menuWindow.targetScreenY - inset.top);
         isMenuOpen = true;
         menuWindow.setBounds({
-            x: menuWindow.targetScreenX,
+            x,
             y,
             width,
             height

@@ -8,10 +8,12 @@
     "tailwind:watch": "npx tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --watch",
     "clean": "rimraf dist/out",
     "test": "node --test",
+    "prestart": "npm run rebuild:electron-native",
     "start": "npm run clean && npm run tailwind:build && concurrently -k -s first -n \"TAILWIND,RENDERER,MAIN,ELECTRON\" \"npm:tailwind:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js dist/out/renderer/index.html dist/out/renderer/modal.html && electron .\"",
     "build": "npm run clean && cross-env NODE_ENV=production npm run tailwind:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
-    "package": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
+    "rebuild:electron-native": "node scripts/rebuild-electron-native.js",
+    "package": "npm run build && npm run rebuild:electron-native && electron-builder --dir",
+    "dist": "npm run build && npm run rebuild:electron-native && electron-builder",
     "db:sync:ludusavi": "node scripts/sync-ludusavi-manifest.js --report dist/ludusavi-sync-report.json",
     "db:sync:ludusavi:apply": "node scripts/sync-ludusavi-manifest.js --apply --report dist/ludusavi-sync-report.json",
     "postinstall": "electron-builder install-app-deps"
@@ -23,8 +25,22 @@
     "productName": "OpenGameSave",
     "copyright": "Copyright © 2024-2026 leisurefire. Original work Copyright © 2024-2026 Yongcan Yang",
     "publish": null,
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
     "files": [
-      "dist/out/**/*"
+      "dist/out/**/*",
+      "!node_modules/7zip-bin/linux/**/*",
+      "!node_modules/7zip-bin/mac/**/*",
+      "!node_modules/7zip-bin/win/arm64/**/*",
+      "!node_modules/7zip-bin/win/ia32/**/*",
+      "!node_modules/better-sqlite3/bin/**/*",
+      "!node_modules/better-sqlite3/deps/**/*",
+      "!node_modules/better-sqlite3/src/**/*",
+      "!node_modules/better-sqlite3/build/Release/obj/**/*",
+      "!node_modules/better-sqlite3/build/Release/*.{exp,iobj,ipdb,lib,pdb}",
+      "!node_modules/better-sqlite3/build/Release/test_extension.node"
     ],
     "asarUnpack": [
       "**/*.node"
@@ -66,7 +82,7 @@
     "@babel/core": "^7.27.4",
     "@babel/preset-env": "^7.27.2",
     "@electron/rebuild": "^4.0.4",
-    "@fortawesome/fontawesome-free": "^6.6.0",
+    "@lucide/icons": "^1.31.0",
     "@tailwindcss/cli": "^4.1.8",
     "babel-loader": "^10.0.0",
     "concurrently": "^9.1.2",

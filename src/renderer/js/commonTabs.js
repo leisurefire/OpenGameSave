@@ -2,6 +2,7 @@ import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
 import { formatSize } from './formatting.js';
+import { renderIcon } from './icons.js';
 import {
     appendRows as appendVirtualRows,
     applyVirtualFilter,
@@ -67,7 +68,7 @@ export function getSortedFavoriteGroups(games, settings) {
 }
 
 export function appendRows(tableBody, rows) {
-    appendVirtualRows(tableBody, rows);
+    appendVirtualRows(tableBody, rows, { rowHeight: 60 });
 }
 
 runWhenDomReady(() => {
@@ -104,26 +105,11 @@ window.api.receive('auto-backup-performed', async (wikiId) => {
     }
 });
 
-export const spinner = `
-    <svg aria-hidden="true" role="status" class="inline w-4 h-4 text-white animate-spin"
-        viewBox="0 0 100 101" fill="none">
-        <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-            fill="#E5E7EB" />
-        <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentColor" />
-    </svg>
-`;
-
-export async function setActionButtonState({ button, icon, text, iconClass, i18nKey, busy }) {
+export async function setActionButtonState({ button, icon, text, iconName, i18nKey, busy }) {
     button.disabled = busy;
     button.classList.toggle('cursor-not-allowed', busy);
-
-    if (busy) {
-        if (iconClass) icon.classList.remove(iconClass);
-        icon.innerHTML = spinner;
-    } else {
-        icon.innerHTML = '';
-        if (iconClass) icon.classList.add(iconClass);
-    }
+    icon.classList.toggle('is-spinning', busy);
+    renderIcon(icon, busy ? 'loader-circle' : iconName);
 
     button.setAttribute('data-i18n', i18nKey);
     text.textContent = await window.i18n.translate(i18nKey);
@@ -165,7 +151,12 @@ function initializeTabs() {
 // Function to handle tab switching logic
 function showTab(tab, tabElements, options) {
     tabElements.filter(t => t.triggerEl && t.targetEl).forEach(t => {
-        if (t.id === tab.id) {
+        const isActive = t.id === tab.id;
+        t.triggerEl.setAttribute('aria-selected', isActive.toString());
+        t.triggerEl.tabIndex = isActive ? 0 : -1;
+        t.targetEl.setAttribute('aria-hidden', (!isActive).toString());
+
+        if (isActive) {
             t.triggerEl.classList.add(...options.activeClasses.split(' '));
             t.triggerEl.classList.remove(...options.inactiveClasses.split(' '));
             t.targetEl.classList.remove('hidden');
@@ -307,6 +298,7 @@ function setupSearchFilter(tabName) {
         favoritesButton.addEventListener('click', () => {
             const isActive = favoritesButton.dataset.favoritesActive === 'true';
             favoritesButton.dataset.favoritesActive = (!isActive).toString();
+            favoritesButton.setAttribute('aria-pressed', (!isActive).toString());
             favoritesButton.classList.toggle('text-red-400', !isActive);
             favoritesButton.classList.toggle('opacity-100', !isActive);
             favoritesButton.classList.toggle('opacity-70', isActive);
@@ -318,6 +310,7 @@ function setupSearchFilter(tabName) {
         blockedButton.addEventListener('click', () => {
             const isActive = blockedButton.dataset.blockedActive === 'true';
             blockedButton.dataset.blockedActive = (!isActive).toString();
+            blockedButton.setAttribute('aria-pressed', (!isActive).toString());
             blockedButton.classList.toggle('text-yellow-400', !isActive);
             blockedButton.classList.toggle('opacity-100', !isActive);
             blockedButton.classList.toggle('opacity-70', isActive);
@@ -329,6 +322,7 @@ function setupSearchFilter(tabName) {
         uninstalledButton.addEventListener('click', () => {
             const isActive = uninstalledButton.dataset.uninstalledActive === 'true';
             uninstalledButton.dataset.uninstalledActive = (!isActive).toString();
+            uninstalledButton.setAttribute('aria-pressed', (!isActive).toString());
             uninstalledButton.classList.toggle('text-blue-400', !isActive);
             uninstalledButton.classList.toggle('opacity-100', !isActive);
             uninstalledButton.classList.toggle('opacity-70', isActive);
@@ -392,7 +386,7 @@ function sortRowsForTable(rows, settings) {
         rowsToSort.map(row => ({
             row,
             wikiId: getRowId(row),
-            titleToSort: row.querySelector('th[scope="row"]')?.textContent.trim() || ''
+            titleToSort: row.querySelector('.game-title')?.textContent.trim() || ''
         })),
         settings
     ).map(item => item.row);
@@ -532,29 +526,30 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
         <td class="p-4">
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
         </td>
-        <th scope="row" class="p-4 font-bold text-white truncate">
-                        <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
-                        <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
-                        <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
-            <span class="game-title"></span>
+        <th scope="row" class="game-list-primary-cell p-4">
+            <div class="game-title-line">
+                <span data-icon="favorite" class="hidden"><span data-lucide-icon="heart" class="text-red-400"></span></span>
+                <span data-icon="blocked" class="hidden"><span data-lucide-icon="ban" class="text-yellow-400"></span></span>
+                <span data-icon="star" class="hidden"><span data-lucide-icon="star" class="text-yellow-500"></span></span>
+                <span data-icon="timer" class="hidden"><span data-lucide-icon="timer-reset" class="text-theme-accent"></span></span>
+                <span class="game-title"></span>
+            </div>
+            <div class="game-row-subtitle newest-backup-time"></div>
         </th>
-        <td class="p-4 truncate opacity-80 text-center align-middle">
+        <td class="row-detail-cell p-4 truncate opacity-80 text-center align-middle">
             ${platformIcons}
         </td>
-        <td class="p-4 truncate opacity-80 text-center align-middle backup-size">
+        <td class="row-size-cell p-4 truncate opacity-80 text-center align-middle backup-size">
             ${backupSize}
-        </td>
-        <td class="p-4 truncate opacity-60 text-center align-middle newest-backup-time">
-            ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
             <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
-                <i class="fa-solid fa-ellipsis-vertical"></i>
+                <span data-lucide-icon="ellipsis-vertical"></span>
             </button>
         </td>
     `;
     row.querySelector('.game-title').textContent = gameTitle;
+    row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
     return row;
 }
 
@@ -566,29 +561,30 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
         <td class="p-4">
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
         </td>
-        <th scope="row" class="p-4 font-bold text-white truncate">
-                        <span data-icon="favorite" class="hidden"><i class="fa-solid fa-heart text-red-400 mr-2"></i></span>
-                        <span data-icon="blocked" class="hidden"><i class="fa-solid fa-ban text-yellow-400 mr-2"></i></span>
-                        <span data-icon="star" class="hidden"><i class="fa-solid fa-star text-yellow-500 mr-2"></i></span>
-            <span data-icon="timer" class="hidden"><i class="fa-solid fa-clock-rotate-left text-theme-accent mr-2"></i></span>
-            <span class="game-title"></span>
+        <th scope="row" class="game-list-primary-cell p-4">
+            <div class="game-title-line">
+                <span data-icon="favorite" class="hidden"><span data-lucide-icon="heart" class="text-red-400"></span></span>
+                <span data-icon="blocked" class="hidden"><span data-lucide-icon="ban" class="text-yellow-400"></span></span>
+                <span data-icon="star" class="hidden"><span data-lucide-icon="star" class="text-yellow-500"></span></span>
+                <span data-icon="timer" class="hidden"><span data-lucide-icon="timer-reset" class="text-theme-accent"></span></span>
+                <span class="game-title"></span>
+            </div>
+            <div class="game-row-subtitle newest-backup-time"></div>
         </th>
-        <td class="p-4 truncate opacity-80 text-center align-middle backup-count">
+        <td class="row-detail-cell p-4 truncate opacity-80 text-center align-middle backup-count">
             ${backupCount}
         </td>
-        <td class="p-4 truncate opacity-80 text-center align-middle backup-size">
+        <td class="row-size-cell p-4 truncate opacity-80 text-center align-middle backup-size">
             ${backupSize}
-        </td>
-        <td class="p-4 truncate opacity-60 text-center align-middle newest-backup-time">
-            ${newestBackupTime}
         </td>
         <td class="p-4 text-center">
             <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
-                <i class="fa-solid fa-ellipsis-vertical"></i>
+                <span data-lucide-icon="ellipsis-vertical"></span>
             </button>
         </td>
     `;
     row.querySelector('.game-title').textContent = gameTitle;
+    row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
     return row;
 }
 
@@ -689,7 +685,7 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
             .concat({ getAttribute: () => wikiId.toString(), querySelector: () => ({ textContent: gameTitle }) })
             .map(r => ({
                 wikiId: r.getAttribute('data-wiki-id'),
-                titleToSort: r.querySelector('th[scope="row"]').textContent.trim()
+                titleToSort: r.querySelector('.game-title')?.textContent.trim() || ''
             }));
 
         const sorted = sortGamesForDisplay(siblingRows, settings);
@@ -834,49 +830,57 @@ function setDropDownAction() {
             const menuItems = [
                 {
                     label: await window.i18n.translate(isFavorite ? 'main.remove_favorite' : 'main.add_favorite'),
-                    icon: isFavorite ? 'fa-solid fa-heart-crack' : 'fa-solid fa-heart',
+                    icon: isFavorite ? 'heart-crack' : 'heart',
                     action: isFavorite ? 'unfavorite' : 'add-favorite',
                     data: wikiPageId
                 },
                 {
                     label: await window.i18n.translate(isBlocked ? 'main.unblock_game' : 'main.block_game'),
-                    icon: isBlocked ? 'fa-solid fa-eye' : 'fa-solid fa-ban',
+                    icon: isBlocked ? 'eye' : 'ban',
                     action: isBlocked ? 'unblock-game' : 'block-game',
                     data: wikiPageId
                 },
                 {
                     label: await window.i18n.translate('main.auto_backup'),
-                    icon: 'fa-solid fa-clock-rotate-left',
+                    icon: 'timer-reset',
                     action: 'auto-backup',
                     data: wikiPageId,
                     visible: tabName !== 'restore'
                 },
                 {
                     label: await window.i18n.translate('main.manage_backups'),
-                    icon: 'fa-solid fa-list-check',
+                    icon: 'list-checks',
                     action: 'manage-backups',
                     data: wikiPageId
                 },
                 {
                     label: await window.i18n.translate('main.browse_local_save'),
-                    icon: 'fa-solid fa-book-open',
+                    icon: 'folder-open',
                     action: 'open-save-folder',
                     data: wikiPageId
                 },
                 {
                     label: await window.i18n.translate('main.view_wiki'),
-                    icon: 'fa-solid fa-globe',
+                    icon: 'globe',
                     action: 'open-wiki',
                     data: wikiUrl
                 }
             ].filter(item => item.visible !== false);
 
             const rect = button.getBoundingClientRect();
-            const shouldOpenUp = rect.bottom + 260 > window.innerHeight && rect.top > 260;
+            const menuGap = 4;
+            const estimatedMenuHeight = menuItems.length * 34 + 10;
+            const availableAbove = rect.top;
+            const availableBelow = window.innerHeight - rect.bottom;
+            // Open upward only when the measured row count will not fit below
+            // and the upper side genuinely has more room. The previous fixed
+            // 260px threshold made menus jump upward much too early.
+            const shouldOpenUp = availableBelow < estimatedMenuHeight + menuGap
+                && availableAbove > availableBelow;
             window.api.send('show-popup-menu', {
                 items: menuItems,
                 x: rect.right + 4,
-                y: shouldOpenUp ? rect.top - 8 : rect.bottom + 8,
+                y: shouldOpenUp ? rect.top - menuGap : rect.bottom + menuGap,
                 direction: shouldOpenUp ? 'up' : 'down'
             });
             window.activeMenuTrigger = button;
@@ -915,7 +919,7 @@ async function addGameToFavorites(tabName, wikiId) {
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
-                titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
+                titleToSort: row.querySelector('.game-title')?.textContent.trim() || ''
             }));
 
         const sortedFavoriteGames = sortGamesForDisplay(favoriteGames, settings);
@@ -955,7 +959,7 @@ async function removeGameFromFavorites(tabName, wikiId) {
             .concat(rowToMove)
             .map(row => ({
                 wikiId: row.getAttribute('data-wiki-id'),
-                titleToSort: row.querySelector('th[scope="row"]').textContent.trim()
+                titleToSort: row.querySelector('.game-title')?.textContent.trim() || ''
             }));
 
         const sortedNonFavoriteGames = sortGamesForDisplay(nonFavoriteGames, settings);

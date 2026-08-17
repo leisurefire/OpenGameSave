@@ -80,7 +80,7 @@ function setupRestoreButton() {
             button: restoreButton,
             icon: restoreIcon,
             text: restoreText,
-            iconClass: 'fa-clock-rotate-left',
+            iconName: 'rotate-ccw-clock',
             i18nKey: 'main.restore_in_progress',
             busy: true
         });
@@ -92,7 +92,7 @@ function setupRestoreButton() {
             button: restoreButton,
             icon: restoreIcon,
             text: restoreText,
-            iconClass: 'fa-clock-rotate-left',
+            iconName: 'rotate-ccw-clock',
             i18nKey: 'main.restore_selected',
             busy: false
         });
@@ -105,7 +105,7 @@ function setupRestoreButton() {
                 button: restoreButton,
                 icon: restoreIcon,
                 text: restoreText,
-                iconClass: 'fa-clock-rotate-left',
+                iconName: 'rotate-ccw-clock',
                 i18nKey: 'main.updating_restore',
                 busy: true
             });
@@ -118,7 +118,7 @@ function setupRestoreButton() {
                 button: restoreButton,
                 icon: restoreIcon,
                 text: restoreText,
-                iconClass: 'fa-clock-rotate-left',
+                iconName: 'rotate-ccw-clock',
                 i18nKey: 'main.restore_selected',
                 busy: false
             });

@@ -50,22 +50,22 @@ function setupHomeActions() {
             const menuItems = [
                 {
                     label: await window.i18n.translate('main.scan_full'),
-                    icon: 'fa-solid fa-magnifying-glass-plus',
+                    icon: 'scan-search',
                     action: 'scan-full'
                 },
                 {
                     label: await window.i18n.translate('main.view_account_ids'),
-                    icon: 'fa-solid fa-user-tag',
+                    icon: 'user-round-cog',
                     action: 'view-account-ids'
                 },
                 {
                     label: await window.i18n.translate('about.title'),
-                    icon: 'fa-solid fa-circle-info',
+                    icon: 'info',
                     action: 'about'
                 },
                 {
                     label: await window.i18n.translate('settings.title'),
-                    icon: 'fa-solid fa-gear',
+                    icon: 'settings',
                     action: 'settings'
                 }
             ];
@@ -121,6 +121,20 @@ export async function updateTranslations(container) {
         }));
     });
 
+    container.querySelectorAll('[data-i18n-title]').forEach((element) => {
+        const i18nKey = element.getAttribute('data-i18n-title');
+        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
+            if (translation) element.setAttribute('title', translation);
+        }));
+    });
+
+    container.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+        const i18nKey = element.getAttribute('data-i18n-aria-label');
+        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
+            if (translation) element.setAttribute('aria-label', translation);
+        }));
+    });
+
     await Promise.all(translationTasks);
 }
 
@@ -148,14 +162,14 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
         progressElement.id = safeProgressId;
-        progressElement.className = "ml-auto p-4 mb-2 border floating-surface animate-fadeIn w-72 shadow-2xl";
+        progressElement.className = "app-progress floating-surface animate-fadeIn";
         progressElement.innerHTML = `
-            <div class="flex justify-between mb-2 text-xs font-black uppercase tracking-widest text-theme-accent">
+            <div class="app-progress-header">
                 <span class="progress-title"></span>
                 <span class="progress-percentage">0%</span>
             </div>
-            <div class="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                <div class="progress-bar bg-theme-accent w-0 h-full transition-all duration-300 shadow-[0_0_10px_rgba(16,124,16,0.5)]"></div>
+            <div class="app-progress-track">
+                <div class="progress-bar"></div>
             </div>
         `;
         progressElement.querySelector('.progress-title').textContent = progressTitle;
@@ -183,7 +197,7 @@ export function wrapNumberInput(input) {
     const max = input.max !== '' ? parseInt(input.max, 10) : null;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'relative inline-flex items-center w-full';
+    wrapper.className = 'number-input-wrapper';
 
     for (const cls of [...input.classList]) {
         if (cls.startsWith('mb-') || cls.startsWith('mt-') || cls.startsWith('my-')) {
@@ -194,17 +208,16 @@ export function wrapNumberInput(input) {
 
     input.parentNode.insertBefore(wrapper, input);
     wrapper.appendChild(input);
-    input.classList.add('pr-10');
+    input.classList.add('number-input-field');
 
     const controls = document.createElement('div');
-    controls.className = 'absolute right-0 top-0 bottom-0 flex flex-col w-9 border-l border-white/10';
-    const btnClass = 'flex-1 flex items-center justify-center cursor-pointer text-white/40 hover:text-theme-accent hover:bg-white/5 transition-all';
+    controls.className = 'number-input-controls';
     controls.innerHTML = `
-        <button type="button" tabindex="-1" data-action="increment" class="${btnClass} rounded-tr-lg">
-            <i class="fa-solid fa-chevron-up text-[10px]"></i>
+        <button type="button" tabindex="-1" data-action="increment" class="number-input-stepper">
+            <span data-lucide-icon="chevron-up" class="text-[10px]"></span>
         </button>
-        <button type="button" tabindex="-1" data-action="decrement" class="${btnClass} rounded-br-lg border-t border-white/5">
-            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+        <button type="button" tabindex="-1" data-action="decrement" class="number-input-stepper">
+            <span data-lucide-icon="chevron-down" class="text-[10px]"></span>
         </button>
     `;
     wrapper.appendChild(controls);

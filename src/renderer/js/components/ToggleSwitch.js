@@ -1,7 +1,7 @@
 /**
  * <toggle-switch> Web Component
  *
- * Windows 11 style toggle switch.
+ * Compact Codex/Fluent style toggle switch.
  *
  * Usage:
  *   <label>
@@ -17,6 +17,10 @@
  *   });
  */
 class ToggleSwitch extends HTMLElement {
+    static get observedAttributes() {
+        return ['disabled', 'aria-label'];
+    }
+
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
@@ -42,77 +46,96 @@ class ToggleSwitch extends HTMLElement {
     }
 
     connectedCallback() {
-        const track = this.shadowRoot.querySelector('.toggle-track');
-        track.addEventListener('click', () => {
+        this.shadowRoot.querySelector('.toggle-button').addEventListener('click', () => {
             if (this.disabled) return;
             this.checked = !this.checked;
             this.dispatchEvent(new Event('change', { bubbles: true }));
         });
+        this._updateVisual();
+    }
+
+    attributeChangedCallback() {
+        this._updateVisual();
     }
 
     _updateVisual() {
-        const track = this.shadowRoot.querySelector('.toggle-track');
-        const thumb = this.shadowRoot.querySelector('.toggle-thumb');
-        if (this._checked) {
-            track.classList.add('checked');
-            thumb.classList.add('checked');
-        } else {
-            track.classList.remove('checked');
-            thumb.classList.remove('checked');
-        }
+        const button = this.shadowRoot.querySelector('.toggle-button');
+        if (!button) return;
+        button.classList.toggle('checked', this._checked);
+        button.setAttribute('aria-checked', String(this._checked));
+        button.disabled = this.disabled;
+        const label = this.getAttribute('aria-label');
+        if (label) button.setAttribute('aria-label', label);
+        else button.removeAttribute('aria-label');
     }
 
     _render() {
         this.shadowRoot.innerHTML = `
             <style>
                 :host {
-                    display: inline-block;
+                    display: inline-flex;
+                    flex: 0 0 auto;
+                    vertical-align: middle;
                 }
 
                 :host([disabled]) {
                     opacity: 0.55;
-                    pointer-events: none;
+                    cursor: not-allowed;
                 }
 
-                .toggle-track {
+                .toggle-button {
                     position: relative;
-                    width: 40px;
+                    width: 34px;
                     height: 20px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 1px solid rgba(255, 255, 255, 0.15);
-                    border-radius: 10px;
+                    padding: 2px;
+                    background: rgba(255, 255, 255, 0.17);
+                    border: 0;
+                    border-radius: 999px;
                     cursor: pointer;
-                    transition: background-color 0.15s ease, border-color 0.15s ease;
+                    transition: background-color 140ms ease, box-shadow 140ms ease;
                 }
 
-                .toggle-track:hover {
-                    background: rgba(255, 255, 255, 0.15);
+                .toggle-button:hover {
+                    background: rgba(255, 255, 255, 0.23);
                 }
 
-                .toggle-track.checked {
+                .toggle-button.checked {
                     background: var(--system-accent, #16c60c);
-                    border-color: var(--system-accent, #16c60c);
+                }
+
+                .toggle-button.checked:hover {
+                    filter: brightness(1.08);
+                }
+
+                .toggle-button:focus-visible {
+                    outline: 2px solid color-mix(in srgb, var(--system-accent, #16c60c) 62%, white);
+                    outline-offset: 2px;
                 }
 
                 .toggle-thumb {
                     position: absolute;
-                    top: 50%;
-                    left: 3px;
-                    transform: translateY(-50%);
-                    width: 14px;
-                    height: 14px;
+                    top: 2px;
+                    left: 2px;
+                    width: 16px;
+                    height: 16px;
                     background: #ffffff;
                     border-radius: 50%;
-                    transition: transform 0.15s ease;
+                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+                    transition: transform 140ms cubic-bezier(0.2, 0, 0, 1);
                 }
 
-                .toggle-thumb.checked {
-                    transform: translateX(20px) translateY(-50%);
+                .toggle-button.checked .toggle-thumb {
+                    transform: translateX(14px);
+                }
+
+                @media (prefers-reduced-motion: reduce) {
+                    .toggle-button,
+                    .toggle-thumb { transition: none; }
                 }
             </style>
-            <div class="toggle-track">
-                <div class="toggle-thumb"></div>
-            </div>
+            <button type="button" class="toggle-button" role="switch" aria-checked="false">
+                <span class="toggle-thumb"></span>
+            </button>
         `;
     }
 }

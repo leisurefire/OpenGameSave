@@ -46,7 +46,7 @@ module.exports = {
                 },
             },
             {
-                // This rule handles the compiled Tailwind CSS and Font Awesome CSS
+                // This rule handles compiled Tailwind and shared renderer CSS.
                 test: /\.css$/,
                 use: [MiniCssExtractPlugin.loader, 'css-loader'],
             },

@@ -52,33 +52,46 @@ async function renderExportModal(root) {
     const exportCountLabel = await window.i18n.translate('alert.export_count');
     const exportPathLabel = await window.i18n.translate('alert.export_path');
     const exportLabel = await window.i18n.translate('main.export');
+    const browseLabel = await window.i18n.translate('main.browse');
 
     await setWindowTitle(title);
     root.innerHTML = `
         <section class="modal-window-panel">
-            <div class="modal-window-content space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(exportScopeLabel)}</label>
-                    <div class="space-y-2">
-                        <label class="flex items-center gap-3 cursor-pointer group">
+            <div class="modal-window-content">
+                <div class="modal-setting-card">
+                    <div class="modal-setting-row">
+                        <div class="modal-setting-copy">
+                            <div class="modal-setting-title">${escapeHtml(exportScopeLabel)}</div>
+                        </div>
+                        <div class="modal-segmented-control" role="radiogroup" aria-label="${escapeHtml(exportScopeLabel)}">
+                            <label class="modal-segment-option">
                             <input type="radio" name="export-scope" value="all" checked class="accent-theme-accent">
-                            <span class="group-hover:text-theme-accent transition-colors">${escapeHtml(exportAllGamesLabel)}</span>
-                        </label>
-                        <label class="flex items-center gap-3 cursor-pointer group">
+                                <span>${escapeHtml(exportAllGamesLabel)}</span>
+                            </label>
+                            <label class="modal-segment-option">
                             <input type="radio" name="export-scope" value="backup" class="accent-theme-accent">
-                            <span class="group-hover:text-theme-accent transition-colors">${escapeHtml(exportSelectedBackupLabel)}</span>
-                        </label>
+                                <span>${escapeHtml(exportSelectedBackupLabel)}</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(exportCountLabel)}</label>
-                    <input type="number" id="modal-export-count" value="1" min="1" max="${escapeHtml(settings?.maxBackups || 1000)}" class="w-full">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(exportPathLabel)}</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="modal-export-path" readonly class="flex-1" value="${escapeHtml(settings?.exportPath || '')}">
-                        <button id="modal-export-select-path" type="button" class="secondary-button px-4">...</button>
+                    <div class="modal-setting-row">
+                        <label for="modal-export-count" class="modal-setting-copy">
+                            <span class="modal-setting-title">${escapeHtml(exportCountLabel)}</span>
+                        </label>
+                        <div class="modal-setting-control">
+                            <input type="number" id="modal-export-count" value="1" min="1" max="${escapeHtml(settings?.maxBackups || 1000)}">
+                        </div>
+                    </div>
+                    <div class="modal-setting-row">
+                        <label for="modal-export-path" class="modal-setting-copy">
+                            <span class="modal-setting-title">${escapeHtml(exportPathLabel)}</span>
+                        </label>
+                        <div class="modal-path-control">
+                            <input type="text" id="modal-export-path" readonly value="${escapeHtml(settings?.exportPath || '')}">
+                            <button id="modal-export-select-path" type="button" class="path-picker-button secondary-button" aria-label="${escapeHtml(exportPathLabel)}">
+                                <span data-lucide-icon="folder-search"></span><span>${escapeHtml(browseLabel)}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -122,16 +135,23 @@ async function renderImportModal(root, initData) {
     const title = await window.i18n.translate('alert.import_backups');
     const gsmPathLabel = await window.i18n.translate('alert.gsmr_path');
     const importLabel = await window.i18n.translate('main.import');
+    const browseLabel = await window.i18n.translate('main.browse');
 
     await setWindowTitle(title);
     root.innerHTML = `
         <section class="modal-window-panel">
-            <div class="modal-window-content space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-2 opacity-60">${escapeHtml(gsmPathLabel)}</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="modal-import-path" readonly class="flex-1" value="${escapeHtml(initData?.gsmPath || '')}">
-                        <button id="modal-import-select-path" type="button" class="secondary-button px-4">...</button>
+            <div class="modal-window-content">
+                <div class="modal-setting-card">
+                    <div class="modal-setting-row">
+                        <label for="modal-import-path" class="modal-setting-copy">
+                            <span class="modal-setting-title">${escapeHtml(gsmPathLabel)}</span>
+                        </label>
+                        <div class="modal-path-control">
+                            <input type="text" id="modal-import-path" readonly value="${escapeHtml(initData?.gsmPath || '')}">
+                            <button id="modal-import-select-path" type="button" class="path-picker-button secondary-button" aria-label="${escapeHtml(gsmPathLabel)}">
+                                <span data-lucide-icon="file-input"></span><span>${escapeHtml(browseLabel)}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -188,9 +208,9 @@ async function renderAccountModal(root) {
             if (id && id !== 'N/A' && id !== null) {
                 const platformLabel = await window.i18n.translate(platformKeys[platform] || platform);
                 accountRows += `
-                    <div class="flex justify-between items-center gap-4">
-                        <span class="text-sm font-semibold opacity-70">${escapeHtml(platformLabel)}</span>
-                        <code class="text-xs bg-black/40 px-2 py-1 rounded font-mono text-theme-accent break-all text-right">${escapeHtml(id)}</code>
+                    <div class="modal-account-row">
+                        <span class="modal-account-label">${escapeHtml(platformLabel)}</span>
+                        <code class="modal-account-value" title="${escapeHtml(id)}">${escapeHtml(id)}</code>
                     </div>
                 `;
             }
@@ -208,25 +228,25 @@ async function renderAccountModal(root) {
             <div class="modal-window-content space-y-6">
                 <div>
                     <h2 class="modal-section-title">${escapeHtml(labels.detectedAccounts)}</h2>
-                    <div class="surface-effect p-4 space-y-3">${accountRows}</div>
+                    <div class="modal-list-card">${accountRows}</div>
                 </div>
-                <div>
-                    <h2 class="modal-section-title">${escapeHtml(labels.backupScope)}</h2>
-                    <div class="space-y-3">
-                        <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="modal-setting-card">
+                    <div class="modal-setting-row modal-setting-row-tall">
+                        <div class="modal-setting-copy">
+                            <div class="modal-setting-title">${escapeHtml(labels.backupScope)}</div>
+                            <p class="modal-setting-description">${escapeHtml(labels.accountBackupNote)}</p>
+                        </div>
+                        <div class="modal-segmented-control" role="radiogroup" aria-label="${escapeHtml(labels.backupScope)}">
+                            <label class="modal-segment-option">
                             <input id="backup-scope-current" type="radio" name="backup-scope" ${!isBackupAllAccounts ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.currentAccountOnly)}</span>
-                        </label>
-                        <label class="flex items-center gap-3 cursor-pointer group">
+                                <span>${escapeHtml(labels.currentAccountOnly)}</span>
+                            </label>
+                            <label class="modal-segment-option">
                             <input id="backup-scope-all" type="radio" name="backup-scope" ${isBackupAllAccounts ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
-                            <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.allAccounts)}</span>
-                        </label>
+                                <span>${escapeHtml(labels.allAccounts)}</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
-                <div class="p-4 bg-theme-accent/10 border border-theme-accent/20 rounded-[var(--radius-win)]">
-                    <p class="text-xs font-bold text-theme-accent leading-relaxed">
-                        <i class="fa-solid fa-circle-info mr-1"></i> <span>${escapeHtml(labels.accountBackupNote)}</span>
-                    </p>
                 </div>
             </div>
             <div class="modal-footer">
@@ -283,8 +303,8 @@ async function renderManageBackupsModal(root, initData) {
     };
 
     const renderDateDisplay = (backup) => {
-        const permanentIcon = backup.is_permanent ? '<i class="fa-solid fa-star text-yellow-500 mr-2"></i>' : '';
-        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-theme-accent transition-all ml-2" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-pencil"></i></button>` : '';
+        const permanentIcon = backup.is_permanent ? '<span data-lucide-icon="star" class="text-yellow-500 mr-2"></span>' : '';
+        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-theme-accent transition-all ml-2" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="pencil"></span></button>` : '';
         if (backup.is_permanent && backup.custom_name) {
             return `${permanentIcon}<div class="flex flex-col"><span class="backup-custom-name font-bold text-theme-accent">${escapeHtml(backup.custom_name)}</span><span class="text-xs opacity-50">${escapeHtml(formatBackupDate(backup.date))}</span></div>${renameIcon}`;
         }
@@ -297,19 +317,19 @@ async function renderManageBackupsModal(root, initData) {
             <tr data-backup-date="${escapeHtml(backup.date)}" data-custom-name="${escapeHtml(backup.custom_name || '')}">
                 <td>
                     <div class="flex items-center">
-                        <div class="rename-mode hidden items-center bg-black/40 rounded-lg border border-white/10 overflow-hidden">
-                            <input type="text" class="backup-name-input px-3 py-1.5 bg-transparent border-0 text-sm focus:outline-none" placeholder="${escapeHtml(labels.enterBackupName)}" />
-                            <button type="button" class="confirm-rename-btn px-3 py-1.5 text-theme-accent hover:bg-theme-accent hover:text-black transition-colors"><i class="fa-solid fa-check"></i></button>
+                        <div class="rename-mode hidden items-center">
+                            <input type="text" class="backup-name-input" placeholder="${escapeHtml(labels.enterBackupName)}" />
+                            <button type="button" class="confirm-rename-btn" aria-label="${escapeHtml(labels.enterBackupName)}"><span data-lucide-icon="check"></span></button>
                         </div>
                         <div class="backup-date-display flex items-center">${renderDateDisplay(backup)}</div>
                     </div>
                 </td>
                 <td style="opacity:0.7;font-weight:500">${escapeHtml(formatSize(backup.backup_size))}</td>
                 <td>
-                    <div style="display:flex;justify-content:center;gap:0.5rem">
-                        <button type="button" class="restore-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-arrow-left"></i> ${escapeHtml(labels.restore)}</button>
-                        <button type="button" class="permanent-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}" data-is-permanent="${backup.is_permanent}"><i class="fa-solid fa-star"></i> ${escapeHtml(backup.is_permanent ? labels.removePermanent : labels.makePermanent)}</button>
-                        <button type="button" class="delete-backup-btn btn-danger" data-backup-date="${escapeHtml(backup.date)}"><i class="fa-solid fa-trash"></i> ${escapeHtml(labels.delete)}</button>
+                    <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                        <button type="button" class="restore-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="rotate-ccw-clock"></span> ${escapeHtml(labels.restore)}</button>
+                        <button type="button" class="permanent-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}" data-is-permanent="${backup.is_permanent}"><span data-lucide-icon="star"></span> ${escapeHtml(backup.is_permanent ? labels.removePermanent : labels.makePermanent)}</button>
+                        <button type="button" class="delete-backup-btn btn-danger" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="trash-2"></span> ${escapeHtml(labels.delete)}</button>
                     </div>
                 </td>
             </tr>
@@ -328,16 +348,16 @@ async function renderManageBackupsModal(root, initData) {
             <div class="modal-window-content" id="manage-backups-table-container">
             </div>
             <div class="modal-footer">
-                <button type="button" id="modal-open-backup-folder" class="home-action-button px-4 py-2 text-sm font-bold flex items-center gap-2"><i class="fa-solid fa-folder-open"></i> ${escapeHtml(labels.openBackupFolder)}</button>
+                <button type="button" id="modal-open-backup-folder" class="compact-action-button home-action-button"><span data-lucide-icon="folder-open"></span> ${escapeHtml(labels.openBackupFolder)}</button>
             </div>
         </section>
     `;
 
     const manageTable = document.createElement('data-table');
     manageTable.setColumns([
-        { label: labels.backupTime },
-        { label: labels.backupSize },
-        { label: labels.action }
+        { label: labels.backupTime, width: 'minmax(210px, 1fr)' },
+        { label: labels.backupSize, width: '110px' },
+        { label: labels.action, width: 'minmax(330px, auto)' }
     ]);
     root.querySelector('#manage-backups-table-container').appendChild(manageTable);
     manageTable.appendRows(rowsHtml);
@@ -451,9 +471,9 @@ async function renderAutoBackupModal(root, initData) {
             ? await window.i18n.translate('main.auto_backup_failures', { count: status.failCount })
             : '';
         statusHtml = `
-            <div class="mb-6 p-4 bg-theme-accent/10 border border-theme-accent/30 rounded-[var(--radius-win)]">
-                <p class="text-theme-accent font-bold flex items-center gap-2">
-                    <i class="fa-solid fa-circle-check"></i>
+            <div class="modal-status-card" data-status="active">
+                <p>
+                    <span data-lucide-icon="circle-check"></span>
                     ${escapeHtml(labels.statusActive)} — ${escapeHtml(modeDisplay)}
                 </p>
                 <p class="text-sm opacity-60 mt-2">${escapeHtml(backupsPerformed)}</p>
@@ -462,9 +482,9 @@ async function renderAutoBackupModal(root, initData) {
         `;
     } else {
         statusHtml = `
-            <div class="mb-6 p-4 bg-white/5 border border-white/10 rounded-[var(--radius-win)]">
-                <p class="opacity-40 flex items-center gap-2">
-                    <i class="fa-solid fa-circle-xmark"></i>
+            <div class="modal-status-card" data-status="inactive">
+                <p>
+                    <span data-lucide-icon="circle-x"></span>
                     ${escapeHtml(labels.statusInactive)}
                 </p>
             </div>
@@ -477,29 +497,35 @@ async function renderAutoBackupModal(root, initData) {
             <div class="modal-window-content">
                 <h1 class="text-xl font-bold text-theme-accent mb-6">${escapeHtml(gameTitle)}</h1>
                 ${statusHtml}
-                <div id="auto-backup-config" class="${isActive ? 'hidden' : 'space-y-6'}">
-                    <div>
-                        <label class="block mb-3 text-sm font-bold opacity-60 uppercase tracking-widest">${escapeHtml(labels.mode)}</label>
-                        <div class="space-y-3">
-                            <label class="flex items-center gap-3 cursor-pointer group">
+                <div id="auto-backup-config" class="${isActive ? 'hidden' : 'modal-setting-card'}">
+                    <div class="modal-setting-row">
+                        <div class="modal-setting-copy">
+                            <div class="modal-setting-title">${escapeHtml(labels.mode)}</div>
+                        </div>
+                        <div class="modal-segmented-control" role="radiogroup" aria-label="${escapeHtml(labels.mode)}">
+                            <label class="modal-segment-option">
                                 <input type="radio" name="auto-backup-mode" value="interval" ${currentMode === 'interval' ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
-                                <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.modeInterval)}</span>
+                                <span>${escapeHtml(labels.modeInterval)}</span>
                             </label>
-                            <label class="flex items-center gap-3 cursor-pointer group">
+                            <label class="modal-segment-option">
                                 <input type="radio" name="auto-backup-mode" value="watcher" ${currentMode === 'watcher' ? 'checked' : ''} class="accent-theme-accent w-5 h-5">
-                                <span class="text-sm font-semibold opacity-80 group-hover:opacity-100">${escapeHtml(labels.modeWatcher)}</span>
+                                <span>${escapeHtml(labels.modeWatcher)}</span>
                             </label>
                         </div>
                     </div>
 
-                    <div id="auto-backup-interval-config" class="${currentMode === 'watcher' ? 'hidden' : ''}">
-                        <label class="block mb-2 text-sm font-bold opacity-60 uppercase tracking-widest">${escapeHtml(labels.interval)}</label>
-                        <input type="number" id="auto-backup-interval" value="${escapeHtml(currentInterval)}" min="1" class="w-full">
+                    <div id="auto-backup-interval-config" class="modal-setting-row ${currentMode === 'watcher' ? 'hidden' : ''}">
+                        <label for="auto-backup-interval" class="modal-setting-copy">
+                            <span class="modal-setting-title">${escapeHtml(labels.interval)}</span>
+                        </label>
+                        <div class="modal-setting-control">
+                            <input type="number" id="auto-backup-interval" value="${escapeHtml(currentInterval)}" min="1">
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="modal-auto-backup-confirm" type="button" class="${isActive ? 'px-8 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700' : 'primary-button px-8 py-2'}">
+                <button id="modal-auto-backup-confirm" type="button" class="${isActive ? 'danger-button' : 'primary-button px-8 py-2'}">
                     ${escapeHtml(isActive ? labels.disable : labels.enable)}
                 </button>
             </div>
@@ -585,13 +611,14 @@ async function renderLocalSaveModal(root, initData) {
         const typeLabel = pathObj.type === 'reg'
             ? labels.registry
             : (pathObj.type === 'file' ? labels.file : labels.folder);
+        const openIcon = pathObj.type === 'folder' ? 'folder-open' : 'external-link';
         return `
             <tr>
                 <td style="font-weight:bold;opacity:0.7;white-space:nowrap">${escapeHtml(typeLabel)}</td>
-                <td style="font-size:0.75rem;font-family:monospace;word-break:break-all;opacity:0.8">${escapeHtml(pathObj.resolved || pathObj.path || '')}</td>
+                <td style="font-size:0.75rem;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.8" title="${escapeHtml(pathObj.resolved || pathObj.path || '')}">${escapeHtml(pathObj.resolved || pathObj.path || '')}</td>
                 <td>
                     <button type="button" class="open-local-save-path-btn btn-action" data-index="${index}">
-                        <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escapeHtml(labels.open)}
+                        <span data-lucide-icon="${openIcon}"></span> ${escapeHtml(labels.open)}
                     </button>
                 </td>
             </tr>
@@ -607,16 +634,16 @@ async function renderLocalSaveModal(root, initData) {
             <div class="modal-window-content" id="local-save-table-container">
             </div>
             <div class="modal-footer">
-                <button type="button" id="modal-delete-local-save" class="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2"><i class="fa-solid fa-trash"></i> ${escapeHtml(labels.deleteLocalSave)}</button>
+                <button type="button" id="modal-delete-local-save" class="danger-button flex items-center gap-2"><span data-lucide-icon="trash-2"></span> ${escapeHtml(labels.deleteLocalSave)}</button>
             </div>
         </section>
     `;
 
     const localSaveTable = document.createElement('data-table');
     localSaveTable.setColumns([
-        { label: labels.type },
-        { label: labels.path },
-        { label: null }
+        { label: labels.type, width: '92px' },
+        { label: labels.path, width: 'minmax(0, 1fr)' },
+        { label: null, width: '96px' }
     ]);
     root.querySelector('#local-save-table-container').appendChild(localSaveTable);
     localSaveTable.appendRows(rowsHtml);
@@ -654,7 +681,7 @@ async function renderScanFullModal(root) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <img src="../assets_export/information.png" class="w-12 h-12 flex-shrink-0" alt="Info">
+                <span class="modal-message-icon" data-lucide-icon="info"></span>
                 <div>
                     <p class="text-sm opacity-80 leading-relaxed mb-2">${escapeHtml(explain)}
                     <br>
@@ -679,7 +706,7 @@ function renderDialogContent(content) {
     if (Array.isArray(content)) {
         return content.map(item => {
             if (Array.isArray(item)) {
-                return `<ul class="space-y-2 py-2">${item.map(line => `<li class="flex gap-2 opacity-80 text-sm"><i class="fa-solid fa-caret-right text-theme-accent mt-1"></i><span>${escapeHtml(line)}</span></li>`).join('')}</ul>`;
+                return `<ul class="space-y-2 py-2">${item.map(line => `<li class="flex gap-2 opacity-80 text-sm"><span data-lucide-icon="chevron-right" class="text-theme-accent mt-1"></span><span>${escapeHtml(line)}</span></li>`).join('')}</ul>`;
             }
             return `<p class="text-sm opacity-80 leading-relaxed mb-2 whitespace-pre-line">${escapeHtml(item)}</p>`;
         }).join('');
@@ -695,7 +722,7 @@ async function renderDialogModal(root, initData) {
         : [{ value: true, text: await window.i18n.translate('alert.confirm'), primary: true }];
     const requestId = initData?.requestId;
     const checkbox = initData?.checkbox || null;
-    const iconPath = initData?.iconType === 'warning' ? '../assets_export/warning.png' : '../assets_export/information.png';
+    const isWarning = initData?.iconType === 'warning';
 
     await setWindowTitle(title || 'OpenGameSave');
 
@@ -717,7 +744,7 @@ async function renderDialogModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <img src="${iconPath}" class="w-12 h-12 flex-shrink-0" alt="Icon">
+                <span class="modal-message-icon" ${isWarning ? 'data-status="warning" data-lucide-icon="triangle-alert"' : 'data-lucide-icon="info"'}></span>
                 <div class="flex-1">
                     ${renderDialogContent(initData?.content)}
                     ${checkboxHtml}
@@ -752,7 +779,7 @@ async function renderConfirmModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <img src="../assets_export/warning.png" class="w-12 h-12 flex-shrink-0" alt="Warning">
+                <span class="modal-message-icon" data-status="warning" data-lucide-icon="triangle-alert"></span>
                 <div class="flex-1">
                     <p class="text-sm opacity-80 leading-relaxed whitespace-pre-line">${escapeHtml(message)}</p>
                 </div>

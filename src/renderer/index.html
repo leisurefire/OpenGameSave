@@ -11,7 +11,7 @@
 
 <body class="mica-effect h-screen overflow-hidden">
     <!-- Top right alerts and progresses -->
-    <div class="fixed top-4 right-5 z-60 space-y-2">
+    <div class="notification-region">
         <div id="progress-container"></div>
         <div id="alert-container"></div>
     </div>
@@ -19,36 +19,36 @@
     <div class="app-shell">
         <aside class="app-sidebar">
             <nav class="sidebar-nav" id="main-tab" role="tablist">
-                <button id="backup-tab" data-tabs-target="#backup" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.backup">
-                    <i class="fa-solid fa-shield-halved"></i>
+                <button id="backup-tab" data-tabs-target="#backup" role="tab" aria-controls="backup" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.backup">
+                    <span data-lucide-icon="shield-check"></span>
                     <span class="text-content">Backup</span>
                 </button>
-                <button id="restore-tab" data-tabs-target="#restore" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.restore">
-                    <i class="fa-solid fa-clock-rotate-left"></i>
+                <button id="restore-tab" data-tabs-target="#restore" role="tab" aria-controls="restore" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.restore">
+                    <span data-lucide-icon="rotate-ccw-clock"></span>
                     <span class="text-content">Restore</span>
                 </button>
-                <button id="sync-tab" data-tabs-target="#sync" role="tab" class="sidebar-nav-button font-semibold transition-all hover:text-theme-accent opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.sync">
-                    <i class="fa-solid fa-arrows-rotate"></i>
+                <button id="sync-tab" data-tabs-target="#sync" role="tab" aria-controls="sync" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.sync">
+                    <span data-lucide-icon="git-compare-arrows"></span>
                     <span class="text-content">Sync</span>
                 </button>
             </nav>
 
             <div class="sidebar-actions">
                 <button id="home-import-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <i class="fa-solid fa-file-import"></i>
+                    <span data-lucide-icon="download"></span>
                     <span data-i18n="main.import">Import</span>
                 </button>
                 <button id="home-export-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <i class="fa-solid fa-file-export"></i>
+                    <span data-lucide-icon="upload"></span>
                     <span data-i18n="main.export">Export</span>
                 </button>
                 <button id="home-options-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <i class="fa-solid fa-gear"></i>
+                    <span data-lucide-icon="sliders-horizontal"></span>
                     <span data-i18n="main.options">Options</span>
-                    <i class="fa-solid fa-chevron-up text-[10px] ml-auto"></i>
+                    <span data-lucide-icon="chevron-up" class="text-[10px] ml-auto"></span>
                 </button>
                 <button id="update-database" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3 text-theme-accent">
-                    <i id="update-database-icon" class="fa-solid fa-rotate"></i>
+                    <span id="update-database-icon" data-lucide-icon="database-zap"></span>
                     <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
                 </button>
             </div>
@@ -62,7 +62,7 @@
             
                         <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.backup_complete">BACKUP COMPLETE</h2>
-                <i class="fa-solid fa-circle-check text-theme-accent text-7xl mb-8"></i>
+                <span data-lucide-icon="circle-check" class="summary-success-icon text-theme-accent mb-8"></span>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="backup-summary-total-games"></p>
                     <p id="backup-summary-total-size"></p>
@@ -75,25 +75,33 @@
                 <button id="backup-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
 
-                        <div id="backup-content" class="hidden tab-layout">
+            <div id="backup-content" class="hidden tab-layout">
+                <header class="page-header">
+                    <div class="page-heading">
+                        <span class="page-heading-icon" data-lucide-icon="shield-check"></span>
+                        <div class="min-w-0">
+                            <h1 class="page-title text-content" data-i18n="main.backup">Backup</h1>
+                        </div>
+                    </div>
+                </header>
                 <div class="content-topbar">
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
-                            <i class="fa-solid fa-magnifying-glass search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
                             <input type="text" id="backup-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">
-                                                <button id="backup-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" title="Favorites">
-                            <i class="fa-solid fa-heart"></i>
+                        <button id="backup-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" aria-pressed="false" title="Favorites" data-i18n-title="main.favorites_only" data-i18n-aria-label="main.favorites_only">
+                            <span data-lucide-icon="heart"></span>
                             <span data-i18n="main.favorites_only">Favorites</span>
                         </button>
-                        <button id="backup-blocked-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-blocked-active="false" title="Hidden">
-                            <i class="fa-solid fa-ban"></i>
+                        <button id="backup-blocked-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-blocked-active="false" aria-pressed="false" title="Hidden" data-i18n-title="main.blocked_only" data-i18n-aria-label="main.blocked_only">
+                            <span data-lucide-icon="ban"></span>
                             <span data-i18n="main.blocked_only">Hidden</span>
                         </button>
-                        <button id="backup-uninstalled-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-uninstalled-active="false" title="Uninstalled">
-                            <i class="fa-solid fa-box-archive"></i>
+                        <button id="backup-uninstalled-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-uninstalled-active="false" aria-pressed="false" title="Uninstalled" data-i18n-title="main.uninstalled_only" data-i18n-aria-label="main.uninstalled_only">
+                            <span data-lucide-icon="archive"></span>
                             <span data-i18n="main.uninstalled_only">Uninstalled</span>
                         </button>
                     </div>
@@ -102,23 +110,34 @@
                 <div class="table-panel">
                     <div class="table-panel-header">
                         <div class="selection-summary">
-                            <div id="backup-selected-count" class="text-lg font-bold"></div>
-                            <div id="backup-selected-size" class="text-sm opacity-55"></div>
+                            <label class="selection-checkbox" data-i18n-title="main.select_all">
+                                <input id="backup-checkbox-all-search" type="checkbox" class="accent-theme-accent" data-i18n-aria-label="main.select_all">
+                            </label>
+                            <div class="selection-summary-copy">
+                                <div id="backup-selected-count" class="text-lg font-bold"></div>
+                                <div id="backup-selected-size" class="text-sm opacity-55"></div>
+                            </div>
                         </div>
                         <button id="backup-button" class="primary-button table-panel-action flex items-center gap-2">
-                            <i id="backup-icon" class="fa-solid fa-bolt"></i> <span id="backup-text" data-i18n="main.backup_selected">Backup Selected</span>
+                            <span id="backup-icon" data-lucide-icon="shield-check"></span> <span id="backup-text" data-i18n="main.backup_selected">Backup Selected</span>
                         </button>
                     </div>
 
                 <div class="table-container">
-                    <table class="w-full text-left">
-                        <thead>
+                    <table class="game-list-table w-full text-left">
+                        <colgroup>
+                            <col class="game-list-select-column">
+                            <col class="game-list-primary-column">
+                            <col class="game-list-detail-column">
+                            <col class="game-list-size-column">
+                            <col class="game-list-action-column">
+                        </colgroup>
+                        <thead class="table-semantic-head">
                             <tr>
-                                <th class="w-12 p-4"><input id="backup-checkbox-all-search" type="checkbox" class="accent-theme-accent"></th>
+                                <th data-i18n="main.select_all">Select all</th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.supported_plats">Platforms</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_size">Size</th>
-                                <th class="p-4 text-center align-middle" data-i18n="main.newest_backup_time">Last Backup</th>
                                 <th class="p-4 text-center"></th>
                             </tr>
                         </thead>
@@ -136,7 +155,7 @@
             
                         <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.restore_complete">RESTORE COMPLETE</h2>
-                <i class="fa-solid fa-circle-check text-theme-accent text-7xl mb-8"></i>
+                <span data-lucide-icon="circle-check" class="summary-success-icon text-theme-accent mb-8"></span>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="restore-summary-total-games"></p>
                     <p id="restore-summary-total-size"></p>
@@ -149,25 +168,33 @@
                 <button id="restore-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
             </div>
 
-                        <div id="restore-content" class="hidden tab-layout">
+            <div id="restore-content" class="hidden tab-layout">
+                <header class="page-header">
+                    <div class="page-heading">
+                        <span class="page-heading-icon" data-lucide-icon="rotate-ccw-clock"></span>
+                        <div class="min-w-0">
+                            <h1 class="page-title text-content" data-i18n="main.restore">Restore</h1>
+                        </div>
+                    </div>
+                </header>
                 <div class="content-topbar">
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
-                            <i class="fa-solid fa-magnifying-glass search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
                             <input type="text" id="restore-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">
-                                                <button id="restore-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" title="Favorites">
-                            <i class="fa-solid fa-heart"></i>
+                        <button id="restore-favorites-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-favorites-active="false" aria-pressed="false" title="Favorites" data-i18n-title="main.favorites_only" data-i18n-aria-label="main.favorites_only">
+                            <span data-lucide-icon="heart"></span>
                             <span data-i18n="main.favorites_only">Favorites</span>
                         </button>
-                        <button id="restore-blocked-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-blocked-active="false" title="Hidden">
-                            <i class="fa-solid fa-ban"></i>
+                        <button id="restore-blocked-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-blocked-active="false" aria-pressed="false" title="Hidden" data-i18n-title="main.blocked_only" data-i18n-aria-label="main.blocked_only">
+                            <span data-lucide-icon="ban"></span>
                             <span data-i18n="main.blocked_only">Hidden</span>
                         </button>
-                        <button id="restore-uninstalled-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-uninstalled-active="false" title="Uninstalled">
-                            <i class="fa-solid fa-box-archive"></i>
+                        <button id="restore-uninstalled-only" type="button" class="home-action-button px-3 py-2 text-sm font-semibold flex items-center gap-2 opacity-70" data-uninstalled-active="false" aria-pressed="false" title="Uninstalled" data-i18n-title="main.uninstalled_only" data-i18n-aria-label="main.uninstalled_only">
+                            <span data-lucide-icon="archive"></span>
                             <span data-i18n="main.uninstalled_only">Uninstalled</span>
                         </button>
                     </div>
@@ -176,23 +203,34 @@
                 <div class="table-panel">
                     <div class="table-panel-header">
                         <div class="selection-summary">
-                            <div id="restore-selected-count" class="text-lg font-bold"></div>
-                            <div id="restore-selected-size" class="text-sm opacity-55"></div>
+                            <label class="selection-checkbox" data-i18n-title="main.select_all">
+                                <input id="restore-checkbox-all-search" type="checkbox" class="accent-theme-accent" data-i18n-aria-label="main.select_all">
+                            </label>
+                            <div class="selection-summary-copy">
+                                <div id="restore-selected-count" class="text-lg font-bold"></div>
+                                <div id="restore-selected-size" class="text-sm opacity-55"></div>
+                            </div>
                         </div>
                         <button id="restore-button" class="primary-button table-panel-action flex items-center gap-2">
-                            <i id="restore-icon" class="fa-solid fa-clock-rotate-left"></i> <span id="restore-text" data-i18n="main.restore_selected">Restore Selected</span>
+                            <span id="restore-icon" data-lucide-icon="rotate-ccw-clock"></span> <span id="restore-text" data-i18n="main.restore_selected">Restore Selected</span>
                         </button>
                     </div>
 
                 <div class="table-container">
-                    <table class="w-full text-left">
-                        <thead>
+                    <table class="game-list-table w-full text-left">
+                        <colgroup>
+                            <col class="game-list-select-column">
+                            <col class="game-list-primary-column">
+                            <col class="game-list-detail-column">
+                            <col class="game-list-size-column">
+                            <col class="game-list-action-column">
+                        </colgroup>
+                        <thead class="table-semantic-head">
                             <tr>
-                                <th class="w-12 p-4"><input id="restore-checkbox-all-search" type="checkbox" class="accent-theme-accent"></th>
+                                <th data-i18n="main.select_all">Select all</th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_count">Backups</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.restore_size">Size</th>
-                                <th class="p-4 text-center align-middle" data-i18n="main.newest_backup_time">Last Backup</th>
                                 <th class="p-4 text-center"></th>
                             </tr>
                         </thead>
@@ -205,47 +243,82 @@
         </section>
 
         <!-- Tab 3: Sync -->
-                <section id="sync" role="tabpanel" class="hidden">
-            <div id="sync-content" class="space-y-5 animate-fadeInShift">
-                <div class="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-xs leading-relaxed text-yellow-100/80">
-                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-                    <span data-i18n="main.github_sync_note">Requires Git to be installed and the selected folder to be a cloned repository with a configured remote. Authentication is handled by your local Git credential manager.</span>
-                </div>
+        <section id="sync" role="tabpanel" class="hidden">
+            <div id="sync-content" class="sync-layout animate-fadeInShift">
+                <header class="page-header">
+                    <div class="page-heading">
+                        <span class="page-heading-icon" data-lucide-icon="git-compare-arrows"></span>
+                        <div class="min-w-0">
+                            <h1 class="page-title text-content" data-i18n="main.sync">Sync</h1>
+                        </div>
+                    </div>
+                </header>
 
-                <div class="space-y-5">
-                    <div>
-                        <label class="block text-sm font-medium mb-2 opacity-60" data-i18n="settings.backupPath">Backup Save Path</label>
-                        <div class="flex gap-2">
-                                                        <input type="text" id="backup-path" readonly class="flex-1">
-                            <button id="backup-path-select" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">...</button>
-                            <button id="backup-path-open" class="home-action-button px-4 py-2 flex items-center gap-2">
-                                <i class="fa-solid fa-folder-open"></i>
-                                <span data-i18n="main.open_directory">Open</span>
-                            </button>
-                            <button id="github-sync-refresh" class="home-action-button px-4 py-2 flex items-center gap-2">
-                                <i class="fa-solid fa-rotate"></i>
-                                <span data-i18n="main.github_sync_check">Check</span>
-                            </button>
-                                                </div>
+                <div class="sync-body">
+                    <div class="sync-intro">
+                        <p data-i18n="main.sync_description">Manage backup storage and sync backups with external services.</p>
                     </div>
 
-                    <div class="surface-effect p-4 rounded-xl">
-                        <div id="github-sync-status-message" class="text-sm font-bold text-yellow-400"></div>
-                        <pre id="github-sync-status-details" class="text-xs opacity-60 mt-2 whitespace-pre-wrap"></pre>
+                    <section class="sync-section" aria-labelledby="sync-storage-heading">
+                        <h2 id="sync-storage-heading" class="sync-section-title" data-i18n="main.sync_storage">Storage and repository</h2>
+                        <div class="sync-card">
+                            <div class="sync-setting-block">
+                                <div class="sync-setting-heading">
+                                    <div class="sync-setting-copy">
+                                        <div class="sync-row-title" data-i18n="settings.backupPath">Backup Save Path</div>
+                                        <p class="sync-row-description" data-i18n="main.backup_path_sync_hint">Select a backup storage folder. If this folder is a Git repository, it can be synced with its configured remote.</p>
+                                    </div>
+                                    <button id="backup-path-open" class="compact-action-button sync-compact-button home-action-button" data-i18n-title="main.open_directory" data-i18n-aria-label="main.open_directory">
+                                        <span data-lucide-icon="folder-open"></span>
+                                        <span data-i18n="main.open_directory">Open</span>
+                                    </button>
+                                </div>
+                                <div class="sync-path-control">
+                                    <input type="text" id="backup-path" readonly>
+                                    <button id="backup-path-select" class="sync-icon-button" aria-label="Select backup folder" data-i18n-title="settings.select_backup_path" data-i18n-aria-label="settings.select_backup_path">
+                                        <span data-lucide-icon="folder-search"></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="sync-status-row">
+                                <span class="sync-status-icon" data-lucide-icon="git-compare-arrows"></span>
+                                <div class="sync-status-copy">
+                                    <div id="github-sync-status-message" class="sync-status-message"></div>
+                                    <pre id="github-sync-status-details" class="sync-status-details"></pre>
+                                </div>
+                                <button id="github-sync-refresh" class="sync-compact-button home-action-button" data-i18n-title="main.github_sync_check" data-i18n-aria-label="main.github_sync_check">
+                                    <span data-lucide-icon="refresh-cw"></span>
+                                    <span data-i18n="main.github_sync_check">Check</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="sync-notice">
+                        <span data-lucide-icon="triangle-alert"></span>
+                        <span data-i18n="main.github_sync_note">Requires Git to be installed and the selected folder to be a cloned repository with a configured remote. Authentication is handled by your local Git credential manager.</span>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <button id="github-sync-upload" class="primary-button p-5 flex flex-col items-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
-                            <span class="font-bold" data-i18n="main.github_sync_upload">Upload Local Backups</span>
-                            <span class="text-xs opacity-60" data-i18n="main.github_sync_upload_hint">Commit local backups and push</span>
-                        </button>
-                        <button id="github-sync-download" class="home-action-button p-5 flex flex-col items-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-down text-2xl text-theme-accent"></i>
-                            <span class="font-bold" data-i18n="main.github_sync_download">Download Backups</span>
-                            <span class="text-xs opacity-60" data-i18n="main.github_sync_download_hint">Pull Git backups into local storage</span>
-                        </button>
-            </div>
+                    <section class="sync-section" aria-labelledby="sync-actions-heading">
+                        <h2 id="sync-actions-heading" class="sync-section-title" data-i18n="main.sync_actions">Sync actions</h2>
+                        <div class="sync-transfer-list">
+                            <button id="github-sync-upload" class="sync-transfer-action">
+                                <span class="sync-transfer-icon" data-lucide-icon="cloud-upload"></span>
+                                <span class="sync-transfer-copy">
+                                    <span class="sync-row-title" data-i18n="main.github_sync_upload">Upload Local Backups</span>
+                                    <span class="sync-row-description" data-i18n="main.github_sync_upload_hint">Commit local backups and push</span>
+                                </span>
+                            </button>
+                            <button id="github-sync-download" class="sync-transfer-action">
+                                <span class="sync-transfer-icon" data-lucide-icon="cloud-download"></span>
+                                <span class="sync-transfer-copy">
+                                    <span class="sync-row-title" data-i18n="main.github_sync_download">Download Backups</span>
+                                    <span class="sync-row-description" data-i18n="main.github_sync_download_hint">Pull Git backups into local storage</span>
+                                </span>
+                            </button>
+                        </div>
+                    </section>
                 </div>
             </div>
         </section>

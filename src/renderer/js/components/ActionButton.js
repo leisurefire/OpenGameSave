@@ -1,31 +1,29 @@
 /**
  * <action-button> Web Component
  *
- * Button with FA icons in light DOM, styled by Shadow DOM.
- * This design allows Font Awesome icons to work correctly
- * without needing to replicate FA styles inside Shadow DOM.
+ * Compact button with light-DOM content, styled by Shadow DOM.
  *
  * Usage:
  *   const btn = new ActionButton();
  *   btn.setAttribute('variant', 'danger'); // or 'default'
- *   btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete';
+ *   btn.innerHTML = '<span data-lucide-icon="trash-2"></span> Delete';
  *   btn.addEventListener('click', () => {...});
  */
 class ActionButton extends HTMLElement {
     constructor() {
         super();
-        this.attachShadow({ mode: 'open' });
+        this.attachShadow({ mode: 'open', delegatesFocus: true });
         this._render();
     }
 
     static get observedAttributes() {
-        return ['variant'];
+        return ['variant', 'disabled', 'aria-label'];
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-        if (name === 'variant' && this.shadowRoot) {
-            this._updateVariantClass();
-        }
+        if (!this.shadowRoot) return;
+        if (name === 'variant') this._updateVariantClass();
+        if (name === 'disabled' || name === 'aria-label') this._updateState();
     }
 
     _updateVariantClass() {
@@ -33,6 +31,15 @@ class ActionButton extends HTMLElement {
         if (!wrapper) return;
         const variant = this.getAttribute('variant') || 'default';
         wrapper.className = variant === 'danger' ? 'btn-wrapper btn-danger' : 'btn-wrapper btn-default';
+    }
+
+    _updateState() {
+        const button = this.shadowRoot.querySelector('.btn-wrapper');
+        if (!button) return;
+        button.disabled = this.hasAttribute('disabled');
+        const label = this.getAttribute('aria-label');
+        if (label) button.setAttribute('aria-label', label);
+        else button.removeAttribute('aria-label');
     }
 
     _render() {
@@ -56,11 +63,12 @@ class ActionButton extends HTMLElement {
                     align-items: center;
                     justify-content: center;
                     gap: 0.375rem;
-                    padding: 0.375rem 0.75rem;
+                    min-height: 28px;
+                    padding: 4px 9px;
                     width: 100%;
                     height: 100%;
                     box-sizing: border-box;
-                    font-size: 0.75rem;
+                    font-size: 11.5px;
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
                     border-radius: var(--radius-win-sm, 4px);
@@ -69,6 +77,16 @@ class ActionButton extends HTMLElement {
                     transition: background-color 0.1s ease, border-color 0.1s ease;
                     white-space: nowrap;
                     user-select: none;
+                }
+
+                .btn-wrapper:disabled {
+                    cursor: not-allowed;
+                    opacity: 0.5;
+                }
+
+                .btn-wrapper:focus-visible {
+                    outline: 2px solid color-mix(in srgb, var(--system-accent, #16c60c) 62%, white);
+                    outline-offset: 2px;
                 }
 
                 .btn-default {
@@ -107,19 +125,11 @@ class ActionButton extends HTMLElement {
                     pointer-events: none;
                 }
             </style>
-            <div class="btn-wrapper ${variantClass}">
+            <button type="button" class="btn-wrapper ${variantClass}">
                 <slot></slot>
-            </div>
+            </button>
         `;
-
-        // Forward click events from Shadow DOM to host element.
-        // stopPropagation() prevents the original event from bubbling out of
-        // the shadow boundary on its own, so we only fire one synthetic click.
-        const wrapper = this.shadowRoot.querySelector('.btn-wrapper');
-        wrapper.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        });
+        this._updateState();
     }
 }
 

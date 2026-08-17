@@ -13,22 +13,22 @@
     --color-theme-accent-fluorescent: color-mix(in srgb, var(--system-accent) 80%, white);
     
     /* Fluent Design Colors */
-    --color-win-bg: rgba(32, 32, 32, 0.7);
-    --color-win-surface: rgba(255, 255, 255, 0.05); /* Solid surface like layered backgrounds */
-    --color-win-surface-hover: rgba(255, 255, 255, 0.08);
-    --color-win-surface-active: rgba(255, 255, 255, 0.03);
-    --color-win-surface-bright: rgba(43, 43, 43, 0.9);
+    --color-win-bg: rgba(23, 23, 23, 0.94);
+    --color-win-surface: rgba(255, 255, 255, 0.035);
+    --color-win-surface-hover: rgba(255, 255, 255, 0.065);
+    --color-win-surface-active: rgba(255, 255, 255, 0.025);
+    --color-win-surface-bright: rgba(36, 36, 36, 0.98);
     
-    --color-win-border: rgba(255, 255, 255, 0.08);
-    --color-win-border-bright: rgba(255, 255, 255, 0.16);
+    --color-win-border: rgba(255, 255, 255, 0.075);
+    --color-win-border-bright: rgba(255, 255, 255, 0.12);
     --color-win-border-focus: var(--color-theme-accent-bright);
     
     /* Fluent Typography */
     --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     
     /* Fluent Corner Radius */
-    --radius-win: 8px; /* Top level windows, modals, large surfaces */
-    --radius-win-sm: 4px; /* Buttons, inputs, small controls */
+    --radius-win: 12px;
+    --radius-win-sm: 8px;
 
     --animate-fadeIn: fadeIn 0.1s ease-out forwards;
     --animate-fadeOut: fadeOut 0.1s ease-in forwards;
