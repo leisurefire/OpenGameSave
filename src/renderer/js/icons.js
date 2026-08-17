@@ -10,12 +10,13 @@ import {
     CircleX,
     CloudDownload,
     CloudUpload,
+    Database,
     DatabaseZap,
     Download,
     EllipsisVertical,
-    ExternalLink,
     Eye,
     FileInput,
+    FolderCog,
     FolderOpen,
     FolderSearch,
     Globe,
@@ -58,12 +59,13 @@ const iconRegistry = new Map([
     CircleX,
     CloudDownload,
     CloudUpload,
+    Database,
     DatabaseZap,
     Download,
     EllipsisVertical,
-    ExternalLink,
     Eye,
     FileInput,
+    FolderCog,
     FolderOpen,
     FolderSearch,
     Globe,
@@ -91,6 +93,32 @@ const iconRegistry = new Map([
     WandSparkles,
     X
 ].map(icon => [icon.name, icon]));
+
+// Reusable actions should be selected by intent instead of repeating Lucide
+// names throughout the UI. This keeps the same action visually consistent and
+// lets navigation/management actions use a different icon from opening a path.
+export const ACTION_ICONS = Object.freeze({
+    delete: Trash2.name,
+    manageLocalData: FolderCog.name,
+    openDirectory: FolderOpen.name,
+    openRegistry: Database.name,
+    selectDirectory: FolderSearch.name,
+    selectFile: FileInput.name
+});
+
+export function getLocalSaveOpenIconRole(pathType) {
+    // Files are intentionally revealed via their containing directory in the
+    // main process, so both files and folders share the directory-open icon.
+    return pathType === 'reg' ? 'openRegistry' : 'openDirectory';
+}
+
+function getContainerIconName(container) {
+    const actionRole = container.dataset.actionIcon;
+    if (actionRole) {
+        return ACTION_ICONS[actionRole] || null;
+    }
+    return container.dataset.lucideIcon;
+}
 
 export function createIcon(iconName, options = {}) {
     const icon = iconRegistry.get(iconName);
@@ -146,15 +174,17 @@ export function renderIcon(container, iconName, options = {}) {
 }
 
 export function installIcons(root = document) {
-    if (root.nodeType === Node.ELEMENT_NODE && root.matches?.('[data-lucide-icon]')) {
-        const iconName = root.dataset.lucideIcon;
+    const iconSelector = '[data-lucide-icon], [data-action-icon]';
+
+    if (root.nodeType === Node.ELEMENT_NODE && root.matches?.(iconSelector)) {
+        const iconName = getContainerIconName(root);
         if (root.dataset.renderedIcon !== iconName) {
             renderIcon(root, iconName);
         }
     }
 
-    root.querySelectorAll?.('[data-lucide-icon]').forEach(container => {
-        const iconName = container.dataset.lucideIcon;
+    root.querySelectorAll?.(iconSelector).forEach(container => {
+        const iconName = getContainerIconName(container);
         if (container.dataset.renderedIcon !== iconName) {
             renderIcon(container, iconName);
         }

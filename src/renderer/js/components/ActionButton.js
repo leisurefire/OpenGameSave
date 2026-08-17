@@ -72,7 +72,7 @@ class ActionButton extends HTMLElement {
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
                     border-radius: var(--radius-win-sm, 4px);
-                    border: 1px solid var(--color-win-border, rgba(255,255,255,0.08));
+                    border: 1px solid var(--color-control-border, rgba(255,255,255,0.045));
                     cursor: pointer;
                     transition: background-color 0.1s ease, border-color 0.1s ease;
                     white-space: nowrap;
@@ -91,33 +91,31 @@ class ActionButton extends HTMLElement {
 
                 .btn-default {
                     background: rgba(255, 255, 255, 0.05);
-                    border-top: 1px solid rgba(255, 255, 255, 0.16);
                     color: rgba(255, 255, 255, 0.9);
                 }
 
                 .btn-default:hover {
                     background: rgba(255, 255, 255, 0.08);
+                    border-color: var(--color-control-border-hover, rgba(255,255,255,0.085));
                 }
 
                 .btn-default:active {
                     background: rgba(255, 255, 255, 0.03);
                     color: rgba(255, 255, 255, 0.7);
-                    border-top: 1px solid var(--color-win-border, rgba(255, 255, 255, 0.08));
                 }
 
                 .btn-danger {
-                    background: rgba(239, 68, 68, 0.1);
-                    color: rgb(239, 68, 68);
-                    border-color: rgba(239, 68, 68, 0.3);
+                    background: var(--color-danger-surface, #b3261e);
+                    color: var(--color-danger-foreground, #fff);
+                    border-color: transparent;
                 }
 
                 .btn-danger:hover {
-                    background: rgba(239, 68, 68, 0.2);
-                    border-color: rgba(239, 68, 68, 0.5);
+                    background: var(--color-danger-surface-hover, #c42b1c);
                 }
 
                 .btn-danger:active {
-                    opacity: 0.8;
+                    background: var(--color-danger-surface-active, #9f211a);
                 }
 
                 /* Slotted content (icons + text) from light DOM */

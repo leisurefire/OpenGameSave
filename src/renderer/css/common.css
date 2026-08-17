@@ -129,7 +129,7 @@ button {
 
 .home-action-button {
     background: var(--color-win-surface);
-    border: 1px solid var(--color-win-border);
+    border: 1px solid var(--color-control-border);
     color: rgba(255, 255, 255, 0.9);
     transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     border-radius: var(--radius-win-sm);
@@ -137,6 +137,7 @@ button {
 
 .home-action-button:hover {
     background: var(--color-win-surface-hover);
+    border-color: var(--color-control-border-hover);
 }
 
 .home-action-button:active {
@@ -173,7 +174,6 @@ button {
 
 .primary-button:hover {
     background: var(--color-theme-accent-fluorescent);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .primary-button:active {
@@ -184,8 +184,8 @@ input[type="text"],
 input[type="number"],
 select {
     background: rgba(255, 255, 255, 0.045) !important;
-    border: 1px solid var(--color-win-border) !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+    border: 1px solid var(--color-control-border) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
     border-radius: var(--radius-win-sm) !important;
     color: #ffffff !important;
     min-height: 36px;
@@ -244,7 +244,7 @@ input[type="radio"] {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-left: 1px solid rgba(255, 255, 255, 0.075);
+    border-left: 1px solid var(--color-control-border);
     border-radius: 0 8px 8px 0;
 }
 
@@ -259,7 +259,7 @@ input[type="radio"] {
 }
 
 .number-input-stepper + .number-input-stepper {
-    border-top: 1px solid rgba(255, 255, 255, 0.055);
+    border-top: 1px solid var(--color-control-border);
 }
 
 .number-input-stepper:hover {
@@ -299,7 +299,7 @@ select:focus-visible,
     color: rgba(255, 255, 255, 0.88);
     background: rgba(43, 43, 43, 0.97);
     backdrop-filter: blur(32px) saturate(115%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--color-win-border-bright);
     border-radius: 12px;
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
     pointer-events: auto;
@@ -391,7 +391,7 @@ select:focus-visible,
     font-size: 12px;
     font-weight: 500;
     background: rgba(255, 255, 255, 0.055);
-    border: 1px solid rgba(255, 255, 255, 0.075);
+    border: 1px solid var(--color-control-border);
     border-radius: 8px !important;
 }
 

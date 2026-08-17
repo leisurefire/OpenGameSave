@@ -220,10 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <input type="text" readonly
                 class="display-path grow text-xs font-mono" />
             <button type="button" class="select-path settings-icon-button" aria-label="Select path">
-                <span data-lucide-icon="folder-search"></span>
+                <span data-action-icon="selectDirectory"></span>
             </button>
             <button type="button" class="remove-path settings-icon-button danger" aria-label="Remove path">
-                <span data-lucide-icon="trash-2"></span>
+                <span data-action-icon="delete"></span>
             </button>
         `;
         gamePathsContainer.appendChild(newPath);

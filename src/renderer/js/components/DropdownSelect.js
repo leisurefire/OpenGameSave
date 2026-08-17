@@ -101,7 +101,7 @@ class DropdownSelect extends HTMLElement {
                     font: inherit;
                     text-align: left;
                     background: rgba(255, 255, 255, 0.055);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border: 1px solid var(--color-control-border, rgba(255, 255, 255, 0.045));
                     border-radius: 10px;
                     cursor: pointer;
                     transition: background-color 120ms ease, border-color 120ms ease;
@@ -110,7 +110,7 @@ class DropdownSelect extends HTMLElement {
                 .select-trigger:hover,
                 .select-trigger[aria-expanded="true"] {
                     background: rgba(255, 255, 255, 0.075);
-                    border-color: rgba(255, 255, 255, 0.15);
+                    border-color: var(--color-control-border-hover, rgba(255, 255, 255, 0.085));
                 }
 
                 .select-trigger:focus-visible {

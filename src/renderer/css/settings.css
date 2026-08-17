@@ -215,7 +215,7 @@
     padding: 0;
     color: rgba(255, 255, 255, 0.56);
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.085);
+    border: 1px solid var(--color-control-border);
     border-radius: 9px !important;
     transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
@@ -223,16 +223,23 @@
 .settings-icon-button:hover {
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.08);
+    border-color: var(--color-control-border-hover);
 }
 
 .settings-icon-button.danger {
-    color: rgba(248, 113, 113, 0.72);
+    color: var(--color-danger-foreground);
+    background: var(--color-danger-surface);
+    border-color: transparent;
 }
 
 .settings-icon-button.danger:hover {
-    color: rgb(248, 113, 113);
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.24);
+    color: var(--color-danger-foreground);
+    background: var(--color-danger-surface-hover);
+    border-color: transparent;
+}
+
+.settings-icon-button.danger:active {
+    background: var(--color-danger-surface-active);
 }
 
 .settings-icon-button .lucide-icon {
@@ -252,7 +259,7 @@
     font-size: 12.5px;
     font-weight: 500;
     background: transparent;
-    border: 1px dashed rgba(255, 255, 255, 0.13);
+    border: 1px dashed rgba(255, 255, 255, 0.09);
     border-radius: 10px !important;
     transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
@@ -260,7 +267,7 @@
 .settings-add-path:hover {
     color: rgba(255, 255, 255, 0.88);
     background: rgba(255, 255, 255, 0.03);
-    border-color: rgba(255, 255, 255, 0.22);
+    border-color: rgba(255, 255, 255, 0.14);
 }
 
 .settings-add-path .lucide-icon {

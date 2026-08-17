@@ -19,9 +19,17 @@
     --color-win-surface-active: rgba(255, 255, 255, 0.025);
     --color-win-surface-bright: rgba(36, 36, 36, 0.98);
     
-    --color-win-border: rgba(255, 255, 255, 0.075);
-    --color-win-border-bright: rgba(255, 255, 255, 0.12);
+    --color-win-border: rgba(255, 255, 255, 0.055);
+    --color-win-border-bright: rgba(255, 255, 255, 0.09);
+    --color-control-border: rgba(255, 255, 255, 0.045);
+    --color-control-border-hover: rgba(255, 255, 255, 0.085);
     --color-win-border-focus: var(--color-theme-accent-bright);
+
+    /* Filled danger controls keep their label legible at normal text sizes. */
+    --color-danger-surface: #b3261e;
+    --color-danger-surface-hover: #c42b1c;
+    --color-danger-surface-active: #9f211a;
+    --color-danger-foreground: #ffffff;
     
     /* Fluent Typography */
     --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;

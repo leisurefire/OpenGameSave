@@ -70,7 +70,7 @@ const windowVisualEffect = isWindows ? {
 } : {};
 
 const applyWindowsMicaEffect = (browserWindow) => {
-    if (!isWindows || !browserWindow) {
+    if (!isWindows || !browserWindow || browserWindow.isDestroyed()) {
         return;
     }
 
@@ -227,11 +227,20 @@ const unregisterActiveModalWindow = (browserWindow) => {
 
     activeModalWindows.splice(index, 1);
 
-    const nextTop = getTopModalOwner();
+    // The native owner is re-enabled after Electron finishes tearing down the
+    // modal HWND. Focusing it synchronously from the child's `closed` event can
+    // be ignored by Windows, especially after shell.openExternal() temporarily
+    // moved activation to another application. Wait one event-loop turn, then
+    // resolve the current top owner again so a newly opened modal is not skipped.
+    setTimeout(() => {
+        const nextTop = getTopModalOwner();
+        if (!nextTop || nextTop.isDestroyed() || !nextTop.isVisible()) {
+            return;
+        }
 
-    if (nextTop && !nextTop.isDestroyed()) {
         nextTop.focus();
-    }
+        applyWindowsMicaEffect(nextTop);
+    }, 0);
 };
 
 const showModalWindow = (browserWindow) => {

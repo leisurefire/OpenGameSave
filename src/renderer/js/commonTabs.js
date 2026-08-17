@@ -2,7 +2,7 @@ import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
 import { formatSize } from './formatting.js';
-import { renderIcon } from './icons.js';
+import { ACTION_ICONS, renderIcon } from './icons.js';
 import {
     appendRows as appendVirtualRows,
     applyVirtualFilter,
@@ -788,7 +788,7 @@ window.api.receive('execute-menu-action', async (action, data) => {
     } else if (action === 'open-wiki') {
         if (data && data !== 'none') window.api.invoke('open-url', data);
         else showAlert('warning', await window.i18n.translate('alert.no_wiki_url'));
-    } else if (action === 'open-save-folder') {
+    } else if (action === 'manage-local-data') {
         window.api.send('open-modal-window', 'local-save', { wikiId: data });
     } else if (action === 'manage-backups') {
         window.api.send('open-modal-window', 'manage-backups', { wikiId: data });
@@ -855,8 +855,8 @@ function setDropDownAction() {
                 },
                 {
                     label: await window.i18n.translate('main.browse_local_save'),
-                    icon: 'folder-open',
-                    action: 'open-save-folder',
+                    icon: ACTION_ICONS.manageLocalData,
+                    action: 'manage-local-data',
                     data: wikiPageId
                 },
                 {

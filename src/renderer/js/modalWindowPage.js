@@ -1,6 +1,7 @@
 import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
 import { formatSize } from './formatting.js';
+import { getLocalSaveOpenIconRole } from './icons.js';
 import './components/DataTable.js';
 
 function escapeHtml(value) {
@@ -89,7 +90,7 @@ async function renderExportModal(root) {
                         <div class="modal-path-control">
                             <input type="text" id="modal-export-path" readonly value="${escapeHtml(settings?.exportPath || '')}">
                             <button id="modal-export-select-path" type="button" class="path-picker-button secondary-button" aria-label="${escapeHtml(exportPathLabel)}">
-                                <span data-lucide-icon="folder-search"></span><span>${escapeHtml(browseLabel)}</span>
+                                <span data-action-icon="selectDirectory"></span><span>${escapeHtml(browseLabel)}</span>
                             </button>
                         </div>
                     </div>
@@ -149,7 +150,7 @@ async function renderImportModal(root, initData) {
                         <div class="modal-path-control">
                             <input type="text" id="modal-import-path" readonly value="${escapeHtml(initData?.gsmPath || '')}">
                             <button id="modal-import-select-path" type="button" class="path-picker-button secondary-button" aria-label="${escapeHtml(gsmPathLabel)}">
-                                <span data-lucide-icon="file-input"></span><span>${escapeHtml(browseLabel)}</span>
+                                <span data-action-icon="selectFile"></span><span>${escapeHtml(browseLabel)}</span>
                             </button>
                         </div>
                     </div>
@@ -329,7 +330,7 @@ async function renderManageBackupsModal(root, initData) {
                     <div style="display:flex;justify-content:flex-end;gap:0.5rem">
                         <button type="button" class="restore-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="rotate-ccw-clock"></span> ${escapeHtml(labels.restore)}</button>
                         <button type="button" class="permanent-backup-btn btn-action" data-backup-date="${escapeHtml(backup.date)}" data-is-permanent="${backup.is_permanent}"><span data-lucide-icon="star"></span> ${escapeHtml(backup.is_permanent ? labels.removePermanent : labels.makePermanent)}</button>
-                        <button type="button" class="delete-backup-btn btn-danger" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="trash-2"></span> ${escapeHtml(labels.delete)}</button>
+                        <button type="button" class="delete-backup-btn btn-danger" data-backup-date="${escapeHtml(backup.date)}"><span data-action-icon="delete"></span> ${escapeHtml(labels.delete)}</button>
                     </div>
                 </td>
             </tr>
@@ -348,7 +349,7 @@ async function renderManageBackupsModal(root, initData) {
             <div class="modal-window-content" id="manage-backups-table-container">
             </div>
             <div class="modal-footer">
-                <button type="button" id="modal-open-backup-folder" class="compact-action-button home-action-button"><span data-lucide-icon="folder-open"></span> ${escapeHtml(labels.openBackupFolder)}</button>
+                <button type="button" id="modal-open-backup-folder" class="compact-action-button home-action-button"><span data-action-icon="openDirectory"></span> ${escapeHtml(labels.openBackupFolder)}</button>
             </div>
         </section>
     `;
@@ -611,14 +612,14 @@ async function renderLocalSaveModal(root, initData) {
         const typeLabel = pathObj.type === 'reg'
             ? labels.registry
             : (pathObj.type === 'file' ? labels.file : labels.folder);
-        const openIcon = pathObj.type === 'folder' ? 'folder-open' : 'external-link';
+        const openIconRole = getLocalSaveOpenIconRole(pathObj.type);
         return `
             <tr>
                 <td style="font-weight:bold;opacity:0.7;white-space:nowrap">${escapeHtml(typeLabel)}</td>
                 <td style="font-size:0.75rem;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.8" title="${escapeHtml(pathObj.resolved || pathObj.path || '')}">${escapeHtml(pathObj.resolved || pathObj.path || '')}</td>
                 <td>
                     <button type="button" class="open-local-save-path-btn btn-action" data-index="${index}">
-                        <span data-lucide-icon="${openIcon}"></span> ${escapeHtml(labels.open)}
+                        <span data-action-icon="${openIconRole}"></span> ${escapeHtml(labels.open)}
                     </button>
                 </td>
             </tr>
@@ -634,7 +635,7 @@ async function renderLocalSaveModal(root, initData) {
             <div class="modal-window-content" id="local-save-table-container">
             </div>
             <div class="modal-footer">
-                <button type="button" id="modal-delete-local-save" class="danger-button flex items-center gap-2"><span data-lucide-icon="trash-2"></span> ${escapeHtml(labels.deleteLocalSave)}</button>
+                <button type="button" id="modal-delete-local-save" class="danger-button flex items-center gap-2"><span data-action-icon="delete"></span> ${escapeHtml(labels.deleteLocalSave)}</button>
             </div>
         </section>
     `;
