@@ -108,6 +108,7 @@ const loadSettings = () => {
         maxBackups: 5,
         launchAtStartup: false,
         autoAppUpdate: true,
+        appUpdatePrerelease: false,
         autoDbUpdate: false,
         syncAccentColor: false,
         experimentalXgpSource: false,

@@ -9,9 +9,11 @@ function read(relativePath) {
     return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
-test('Windows releases include matching metadata for electron-updater', () => {
+test('Windows releases are version-bound, channel-aware and remotely verified', () => {
     const packageJson = JSON.parse(read('package.json'));
     const releaseWorkflow = read('.github/workflows/release.yml');
+    const releaseValidator = read('scripts/validate-app-release.js');
+    const releaseBuilder = read('scripts/electron-builder.release.js');
 
     assert.equal(packageJson.dependencies['electron-updater'], '^6.8.9');
     assert.deepEqual(packageJson.build.publish, {
@@ -20,8 +22,16 @@ test('Windows releases include matching metadata for electron-updater', () => {
         repo: 'OpenGameSave'
     });
     assert.equal(packageJson.build.artifactName, '${productName}-Setup-${version}.${ext}');
-    assert.match(releaseWorkflow, /-name "latest\.yml"/);
-    assert.match(releaseWorkflow, /latest\.yml references a missing installer/);
+    assert.match(releaseWorkflow, /group: application-release/);
+    assert.match(releaseWorkflow, /--verify-tag/);
+    assert.match(releaseWorkflow, /validate-app-release\.js/);
+    assert.match(releaseWorkflow, /--remote-json/);
+    assert.match(releaseWorkflow, /permissions:\s+contents: write/);
+    assert.match(releaseBuilder, /channel: updateChannel/);
+    assert.match(releaseValidator, /metadata\.files\[0\]\.url/);
+    assert.match(releaseValidator, /metadata\.files\[0\]\.size/);
+    assert.match(releaseValidator, /metadata\.files\[0\]\.sha512/);
+    assert.match(releaseValidator, /remoteAsset\?\.digest/);
 });
 
 test('application and database update actions are exposed in their intended locations', () => {

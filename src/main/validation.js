@@ -15,6 +15,7 @@ const MAX_DATABASE_PATCH_ROWS = 100000;
 const BOOLEAN_SETTING_KEYS = new Set([
     'launchAtStartup',
     'autoAppUpdate',
+    'appUpdatePrerelease',
     'autoDbUpdate',
     'syncAccentColor',
     'experimentalXgpSource',
@@ -53,7 +54,12 @@ function normalizeSyncProvider(provider, fallback = 'github') {
     return SUPPORTED_SYNC_PROVIDERS.has(provider) ? provider : fallback;
 }
 
-function normalizeWebDAVUrl(value, { allowEmpty = true, fallback = null } = {}) {
+function normalizeWebDAVUrl(value, {
+    allowEmpty = true,
+    allowInsecureLocalhost = process.env.OPENGAMESAVE_ALLOW_INSECURE_LOCALHOST === '1'
+        && process.env.NODE_ENV !== 'production',
+    fallback = null
+} = {}) {
     if ((value === null || value === undefined || value === '') && allowEmpty) return '';
     if (typeof value !== 'string' || value.length > 2048 || value.includes('\0') || /[\r\n]/.test(value)) {
         if (fallback !== null) return fallback;
@@ -61,7 +67,11 @@ function normalizeWebDAVUrl(value, { allowEmpty = true, fallback = null } = {}) 
     }
     try {
         const parsed = new URL(value.trim());
-        if (!['http:', 'https:'].includes(parsed.protocol)
+        const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+        const insecureDevelopmentUrl = parsed.protocol === 'http:'
+            && allowInsecureLocalhost
+            && loopbackHosts.has(parsed.hostname.toLowerCase());
+        if (parsed.protocol !== 'https:' && !insecureDevelopmentUrl
             || parsed.username || parsed.password || parsed.hash || parsed.search) {
             throw new Error('Invalid WebDAV URL');
         }

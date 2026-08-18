@@ -43,5 +43,7 @@
 - 开发人员名单：[leisurefire](https://github.com/leisurefire)
 - 曾经开发人员名单：Yongcan Yang
 
+WebDAV 必须使用 HTTPS。本地集成测试可同时设置 `NODE_ENV=development` 与 `OPENGAMESAVE_ALLOW_INSECURE_LOCALHOST=1`，仅对回环地址显式启用 HTTP。
+
 ## 许可
 OpenGameSave 基于 GPL-3.0-only 许可发布。

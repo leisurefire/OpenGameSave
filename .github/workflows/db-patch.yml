@@ -153,7 +153,7 @@ jobs:
           }
           while IFS= read -r -d '' file; do publish_immutable "$file"; done < <(find dist/database-update -maxdepth 1 -type f ! -name current.json -print0)
           gh release upload "$DATABASE_TAG" dist/database-update/current.json --clobber
-          gh release edit "$DATABASE_TAG" --target "$GITHUB_SHA"
+          gh release edit "$DATABASE_TAG" --target "$GITHUB_SHA" --latest=false
 
       - name: Add publication summary
         shell: bash

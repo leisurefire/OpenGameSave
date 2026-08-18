@@ -3,83 +3,145 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 
-const CREDENTIAL_VERSION = 1;
-const MAX_CREDENTIAL_FILE_SIZE = 64 * 1024;
-let credentialWriteQueue = Promise.resolve();
+const PROVIDER_VERSION = 2;
+const LEGACY_CREDENTIAL_VERSION = 1;
+const MAX_PROVIDER_FILE_SIZE = 128 * 1024;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+let providerWriteQueue = Promise.resolve();
 
-function getCredentialPath() {
+function getProviderPath() {
+    return path.join(app.getPath('userData'), 'OGS Settings', 'webdav-provider.json');
+}
+
+function getLegacyCredentialPath() {
     return path.join(app.getPath('userData'), 'OGS Settings', 'webdav-credentials.json');
 }
 
-async function readCredentialRecord() {
-    const credentialPath = getCredentialPath();
+async function readBoundedJson(filePath, maximumSize = MAX_PROVIDER_FILE_SIZE) {
     try {
-        const stats = await fs.promises.stat(credentialPath);
-        if (!stats.isFile() || stats.size > MAX_CREDENTIAL_FILE_SIZE) {
-            throw new Error('Invalid WebDAV credential file');
-        }
-        const record = JSON.parse(await fs.promises.readFile(credentialPath, 'utf8'));
-        if (record?.version !== CREDENTIAL_VERSION
-            || typeof record.encryptedPassword !== 'string'
-            || record.encryptedPassword.length > MAX_CREDENTIAL_FILE_SIZE) {
-            throw new Error('Invalid WebDAV credential file');
-        }
-        return record;
+        const stats = await fs.promises.stat(filePath);
+        if (!stats.isFile() || stats.size > maximumSize) throw new Error('Invalid WebDAV provider file');
+        return JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
     } catch (error) {
         if (error?.code === 'ENOENT') return null;
+        if (error instanceof SyntaxError) throw new Error('Invalid WebDAV provider file');
         throw error;
     }
 }
 
-async function hasStoredWebDAVPassword() {
-    return Boolean(await readCredentialRecord());
+function validateEncryptedRecord(record) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)
+        || record.version !== PROVIDER_VERSION || !UUID_PATTERN.test(record.generation)
+        || !UUID_PATTERN.test(record.deviceId) || typeof record.url !== 'string'
+        || typeof record.username !== 'string' || typeof record.remotePath !== 'string'
+        || typeof record.hasPassword !== 'boolean' || typeof record.encryptedPassword !== 'string'
+        || record.encryptedPassword.length > MAX_PROVIDER_FILE_SIZE
+        || record.hasPassword !== Boolean(record.encryptedPassword)) {
+        throw new Error('Invalid WebDAV provider file');
+    }
+    return record;
 }
 
-async function readWebDAVPassword() {
-    const record = await readCredentialRecord();
-    if (!record) return '';
-    if (!safeStorage.isEncryptionAvailable()) {
-        throw new Error('Secure credential storage is unavailable');
+async function ensureAsyncEncryptionAvailable() {
+    if (!await safeStorage.isAsyncEncryptionAvailable()) {
+        throw new Error('Secure credential storage is temporarily unavailable');
     }
+}
+
+async function decryptPassword(encryptedPassword) {
+    if (!encryptedPassword) return { password: '', shouldReEncrypt: false };
+    await ensureAsyncEncryptionAvailable();
     try {
-        return safeStorage.decryptString(Buffer.from(record.encryptedPassword, 'base64'));
+        const decrypted = await safeStorage.decryptStringAsync(Buffer.from(encryptedPassword, 'base64'));
+        return { password: decrypted.result, shouldReEncrypt: decrypted.shouldReEncrypt === true };
     } catch (_) {
-        throw new Error('The saved WebDAV password cannot be decrypted for this Windows account');
+        throw new Error('The saved WebDAV password cannot be decrypted for this operating-system account');
     }
 }
 
-async function persistWebDAVPassword(password) {
+async function encryptPassword(password) {
+    if (!password) return '';
+    await ensureAsyncEncryptionAvailable();
+    return (await safeStorage.encryptStringAsync(password)).toString('base64');
+}
+
+async function writeProviderRecord(record) {
+    const providerPath = getProviderPath();
+    const payload = JSON.stringify(validateEncryptedRecord(record), null, 2);
+    const temporaryPath = `${providerPath}.${process.pid}.${randomUUID()}.tmp`;
+    await fs.promises.mkdir(path.dirname(providerPath), { recursive: true, mode: 0o700 });
+    try {
+        const fileHandle = await fs.promises.open(temporaryPath, 'wx', 0o600);
+        try {
+            await fileHandle.writeFile(payload, 'utf8');
+            await fileHandle.sync();
+        } finally {
+            await fileHandle.close();
+        }
+        await fs.promises.rename(temporaryPath, providerPath);
+    } finally {
+        await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
+    }
+}
+
+async function persistWebDAVProviderConfig(config) {
+    const password = config?.password;
     if (typeof password !== 'string' || password.length > 4096 || password.includes('\0')) {
         throw new Error('Invalid WebDAV password');
     }
-
-    credentialWriteQueue = credentialWriteQueue.catch(() => undefined).then(async () => {
-        const credentialPath = getCredentialPath();
-        await fs.promises.mkdir(path.dirname(credentialPath), { recursive: true, mode: 0o700 });
-
-        if (!password) {
-            await fs.promises.rm(credentialPath, { force: true });
-            return;
-        }
-        if (!safeStorage.isEncryptionAvailable()) {
-            throw new Error('Secure credential storage is unavailable; the password was not saved');
-        }
-
-        const encryptedPassword = safeStorage.encryptString(password).toString('base64');
-        const payload = JSON.stringify({ version: CREDENTIAL_VERSION, encryptedPassword }, null, 2);
-        const tempPath = `${credentialPath}.${process.pid}.${randomUUID()}.tmp`;
-        try {
-            await fs.promises.writeFile(tempPath, payload, { encoding: 'utf8', mode: 0o600 });
-            await fs.promises.rename(tempPath, credentialPath);
-        } finally {
-            await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
-        }
+    providerWriteQueue = providerWriteQueue.catch(() => undefined).then(async () => {
+        const record = {
+            version: PROVIDER_VERSION,
+            generation: randomUUID(),
+            deviceId: UUID_PATTERN.test(config.deviceId || '') ? config.deviceId.toLowerCase() : randomUUID(),
+            url: config.url,
+            username: config.username,
+            remotePath: config.remotePath,
+            hasPassword: Boolean(password),
+            encryptedPassword: await encryptPassword(password)
+        };
+        await writeProviderRecord(record);
     });
-    return credentialWriteQueue;
+    return providerWriteQueue;
+}
+
+async function readLegacyPassword() {
+    const record = await readBoundedJson(getLegacyCredentialPath(), 64 * 1024);
+    if (!record) return '';
+    if (record.version !== LEGACY_CREDENTIAL_VERSION || typeof record.encryptedPassword !== 'string'
+        || record.encryptedPassword.length > 64 * 1024) {
+        throw new Error('Invalid legacy WebDAV credential file');
+    }
+    return (await decryptPassword(record.encryptedPassword)).password;
+}
+
+async function readWebDAVProviderConfig(fallbackConfig) {
+    const storedRecord = await readBoundedJson(getProviderPath());
+    if (!storedRecord) {
+        const migrated = {
+            ...fallbackConfig,
+            deviceId: randomUUID(),
+            password: await readLegacyPassword()
+        };
+        await persistWebDAVProviderConfig(migrated);
+        await fs.promises.rm(getLegacyCredentialPath(), { force: true }).catch(() => undefined);
+        return migrated;
+    }
+
+    const record = validateEncryptedRecord(storedRecord);
+    const decrypted = await decryptPassword(record.encryptedPassword);
+    const config = {
+        url: record.url,
+        username: record.username,
+        remotePath: record.remotePath,
+        deviceId: record.deviceId,
+        password: decrypted.password
+    };
+    if (decrypted.shouldReEncrypt) await persistWebDAVProviderConfig(config);
+    return config;
 }
 
 module.exports = {
-    hasStoredWebDAVPassword,
-    persistWebDAVPassword,
-    readWebDAVPassword
+    persistWebDAVProviderConfig,
+    readWebDAVProviderConfig
 };

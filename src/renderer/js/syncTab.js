@@ -208,6 +208,11 @@ async function runSync(direction) {
             games: result.games,
             size: formatSize(result.size || 0)
         }));
+        if (activeProvider === 'webdav' && result.conflicts?.length > 0) {
+            showAlert('modal', await window.i18n.translate('alert.webdav_conflicts_preserved', {
+                count: result.conflicts.length
+            }));
+        }
         await refreshSyncStatus();
     } catch (error) {
         document.getElementById(progressId)?.remove();

@@ -40,5 +40,7 @@ Installed builds can check for application updates at startup. When an update is
 - Current developers: [leisurefire](https://github.com/leisurefire)
 - Former developers: Yongcan Yang
 
+WebDAV requires HTTPS. Local integration tests may explicitly enable plain HTTP for loopback addresses only by setting `NODE_ENV=development` and `OPENGAMESAVE_ALLOW_INSECURE_LOCALHOST=1`.
+
 ### License
 OpenGameSave is licensed under GPL-3.0-only.

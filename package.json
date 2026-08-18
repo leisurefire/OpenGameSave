@@ -21,6 +21,7 @@
     "rebuild:electron-native": "node scripts/rebuild-electron-native.js",
     "app:dir": "npm run build && npm run rebuild:electron-native && electron-builder --dir",
     "app:dist": "npm run build && npm run rebuild:electron-native && electron-builder",
+    "app:dist:release": "npm run build && npm run rebuild:electron-native && electron-builder --config scripts/electron-builder.release.js --publish never",
     "db:sync:ludusavi": "node scripts/sync-ludusavi-manifest.js --report dist/ludusavi-sync-report.json",
     "db:sync:ludusavi:apply": "node scripts/sync-ludusavi-manifest.js --apply --report dist/ludusavi-sync-report.json",
     "postinstall": "electron-builder install-app-deps"
