@@ -13,7 +13,7 @@
     "styles:build": "tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --minify",
     "styles:watch": "tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --watch",
     "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include-all --test-coverage-include=src/main/validation.js --test-coverage-include=src/main/fileSystemUtils.js --test-coverage-include=src/main/databaseUpdateFiles.js --test-coverage-include=src/main/databaseManifest.js --test-coverage-include=src/main/xgpSourceFormat.js --test-coverage-include=src/main/webdavManifest.js --test-coverage-include=src/main/steamAccount.js --test-coverage-include=src/main/services/platformService.js --test-coverage-include=src/main/services/backupWorkerGameProcessor.js --test-coverage-lines=70 --test-coverage-functions=80 --test-coverage-branches=65",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/main/validation.js --test-coverage-include=src/main/fileSystemUtils.js --test-coverage-include=src/main/databaseUpdateFiles.js --test-coverage-include=src/main/databaseManifest.js --test-coverage-include=src/main/xgpSourceFormat.js --test-coverage-include=src/main/webdavManifest.js --test-coverage-include=src/main/steamAccount.js --test-coverage-include=src/main/services/platformService.js --test-coverage-include=src/main/services/backupWorkerGameProcessor.js --test-coverage-lines=70 --test-coverage-functions=80 --test-coverage-branches=65",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "typecheck": "tsc -p jsconfig.check.json",
