@@ -157,6 +157,25 @@ function setSyncBusy(isBusy) {
     });
 }
 
+async function formatWebDAVConflictDetails(conflicts) {
+    const visibleConflicts = conflicts.slice(0, 25);
+    const details = await Promise.all(visibleConflicts.map(conflict => window.i18n.translate(
+        conflict.originalVersion === 'remote'
+            ? 'alert.webdav_conflict_remote_original_detail'
+            : 'alert.webdav_conflict_local_original_detail',
+        {
+            original: conflict.originalBackup,
+            conflict: conflict.conflictBackup
+        }
+    )));
+    if (conflicts.length > visibleConflicts.length) {
+        details.push(await window.i18n.translate('alert.webdav_conflict_more', {
+            count: conflicts.length - visibleConflicts.length
+        }));
+    }
+    return details.join('\n');
+}
+
 async function saveWebDAVConfig() {
     const config = {
         url: document.getElementById('webdav-url').value.trim(),
@@ -211,7 +230,7 @@ async function runSync(direction) {
         if (activeProvider === 'webdav' && result.conflicts?.length > 0) {
             showAlert('modal', await window.i18n.translate('alert.webdav_conflicts_preserved', {
                 count: result.conflicts.length
-            }));
+            }), await formatWebDAVConflictDetails(result.conflicts));
         }
         await refreshSyncStatus();
     } catch (error) {

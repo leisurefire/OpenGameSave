@@ -22,11 +22,9 @@ Soon, your saves will go wherever you do. Upcoming updates will let you customiz
 ### Universally compatible.
 Powered by the PCGamingWiki database, OpenGameSave effortlessly recognizes save locations for over 14,000 games right out of the box.
 
-Database paths are also additively synchronized from the MIT-licensed Ludusavi Manifest through a reviewed pull-request workflow. See [database sources and Xbox format notes](database/SOURCES.md).
+Database paths are also sourced from the MIT-licensed Ludusavi Manifest and XgpSaveTools registry. GitHub Actions publishes separate **Standard** and **Xbox Enhanced** database editions; the Xbox registry is merged into an ephemeral build database and is never committed over the standard database. See [database sources and Xbox format notes](database/SOURCES.md).
 
-An optional, default-off experimental setting can fetch XgpSaveTools WGS/PGS mappings at runtime after an explicit third-party license-status and terms warning. Its upstream repository currently declares no open-source license, so the data is not bundled and availability is not guaranteed.
-
-Database changes merged to the default branch are published automatically as sequential patches plus a validated full-database fallback. Enable **Update database automatically** in Settings to check and apply them at startup, or use **Update Database** in Settings for a manual update.
+Choose the database edition in Settings, then enable **Update database automatically** or use **Update Database**. Each edition has its own sequential patches and validated full-database fallback; switching editions always installs a complete database.
 
 ### Seamless migration.
 Upgraded your PC? Just export a sleek .gsmr archive and bring your entire gaming history to your new device with one simple click.
@@ -43,4 +41,4 @@ Installed builds can check for application updates at startup. When an update is
 WebDAV requires HTTPS. Local integration tests may explicitly enable plain HTTP for loopback addresses only by setting `NODE_ENV=development` and `OPENGAMESAVE_ALLOW_INSECURE_LOCALHOST=1`.
 
 ### License
-OpenGameSave is licensed under GPL-3.0-only.
+OpenGameSave is licensed under GPL-3.0-only. See [third-party notices](THIRD_PARTY_NOTICES.md) for the MIT-licensed database sources distributed with the project.

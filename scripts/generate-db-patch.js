@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('../src/main/databaseManifest');
 
 const SUPPORTED_TABLES = ['games', 'metadata'];
 
@@ -105,9 +106,10 @@ function verifyPatchEquivalence(fromPath, targetSnapshot, patch, outputDir) {
     }
 }
 
-function generate({ fromPath, toPath, outputDir, sourceSha = '' }) {
+function generate({ fromPath, toPath, outputDir, sourceSha = '', variant = 'standard' }) {
     if (!toPath || !fs.existsSync(toPath)) throw new Error('A valid --to database is required');
     if (!outputDir) throw new Error('--output is required');
+    const normalizedVariant = normalizeDatabaseVariant(variant);
     fs.mkdirSync(outputDir, { recursive: true });
 
     const targetDb = new Database(toPath);
@@ -123,7 +125,7 @@ function generate({ fromPath, toPath, outputDir, sourceSha = '' }) {
     }
 
     const changed = firstRelease || !snapshotsEqual(oldSnapshot, targetSnapshot);
-    const result = { changed, source_sha: sourceSha || null, from_version: fromVersion };
+    const result = { changed, variant: normalizedVariant, source_sha: sourceSha || null, from_version: fromVersion };
     if (!changed) {
         targetDb.close();
         result.version = fromVersion;
@@ -141,6 +143,7 @@ function generate({ fromPath, toPath, outputDir, sourceSha = '' }) {
         const gameDiff = diffRows(oldSnapshot.rows.games, targetSnapshot.rows.games, 'wiki_page_id');
         const metadataDiff = diffRows(oldSnapshot.rows.metadata, targetSnapshot.rows.metadata, 'key');
         const patch = {
+            variant: normalizedVariant,
             version,
             from_version: fromVersion,
             source_sha: sourceSha || null,
@@ -149,7 +152,7 @@ function generate({ fromPath, toPath, outputDir, sourceSha = '' }) {
             metadata_upsert: metadataDiff.upsert,
             metadata_delete: metadataDiff.delete
         };
-        const patchName = `db_patch_v${version}.json`;
+        const patchName = getDatabaseAssetNames(normalizedVariant, version).patch;
         fs.writeFileSync(path.join(outputDir, patchName), JSON.stringify(patch, null, 2));
         verifyPatchEquivalence(fromPath, targetSnapshot, patch, outputDir);
         result.patch = patchName;
@@ -164,7 +167,8 @@ function main() {
         fromPath: args.from || '',
         toPath: args.to,
         outputDir: args.output,
-        sourceSha: args['source-sha'] || ''
+        sourceSha: args['source-sha'] || '',
+        variant: args.variant || 'standard'
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
 }

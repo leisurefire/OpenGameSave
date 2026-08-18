@@ -74,6 +74,17 @@
 
                 <div class="settings-row">
                     <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="settings.database_variant">Database edition</div>
+                        <p class="settings-row-description" data-i18n="settings.database_variant_hint">Choose the standard database or the Xbox-enhanced database for the next update</p>
+                    </div>
+                    <dropdown-select id="database-variant" aria-label="Database edition" data-i18n-aria-label="settings.database_variant">
+                        <option value="standard">Standard / 标准版</option>
+                        <option value="xbox">Xbox Enhanced / Xbox 增强版</option>
+                    </dropdown-select>
+                </div>
+
+                <div class="settings-row">
+                    <div class="settings-row-copy">
                         <div class="settings-row-title" data-i18n="main.update_database">Update Database</div>
                         <p class="settings-row-description" data-i18n="settings.update_database_hint">Check for the latest game save-location database now</p>
                     </div>
@@ -97,20 +108,6 @@
                         <p class="settings-row-description" data-i18n="settings.sync_accent_color_hint">Use the Windows system accent color</p>
                     </div>
                     <toggle-switch id="sync-accent-color" aria-label="Use system accent color" data-i18n-aria-label="settings.sync_accent_color"></toggle-switch>
-                </div>
-            </div>
-        </section>
-
-        <section class="settings-section" aria-labelledby="settings-experimental-heading">
-            <h2 id="settings-experimental-heading" class="settings-section-title" data-i18n="settings.experimental_sources">Experimental Sources</h2>
-            <div class="settings-card settings-list-card settings-experimental-card">
-                <div class="settings-row settings-toggle-row settings-row-tall">
-                    <div class="settings-row-copy">
-                        <div class="settings-row-title" data-i18n="settings.xgp_source_label">Use XgpSaveTools registry</div>
-                        <p class="settings-row-description" data-i18n="settings.xgp_source_hint">Off by default. Fetches third-party WGS/PGS path mappings at runtime; availability and accuracy are not guaranteed.</p>
-                        <button type="button" id="xgp-source-project" class="settings-inline-link" data-i18n="settings.xgp_source_review">Review upstream project and terms</button>
-                    </div>
-                    <toggle-switch id="experimental-xgp-source" aria-label="Use XgpSaveTools registry" data-i18n-aria-label="settings.xgp_source_label"></toggle-switch>
                 </div>
             </div>
         </section>

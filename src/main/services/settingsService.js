@@ -110,8 +110,8 @@ const loadSettings = () => {
         autoAppUpdate: true,
         appUpdatePrerelease: false,
         autoDbUpdate: false,
+        databaseVariant: 'standard',
         syncAccentColor: false,
-        experimentalXgpSource: false,
         backupAllAccounts: false,
         saveUninstalledGames: true,
         gameInstalls: 'uninitialized',
@@ -176,7 +176,7 @@ function saveSettings(keyOrUpdates, value) {
             setLaunchAtStartup(settings.launchAtStartup);
         }
 
-        if (changedKeys.some(key => key === 'gameInstalls' || key === 'saveUninstalledGames' || key === 'experimentalXgpSource')
+        if (changedKeys.some(key => key === 'gameInstalls' || key === 'saveUninstalledGames')
             && getMainWin() && !getMainWin().isDestroyed()) {
             getMainWin().webContents.send('update-backup-table');
             getMainWin().webContents.send('update-restore-table');

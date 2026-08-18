@@ -10,11 +10,32 @@ OpenGameSave's primary database is based on PCGamingWiki. The scheduled incremen
 
 OpenGameSave therefore treats PGS paths as **backup-only**. The database may contain a PGS location and the application may copy it into a backup, but automatic restore skips it to avoid corrupting the Gaming Services snapshot or racing Xbox cloud synchronization.
 
-XgpSaveTools is useful implementation research, but its repository currently has no declared license. Its `games.json` is therefore not ingested into the tracked database, copied by GitHub Actions, or bundled with releases.
+The [XgpSaveTools](https://github.com/brodrigz/XgpSaveTools) repository is licensed under MIT, Copyright (c) 2026 Bruno Rodrigues. The required notice is retained in `database/licenses/XGPSAVETOOLS-LICENSE.txt` and packaged with the application.
 
-Users may explicitly enable **Experimental Sources → XgpSaveTools registry** in the application settings. Before the first enablement, OpenGameSave shows the upstream license status and requires confirmation that the user has reviewed and accepts the applicable third-party terms. This confirmation does not create or grant any license rights.
+OpenGameSave imports only the WGS/PGS package and save-path mappings from `games.json`; it does not copy or execute XgpSaveTools handlers. Mappings are matched to a unique existing database row by normalized full title and appended without replacing paths from the standard database. Ambiguous and unmatched titles are reported but not imported.
 
-When enabled, the application downloads `games.json` directly from the upstream repository at runtime, validates it, keeps a minimal per-user cache, and conservatively overlays exact normalized title matches onto existing database rows. Only WGS/PGS package and save-path mappings are used; XgpSaveTools handlers are not integrated. The cache is refreshed at most once per day on startup and deleted when the option is disabled. This experimental integration has no availability or accuracy guarantee.
+The mappings are merged by GitHub Actions into an ephemeral Xbox-enhanced database instead of being downloaded or merged by installed clients. The tracked `database/database.db` remains the standard edition.
+
+## XgpSaveTools incremental sync
+
+The workflow in `.github/workflows/db-patch.yml` runs every Wednesday at 04:47 UTC, on relevant database changes, and on manual dispatch. It verifies that GitHub still identifies the upstream license as MIT, resolves one upstream commit, and downloads both `games.json` and `LICENSE` from that exact revision. If any validation fails, publication stops.
+
+Actions then copies the standard database, performs the merge into the copy, and publishes it directly as the Xbox-enhanced edition. It also publishes the untouched standard edition. There is no sync pull request and users do not merge data themselves. A workflow artifact records unmatched titles, conflicts, added paths, and source hashes; PGS paths remain backup-only. Because the enhanced edition is rebuilt from the standard database on every run, an XgpSaveTools-only path removed upstream will disappear from the next enhanced edition, while standard database paths remain untouched.
+
+The two independent release chains are:
+
+- Standard: `current.json`, `manifest_vN.json`, `database_vN.db`, `db_patch_vN.json`.
+- Xbox Enhanced: `current_xbox.json`, `manifest_xbox_vN.json`, `database_xbox_vN.db`, `db_patch_xbox_vN.json`.
+
+The Xbox database embeds its edition marker, matched game IDs, registry and license hashes, and the complete MIT notice in SQLite metadata. Upstream registry or license changes are therefore detected by the scheduled run without changing the tracked standard database.
+
+Run a local preview with:
+
+```text
+npm run db:sync:xgp
+```
+
+The apply step is reserved for the ephemeral Actions copy so a local preview cannot accidentally overwrite the standard database.
 
 ## Ludusavi incremental sync
 
@@ -44,6 +65,6 @@ The sync is additive by design. Upstream removals require human review in OpenGa
 
 ## Application database updates
 
-When `database/database.db` changes on the default branch, `.github/workflows/db-patch.yml` automatically compares it with the database currently published in the dedicated `database` GitHub Release. It increments SQLite `user_version`, publishes the next `db_patch_vN.json`, retains older sequential patches, and replaces the full `database.db` fallback asset.
+`.github/workflows/db-patch.yml` compares both generated editions with their respective publications in the dedicated `database` GitHub Release. Each chain independently increments SQLite `user_version`, publishes immutable versioned databases and patches, and advances only its own `current*.json` pointer.
 
-When **Update database automatically** is enabled, OpenGameSave checks that dedicated release at startup. It applies every missing sequential patch under a database write lock. If the patch chain is incomplete, it downloads and validates the full database instead. The previous user database is retained until integrity validation succeeds and is restored if an update fails. Manual updates use the same path through the sidebar button.
+Users select **Standard** or **Xbox Enhanced** in Settings. When **Update database automatically** is enabled, OpenGameSave checks the selected chain at startup; manual updates use the same selection. It applies missing patches only when the local database belongs to that same edition. Switching editions, an incomplete patch chain, or a schema mismatch triggers a validated full download. The previous user database is retained until integrity validation succeeds and is restored if an update fails.

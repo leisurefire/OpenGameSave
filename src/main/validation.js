@@ -1,4 +1,5 @@
 const path = require('path');
+const { normalizeDatabaseVariant } = require('./databaseManifest');
 
 const SUPPORTED_LANGUAGES = new Set(['en_US', 'zh_CN']);
 const SUPPORTED_SYNC_PROVIDERS = new Set(['github', 'webdav']);
@@ -18,7 +19,6 @@ const BOOLEAN_SETTING_KEYS = new Set([
     'appUpdatePrerelease',
     'autoDbUpdate',
     'syncAccentColor',
-    'experimentalXgpSource',
     'backupAllAccounts',
     'saveUninstalledGames',
     'blockedGameTipDismissed',
@@ -33,6 +33,7 @@ const WIKI_ID_ARRAY_SETTING_KEYS = new Set([
 
 const ALLOWED_SETTING_KEYS = new Set([
     'language',
+    'databaseVariant',
     'backupPath',
     'exportPath',
     'syncProvider',
@@ -327,6 +328,7 @@ function sanitizeSettingValue(key, value, fallback) {
         throw new Error(`Unknown setting: ${key}`);
     }
     if (key === 'language') return normalizeLanguage(value);
+    if (key === 'databaseVariant') return normalizeDatabaseVariant(value, fallback);
     if (key === 'backupPath') return normalizeBackupRoot(value, fallback);
     if (key === 'exportPath') return normalizeAbsolutePath(value, { allowEmpty: true, fallback });
     if (key === 'syncProvider') return normalizeSyncProvider(value, fallback);
@@ -469,9 +471,13 @@ function validateSaveLocationJson(value) {
     return serialized;
 }
 
-function validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion) {
+function validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion, expectedVariant = 'standard') {
     if (!rawPatch || typeof rawPatch !== 'object' || Array.isArray(rawPatch)) {
         throw new Error('Invalid database patch');
+    }
+    const variant = normalizeDatabaseVariant(rawPatch.variant ?? 'standard');
+    if (variant !== normalizeDatabaseVariant(expectedVariant)) {
+        throw new Error('Database patch variant does not match the requested variant');
     }
     const version = normalizeBoundedInteger(rawPatch.version, 1, 2147483647);
     if (expectedVersion !== undefined && version !== expectedVersion) {
@@ -527,6 +533,7 @@ function validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion) {
         normalizeDatabaseText(key, 'metadata key', 256, { required: true }));
 
     return {
+        variant,
         version,
         from_version: fromVersion,
         upsert: normalizedUpserts,
@@ -548,6 +555,7 @@ module.exports = {
     normalizeBackupRoot,
     normalizeBackupDate,
     normalizeBoundedInteger,
+    normalizeDatabaseVariant,
     normalizeLanguage,
     normalizeSyncProvider,
     normalizeWebDAVRemotePath,

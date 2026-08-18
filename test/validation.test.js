@@ -64,8 +64,9 @@ test('auto-backup settings discard malformed jobs and zero-delay intervals', () 
     assert.equal(sanitizeSettingValue('launchAtStartup', 'yes', false), false);
     assert.equal(sanitizeSettingValue('appUpdatePrerelease', true, false), true);
     assert.equal(sanitizeSettingValue('appUpdatePrerelease', 'yes', false), false);
-    assert.equal(sanitizeSettingValue('experimentalXgpSource', true, false), true);
-    assert.equal(sanitizeSettingValue('experimentalXgpSource', 'yes', false), false);
+    assert.equal(sanitizeSettingValue('databaseVariant', 'xbox', 'standard'), 'xbox');
+    assert.equal(sanitizeSettingValue('databaseVariant', 'unknown', 'standard'), 'standard');
+    assert.throws(() => sanitizeSettingValue('experimentalXgpSource', true, false));
 });
 
 test('sync provider and WebDAV settings reject unsafe or ambiguous values', () => {
@@ -100,6 +101,7 @@ test('backup metadata and archive paths reject traversal or forged folder names'
 
 test('database patches are bounded, typed and tied to the asset version', () => {
     const patch = validateDatabasePatch({
+        variant: 'xbox',
         version: 7,
         from_version: 6,
         upsert: [{
@@ -113,10 +115,12 @@ test('database patches are bounded, typed and tied to the asset version', () => 
             save_location: JSON.stringify({ win: ['C:\\Save'], reg: [], linux: [], mac: [] })
         }],
         delete: [456, 456]
-    }, 7, 6);
+    }, 7, 6, 'xbox');
+    assert.equal(patch.variant, 'xbox');
     assert.equal(patch.upsert[0].wiki_page_id, 123);
     assert.deepEqual(patch.delete, [456]);
     assert.throws(() => validateDatabasePatch({ version: 8, from_version: 7, upsert: [], delete: [] }, 7));
     assert.throws(() => validateDatabasePatch({ version: 7, from_version: 5, upsert: [], delete: [] }, 7, 6));
     assert.throws(() => validateDatabasePatch({ version: 7, from_version: 6, upsert: [{ wiki_page_id: 1, title: 'x', save_location: '{' }], delete: [] }, 7));
+    assert.throws(() => validateDatabasePatch({ variant: 'xbox', version: 7, from_version: 6 }, 7, 6, 'standard'), /variant/);
 });

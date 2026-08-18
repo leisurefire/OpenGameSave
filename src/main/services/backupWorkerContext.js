@@ -1,9 +1,6 @@
-const { buildXgpEntryIndex } = require('../xgpSourceFormat');
-
 let context = null;
 /** @type {(message: {type: string, value: number}) => void} */
 let progressReporter = () => {};
-let xgpEntryIndex = new Map();
 
 /**
  * @param {*} nextContext
@@ -12,7 +9,6 @@ let xgpEntryIndex = new Map();
 function setWorkerContext(nextContext, nextProgressReporter = () => {}) {
     context = nextContext;
     progressReporter = nextProgressReporter;
-    xgpEntryIndex = buildXgpEntryIndex(context.experimentalXgpEntries);
 }
 
 function getContext() {
@@ -32,10 +28,6 @@ function getAllUserIds() {
     return getContext().allUserIds || {};
 }
 
-function getXgpEntryIndex() {
-    return xgpEntryIndex;
-}
-
 function reportProgress(value) {
     progressReporter({ type: 'progress', value });
 }
@@ -45,7 +37,6 @@ module.exports = {
     getContext,
     getGameData,
     getSettings,
-    getXgpEntryIndex,
     reportProgress,
     setWorkerContext
 };

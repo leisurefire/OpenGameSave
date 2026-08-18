@@ -1,11 +1,10 @@
-const { BrowserWindow, dialog, ipcMain, systemPreferences } = require('electron');
+const { BrowserWindow, ipcMain, systemPreferences } = require('electron');
 
 const i18next = require('i18next');
 
 const { detectGamePaths, getGameData } = require('../gameData');
 const { getMainWin, getSettings, saveSettings } = require('../global');
 const { refreshAutoBackupWatchers } = require('../autoBackup');
-const { clearExperimentalXgpCache, refreshExperimentalXgpSource } = require('../xgpExperimentalSource');
 
 function getSystemAccentColor() {
     let accent = '16c60c';
@@ -26,56 +25,11 @@ function broadcastAccentColor(color) {
 }
 
 async function persistRendererSettings(keyOrUpdates, value) {
-    const updateKeys = keyOrUpdates && typeof keyOrUpdates === 'object' && !Array.isArray(keyOrUpdates)
-        ? Object.keys(keyOrUpdates)
-        : [keyOrUpdates];
-    if (updateKeys.includes('experimentalXgpSource')) {
-        throw new Error('Experimental XgpSaveTools source must be changed through its consent prompt');
-    }
-
     const changedKeys = await saveSettings(keyOrUpdates, value);
     const watcherFailures = changedKeys.includes('backupAllAccounts')
         ? await refreshAutoBackupWatchers()
         : [];
     return { success: true, changedKeys, watcherFailures };
-}
-
-async function setExperimentalXgpSource(event, enabled) {
-    if (typeof enabled !== 'boolean') throw new Error('Expected a boolean');
-
-    if (!enabled) {
-        await saveSettings('experimentalXgpSource', false);
-        await clearExperimentalXgpCache().catch((error) => {
-            console.warn(`Unable to remove experimental XgpSaveTools cache: ${error.message}`);
-        });
-        return { enabled: false, accepted: true, available: false };
-    }
-
-    if (!getSettings().experimentalXgpSource) {
-        const parentWindow = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
-        const promptResult = await dialog.showMessageBox(parentWindow, {
-            type: 'warning',
-            title: i18next.t('settings.xgp_source_consent_title'),
-            message: i18next.t('settings.xgp_source_consent_message'),
-            detail: i18next.t('settings.xgp_source_consent_detail'),
-            buttons: [i18next.t('settings.xgp_source_cancel'), i18next.t('settings.xgp_source_accept')],
-            defaultId: 0,
-            cancelId: 0,
-            noLink: true
-        });
-        if (promptResult.response !== 1) {
-            return { enabled: false, accepted: false, available: false };
-        }
-    }
-
-    await saveSettings('experimentalXgpSource', true);
-    try {
-        const result = await refreshExperimentalXgpSource({ force: true });
-        return { enabled: true, accepted: true, ...result };
-    } catch (error) {
-        console.warn(`Unable to enable experimental XgpSaveTools source immediately: ${error.message}`);
-        return { enabled: true, accepted: true, available: false, error: 'fetch-failed' };
-    }
 }
 
 function registerSettingsIpc({ ensureGameDataReady }) {
@@ -110,7 +64,6 @@ function registerSettingsIpc({ ensureGameDataReady }) {
         }
     });
     ipcMain.handle('get-settings', getSettings);
-    ipcMain.handle('set-experimental-xgp-source', setExperimentalXgpSource);
     ipcMain.handle('get-detected-game-paths', async () => {
         await ensureGameDataReady();
         await detectGamePaths();
