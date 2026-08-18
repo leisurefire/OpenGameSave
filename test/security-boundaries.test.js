@@ -76,7 +76,9 @@ test('a worker-backed database read holds the lock until its handle closes', asy
         writeAcquired = true;
         release();
     });
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => {
+        setImmediate(resolve);
+    });
     assert.equal(writeAcquired, false);
     closeHandle();
     await read;

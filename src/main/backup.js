@@ -10,7 +10,7 @@ const i18next = require('i18next');
 
 const {
     getMainWin, getStatus, updateStatus,
-    placeholder_mapping, osKeyMap, getSettings, saveSettings, showBackgroundNotification
+    placeholder_mapping, getSettings, saveSettings, showBackgroundNotification
 } = require('./global');
 const { getGameData, getAllUserIds } = require('./gameData');
 const { dbRun, dbGet, dbAll, openDb, closeDb } = require('./sqliteUtils');
@@ -74,7 +74,6 @@ function createBackupWorkerContext() {
         dbPath: getUserDatabasePath(),
         installedDbPath: getInstalledDatabasePath(),
         placeholderMapping: placeholder_mapping,
-        osKeyMap,
         experimentalXgpEntries: getExperimentalXgpEntries(currentSettings.experimentalXgpSource),
         labels: {
             noBackups: i18next.t('main.no_backups'),

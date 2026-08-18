@@ -9,7 +9,7 @@ export async function showToast(type, message, detailContent) {
         success: 'circle-check',
         warning: 'triangle-alert',
         dialog: 'circle-question-mark',
-        modal: 'circle-question-mark',
+        modal: 'circle-question-mark'
     };
 
     const toastType = type === 'modal' ? 'dialog' : type;

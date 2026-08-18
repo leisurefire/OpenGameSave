@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version_bump:
-        description: '版本提升类型：小版本 0.6.22 -> 0.6.23；大版本 0.6.22 -> 0.7.0'
+        description: '版本提升类型：小版本 0.7.1 -> 0.7.2；大版本 0.7.1 -> 0.8.0'
         required: true
         default: '小版本'
         type: choice
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

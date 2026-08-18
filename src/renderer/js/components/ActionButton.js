@@ -20,7 +20,7 @@ class ActionButton extends HTMLElement {
         return ['variant', 'disabled', 'aria-label'];
     }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(name) {
         if (!this.shadowRoot) return;
         if (name === 'variant') this._updateVariantClass();
         if (name === 'disabled' || name === 'aria-label') this._updateState();

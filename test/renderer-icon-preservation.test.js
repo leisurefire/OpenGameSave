@@ -10,8 +10,8 @@ test('translation refresh preserves icon children in action buttons', () => {
         path.join(PROJECT_ROOT, 'src', 'renderer', 'js', 'utility.js'),
         'utf8'
     );
-    const commonTabsSource = fs.readFileSync(
-        path.join(PROJECT_ROOT, 'src', 'renderer', 'js', 'commonTabs.js'),
+    const tableUiSource = fs.readFileSync(
+        path.join(PROJECT_ROOT, 'src', 'renderer', 'js', 'tableUi.js'),
         'utf8'
     );
 
@@ -21,12 +21,12 @@ test('translation refresh preserves icon children in action buttons', () => {
         'translation must not replace all button children'
     );
     assert.match(
-        commonTabsSource,
+        tableUiSource,
         /text\.setAttribute\(['"]data-i18n['"],\s*i18nKey\)/,
         'dynamic action labels should attach translation metadata to their text node'
     );
     assert.doesNotMatch(
-        commonTabsSource,
+        tableUiSource,
         /button\.setAttribute\(['"]data-i18n['"],\s*i18nKey\)/,
         'dynamic action buttons must not attach translation metadata to the icon-bearing button'
     );

@@ -219,7 +219,7 @@ class GameData {
         );
 
         // Get current RockStar user id
-        const rStarProfilePath = path.join(process.env.USERPROFILE || os.homedir(), "Documents\\Rockstar Games\\Social Club\\Profiles");
+        const rStarProfilePath = path.join(process.env.USERPROFILE || os.homedir(), 'Documents\\Rockstar Games\\Social Club\\Profiles');
         if (fs.existsSync(rStarProfilePath)) {
             try {
                 const userFolders = fs.readdirSync(rStarProfilePath, { withFileTypes: true })
@@ -255,7 +255,7 @@ class GameData {
             ubisoftId: this.currentUbisoftUserId,
             epicId: this.currentEpicUserId,
             xboxId: this.currentXboxUserId,
-            rockStarId: this.currentRockStarUserId,
+            rockStarId: this.currentRockStarUserId
         };
     }
 

@@ -13,7 +13,7 @@ module.exports = {
     externals: [nodeExternals()],
     output: {
         path: path.resolve(__dirname, 'dist/out/preload'),
-        filename: '[name].js',
+        filename: '[name].js'
     },
 
     module: {
@@ -24,17 +24,17 @@ module.exports = {
                 use: {
                     loader: 'babel-loader',
                     options: {
-                        presets: ['@babel/preset-env'],
-                    },
-                },
-            },
-        ],
+                        presets: ['@babel/preset-env']
+                    }
+                }
+            }
+        ]
     },
 
     plugins: [],
 
     node: {
         __dirname: false,
-        __filename: false,
-    },
+        __filename: false
+    }
 };

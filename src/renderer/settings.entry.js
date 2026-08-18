@@ -1,5 +1,5 @@
-import "./js/icons.js"
-import "./tailwind-output.css"
-import "./css/common.css"
-import "./css/settings.css"
-import "./js/settingsPage.js"
+import './js/icons.js';
+import './tailwind-output.css';
+import './css/common.css';
+import './css/settings.css';
+import './js/settingsPage.js';

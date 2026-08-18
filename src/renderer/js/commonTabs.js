@@ -1,21 +1,28 @@
 import { showAlert, updateTranslations } from './utility.js';
 import { showDontShowDialog, showMessageDialog } from './dialog.js';
-import { createLoadingIndicator } from './loadingIndicator.js';
+import { getSortedFavoriteGroups, sortGamesForDisplay } from './tableDisplay.js';
+import { initializeTabs } from './tabNavigation.js';
+import { createBackupTableRow, createRestoreTableRow, platformOrder } from './tableRows.js';
+import {
+    getSelectedWikiIds,
+    setupSelectAllCheckbox,
+    updateSelectAllCheckbox,
+    updateSelectedCountAndSize
+} from './tableSelection.js';
+
+export { createBackupTableRow, createRestoreTableRow } from './tableRows.js';
+export { getSelectedWikiIds, setupSelectAllCheckbox, updateSelectedCountAndSize } from './tableSelection.js';
+export { hideLoadingIndicator, setActionButtonState, showLoadingIndicator } from './tableUi.js';
 import { formatSize } from './formatting.js';
-import { ACTION_ICONS, renderIcon } from './icons.js';
+import { ACTION_ICONS } from './icons.js';
 import {
     appendRows as appendVirtualRows,
     applyVirtualFilter,
     findVirtualRow,
-    getFilteredVirtualRowIds,
-    getFilteredVirtualRows,
-    getFilteredVirtualSelectedIds,
     getRowId,
     getVirtualState,
     removeVirtualRow,
-    setAllVirtualSelected,
-    sortVirtualRows,
-    updateVirtualSelection
+    sortVirtualRows
 } from './virtualTable.js';
 
 export function runWhenDomReady(callback) {
@@ -26,7 +33,6 @@ export function runWhenDomReady(callback) {
     }
 }
 
-const displayCollators = new Map();
 const tableUpdateStates = new Map();
 
 function getTableUpdateState(tabName) {
@@ -100,45 +106,6 @@ export function queueFullTableUpdate(tabName, loader, loadTable) {
     return scheduleTableUpdates(tabName, state);
 }
 
-function getDisplayCollator(language) {
-    const locale = language === 'zh_CN' ? 'zh-CN' : 'en-US';
-    if (!displayCollators.has(locale)) {
-        displayCollators.set(locale, new Intl.Collator(locale, {
-            numeric: true,
-            sensitivity: 'base'
-        }));
-    }
-    return displayCollators.get(locale);
-}
-
-function withTitleToSort(game, settings) {
-    const titleToSort = settings.language === 'zh_CN'
-        ? game.zh_CN || game.title
-        : game.title;
-    return { ...game, titleToSort: titleToSort || '' };
-}
-
-function sortGamesForDisplay(games, settings) {
-    const collator = getDisplayCollator(settings.language);
-    return [...games].sort((a, b) => collator.compare(a.titleToSort || '', b.titleToSort || ''));
-}
-
-export function getSortedFavoriteGroups(games, settings) {
-    const favoriteWikiIds = settings.pinnedGames || [];
-    const gamesWithTitleToSort = games.map(game => withTitleToSort(game, settings));
-
-    return {
-        favoriteGames: sortGamesForDisplay(
-            gamesWithTitleToSort.filter(game => favoriteWikiIds.includes(game.wiki_page_id.toString())),
-            settings
-        ),
-        otherGames: sortGamesForDisplay(
-            gamesWithTitleToSort.filter(game => !favoriteWikiIds.includes(game.wiki_page_id.toString())),
-            settings
-        )
-    };
-}
-
 export function appendRows(tableBody, rows) {
     appendVirtualRows(tableBody, rows, { rowHeight: 60 });
 }
@@ -181,132 +148,7 @@ window.api.receive('auto-backup-performed', async (wikiId) => {
     }
 });
 
-export async function setActionButtonState({ button, icon, text, iconName, i18nKey, busy }) {
-    button.disabled = busy;
-    button.classList.toggle('cursor-not-allowed', busy);
-    icon.classList.toggle('is-spinning', busy);
-    renderIcon(icon, busy ? 'loader-circle' : iconName);
 
-    // Keep the translation marker on the text node. Placing it on the button
-    // allows a language refresh to replace the button's children, including
-    // its icon container.
-    text.setAttribute('data-i18n', i18nKey);
-    text.textContent = await window.i18n.translate(i18nKey);
-}
-
-// Function to initialize the tab switching functionality
-function initializeTabs() {
-    const tabsElement = document.getElementById('main-tab');
-    const tabElements = [
-        { id: 'backup', triggerEl: document.querySelector('#backup-tab'), targetEl: document.querySelector('#backup') },
-        { id: 'restore', triggerEl: document.querySelector('#restore-tab'), targetEl: document.querySelector('#restore') },
-        { id: 'sync', triggerEl: document.querySelector('#sync-tab'), targetEl: document.querySelector('#sync') },
-    ];
-
-    const options = {
-        defaultTabId: 'backup',
-        activeClasses: 'tab-active opacity-100',
-        inactiveClasses: 'opacity-60 hover:opacity-100',
-    };
-
-    if (tabsElement) {
-        const defaultTab = tabElements.find(tab => tab.id === options.defaultTabId);
-        if (defaultTab) {
-            showTab(defaultTab, tabElements, options);
-        }
-
-        tabElements.filter(tab => tab.triggerEl && tab.targetEl).forEach(tab => {
-            tab.triggerEl.addEventListener('click', async () => {
-                const contentEl = document.getElementById(`${tab.id}-content`);
-                if (contentEl) {
-                    contentEl.classList.remove('animate-fadeInShift', 'animate-fadeOut');
-                }
-                showTab(tab, tabElements, options);
-            });
-        });
-    }
-}
-
-// Function to handle tab switching logic
-function showTab(tab, tabElements, options) {
-    tabElements.filter(t => t.triggerEl && t.targetEl).forEach(t => {
-        const isActive = t.id === tab.id;
-        t.triggerEl.setAttribute('aria-selected', isActive.toString());
-        t.triggerEl.tabIndex = isActive ? 0 : -1;
-        t.targetEl.setAttribute('aria-hidden', (!isActive).toString());
-
-        if (isActive) {
-            t.triggerEl.classList.add(...options.activeClasses.split(' '));
-            t.triggerEl.classList.remove(...options.inactiveClasses.split(' '));
-            t.targetEl.classList.remove('hidden');
-        } else {
-            t.triggerEl.classList.remove(...options.activeClasses.split(' '));
-            t.triggerEl.classList.add(...options.inactiveClasses.split(' '));
-            t.targetEl.classList.add('hidden');
-        }
-    });
-
-    if (typeof options.onShow === 'function') {
-        options.onShow(tab);
-    }
-}
-
-
-
-export async function showLoadingIndicator(tabName) {
-    const loadingContainer = document.getElementById(`${tabName}-loading`);
-    const actionSummary = document.querySelector(`#${tabName}-summary`);
-    const contentContainer = document.getElementById(`${tabName}-content`);
-    const actionButton = document.getElementById(`${tabName}-button`);
-
-    actionSummary.classList.add('hidden');
-    document.querySelector(`#${tabName}-summary-done`).classList.add('hidden');
-    actionButton.disabled = true;
-    actionButton.classList.add('cursor-not-allowed', 'opacity-50');
-
-    if (contentContainer && window.getComputedStyle(contentContainer).display !== 'none') {
-        contentContainer.classList.remove('animate-fadeInShift');
-        contentContainer.classList.add('animate-fadeOut');
-
-        await new Promise(resolve => setTimeout(resolve, 300));
-        contentContainer.classList.add('hidden');
-
-        if (loadingContainer) {
-            const loadingTextKey = loadingContainer.getAttribute('data-i18n');
-            const loadingText = await window.i18n.translate(loadingTextKey);
-            loadingContainer.innerHTML = createLoadingIndicator(loadingText);
-            loadingContainer.classList.remove('hidden');
-        }
-    } else {
-        if (loadingContainer) {
-            const loadingTextKey = loadingContainer.getAttribute('data-i18n');
-            const loadingText = await window.i18n.translate(loadingTextKey);
-            loadingContainer.innerHTML = createLoadingIndicator(loadingText);
-            loadingContainer.classList.remove('hidden');
-        }
-    }
-}
-
-export function hideLoadingIndicator(tabName) {
-    const loadingContainer = document.getElementById(`${tabName}-loading`);
-    const contentContainer = document.getElementById(`${tabName}-content`);
-    const actionButton = document.getElementById(`${tabName}-button`);
-
-    actionButton.disabled = false;
-    actionButton.classList.remove('cursor-not-allowed', 'opacity-50');
-
-    if (loadingContainer) {
-        loadingContainer.classList.add('hidden');
-    }
-
-    if (contentContainer) {
-        contentContainer.classList.remove('hidden');
-        contentContainer.classList.remove('animate-fadeOut');
-        contentContainer.classList.add('animate-fadeInShift');
-    }
-}
-
-// Function to set up the search, favorites, blocked, and uninstalled filters for the table
 function setupSearchFilter(tabName) {
     const searchInput = document.getElementById(`${tabName}-search`);
     const favoritesButton = document.getElementById(`${tabName}-favorites-only`);
@@ -595,76 +437,6 @@ export function showOperationSummary(tabName, completedCount, failedCount, error
     };
 }
 
-const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
-
-export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId) {
-    const row = document.createElement('tr');
-    row.setAttribute('data-wiki-id', wikiPageId);
-    row.innerHTML = `
-        <td class="p-4">
-            <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
-        </td>
-        <th scope="row" class="game-list-primary-cell p-4">
-            <div class="game-title-line">
-                <span data-icon="favorite" class="hidden"><span data-lucide-icon="heart" class="text-red-400"></span></span>
-                <span data-icon="blocked" class="hidden"><span data-lucide-icon="ban" class="text-yellow-400"></span></span>
-                <span data-icon="star" class="hidden"><span data-lucide-icon="star" class="text-yellow-500"></span></span>
-                <span data-icon="timer" class="hidden"><span data-lucide-icon="timer-reset" class="text-theme-accent"></span></span>
-                <span class="game-title"></span>
-            </div>
-            <div class="game-row-subtitle newest-backup-time"></div>
-        </th>
-        <td class="row-detail-cell p-4 truncate opacity-80 text-center align-middle">
-            ${platformIcons}
-        </td>
-        <td class="row-size-cell p-4 truncate opacity-80 text-center align-middle backup-size">
-            ${backupSize}
-        </td>
-        <td class="p-4 text-center">
-            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
-                <span data-lucide-icon="ellipsis-vertical"></span>
-            </button>
-        </td>
-    `;
-    row.querySelector('.game-title').textContent = gameTitle;
-    row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
-    return row;
-}
-
-export function createRestoreTableRow(gameTitle, backupCount, backupSize, newestBackupTime, wikiPageId) {
-    const row = document.createElement('tr');
-    row.setAttribute('data-wiki-id', wikiPageId);
-    row.innerHTML = `
-        <td class="p-4">
-            <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
-        </td>
-        <th scope="row" class="game-list-primary-cell p-4">
-            <div class="game-title-line">
-                <span data-icon="favorite" class="hidden"><span data-lucide-icon="heart" class="text-red-400"></span></span>
-                <span data-icon="blocked" class="hidden"><span data-lucide-icon="ban" class="text-yellow-400"></span></span>
-                <span data-icon="star" class="hidden"><span data-lucide-icon="star" class="text-yellow-500"></span></span>
-                <span data-icon="timer" class="hidden"><span data-lucide-icon="timer-reset" class="text-theme-accent"></span></span>
-                <span class="game-title"></span>
-            </div>
-            <div class="game-row-subtitle newest-backup-time"></div>
-        </th>
-        <td class="row-detail-cell p-4 truncate opacity-80 text-center align-middle backup-count">
-            ${backupCount}
-        </td>
-        <td class="row-size-cell p-4 truncate opacity-80 text-center align-middle backup-size">
-            ${backupSize}
-        </td>
-        <td class="p-4 text-center">
-            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
-                <span data-lucide-icon="ellipsis-vertical"></span>
-            </button>
-        </td>
-    `;
-    row.querySelector('.game-title').textContent = gameTitle;
-    row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
-    return row;
-}
-
 async function performAddOrUpdateTableRow(tabName, wikiId) {
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     const tableBody = document.querySelector(`#${tabName} tbody`);
@@ -916,7 +688,7 @@ function setDropDownAction() {
             const settings = await window.api.invoke('get-settings');
             const isFavorite = (settings.pinnedGames || []).includes(wikiPageId.toString());
             const isBlocked = (settings.blockedGames || []).includes(wikiPageId.toString());
-            const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : "none";
+            const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : 'none';
 
             const menuItems = [
                 {
@@ -1087,115 +859,4 @@ function updateGameBlockedState(tabName, wikiId, blocked) {
         applyTableFilters(tabName);
         updateSelectedCountAndSize(tabName);
     }
-}
-
-// Function to update the count and size display
-export async function updateSelectedCountAndSize(tabName) {
-    const selectedCountWidget = document.querySelector(`#${tabName}-selected-count`);
-    const totalSizeWidget = document.querySelector(`#${tabName}-selected-size`);
-    const tableBody = document.querySelector(`#${tabName} tbody`);
-    const selectedWikiIds = getSelectedWikiIds(tabName);
-    const visibleRows = getFilteredVirtualRows(tableBody);
-    const total_games_count = visibleRows.length;
-
-    let total_size = 0;
-    let total_selected = 0;
-
-    const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
-    const visibleIds = getFilteredVirtualRowIds(tableBody);
-
-    selectedWikiIds.forEach(wikiId => {
-        if (!visibleIds.has(wikiId)) return;
-
-        const gameData = dataMap.get(wikiId);
-        if (gameData) {
-            total_size += gameData.backup_size;
-            total_selected += 1;
-        }
-    });
-
-    selectedCountWidget.textContent = await window.i18n.translate('main.selected_games_count', {
-        count: total_selected,
-        total: total_games_count
-    });
-    totalSizeWidget.textContent = await window.i18n.translate(`main.total_${tabName}_size`, {
-        size: formatSize(total_size)
-    });
-}
-
-// Function to setup "Select All" checkbox functionality
-export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {
-    if (!selectAllCheckbox || selectAllCheckbox.dataset.listenerAdded) {
-        return;
-    }
-    selectAllCheckbox.dataset.listenerAdded = 'true';
-
-    const tableBody = document.querySelector(`#${tabName} tbody`);
-
-    // Handle the "Select All" checkbox change
-    selectAllCheckbox.addEventListener('change', function () {
-        const isChecked = this.checked;
-        if (!setAllVirtualSelected(tableBody, isChecked)) {
-            const rowCheckboxes = Array.from(tableBody.querySelectorAll('.row-checkbox'))
-                .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
-            rowCheckboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-            });
-        }
-
-        updateSelectAllCheckbox(selectAllCheckbox, tableBody);
-        updateSelectedCountAndSize(tabName);
-    });
-
-    // Handle individual row checkbox changes
-    tableBody.addEventListener('change', function (event) {
-        if (event.target.classList.contains('row-checkbox')) {
-            updateVirtualSelection(tableBody, event.target);
-            updateSelectAllCheckbox(selectAllCheckbox, tableBody);
-            updateSelectedCountAndSize(tabName);
-        }
-    });
-}
-
-// Function to update the "Select All" checkbox state
-function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
-    const virtualState = getVirtualState(tableContainer);
-    let totalRows;
-    let selectedRows;
-
-    if (virtualState) {
-        totalRows = virtualState.filteredRows.length;
-        selectedRows = getFilteredVirtualSelectedIds(tableContainer).length;
-    } else {
-        const rowCheckboxes = Array.from(tableContainer.querySelectorAll('.row-checkbox'))
-            .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
-        totalRows = rowCheckboxes.length;
-        selectedRows = rowCheckboxes.filter(checkbox => checkbox.checked).length;
-    }
-
-    const allChecked = totalRows > 0 && selectedRows === totalRows;
-    const anyChecked = selectedRows > 0;
-    selectAllCheckbox.checked = allChecked;
-    selectAllCheckbox.indeterminate = !allChecked && anyChecked;
-}
-
-export function getSelectedWikiIds(tabName) {
-    const table = document.querySelector(`#${tabName}`);
-    if (!table) {
-        return [];
-    }
-
-    const tableBody = table.querySelector('tbody');
-    const virtualSelectedIds = getFilteredVirtualSelectedIds(tableBody);
-    if (virtualSelectedIds.length > 0 || getVirtualState(tableBody)) {
-        return virtualSelectedIds;
-    }
-
-    const selectedRows = table.querySelectorAll('.row-checkbox:checked');
-    return Array.from(selectedRows)
-        .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none')
-        .map(checkbox => {
-            const row = checkbox.closest('tr');
-            return row.getAttribute('data-wiki-id').trim();
-        });
 }

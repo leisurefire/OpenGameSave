@@ -214,7 +214,7 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
 }
 
 function resolveTemplatedRestorePath(templatedPath, installFolder) {
-    const basePath = String(templatedPath || '').replace(/\{\{p\|[^\}]+\}\}/gi, match => {
+    const basePath = String(templatedPath || '').replace(/\{\{p\|[^}]+\}\}/gi, match => {
         const normalizedMatch = match.toLowerCase().replace(/\\/g, '/');
 
         if (normalizedMatch === '{{p|game}}') {
@@ -239,7 +239,7 @@ function resolveTemplatedRestorePath(templatedPath, installFolder) {
         return placeholder_mapping[normalizedMatch] || match;
     });
 
-    if (/\{\{p\|[^\}]+\}\}/i.test(basePath) || basePath.includes('\0')) return '';
+    if (/\{\{p\|[^}]+\}\}/i.test(basePath) || basePath.includes('\0')) return '';
     return path.normalize(basePath);
 }
 
@@ -292,5 +292,5 @@ function getGameInstallPath(installFolder) {
 
 module.exports = {
     getGameDataForRestore,
-    restoreGame,
+    restoreGame
 };

@@ -505,7 +505,9 @@ async function fetchManifestText(url) {
         } catch (error) {
             lastError = error;
             if (attempt < 3) {
-                await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                await new Promise((resolve) => {
+                    setTimeout(resolve, attempt * 1000);
+                });
             }
         } finally {
             clearTimeout(timeout);

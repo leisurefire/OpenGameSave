@@ -51,7 +51,12 @@ function normalizeSha256(value) {
     return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
 }
 
-async function verifyFileDescriptor(filePath, descriptor, { maxBytes } = {}) {
+/**
+ * @param {string} filePath
+ * @param {{size?: number, sha256?: string, digest?: string}} descriptor
+ * @param {{maxBytes?: number}} [options]
+ */
+async function verifyFileDescriptor(filePath, descriptor, { maxBytes } = { maxBytes: undefined }) {
     const stats = await fs.promises.stat(filePath);
     if (!stats.isFile() || stats.size <= 0 || (maxBytes && stats.size > maxBytes)) {
         throw new Error('Downloaded asset has an invalid size');

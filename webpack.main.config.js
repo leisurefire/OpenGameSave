@@ -17,7 +17,7 @@ module.exports = {
     externals: [nodeExternals()],
     output: {
         path: path.resolve(__dirname, 'dist/out/main'),
-        filename: '[name].js',
+        filename: '[name].js'
     },
 
     module: {
@@ -28,11 +28,11 @@ module.exports = {
                 use: {
                     loader: 'babel-loader',
                     options: {
-                        presets: ['@babel/preset-env'],
-                    },
-                },
-            },
-        ],
+                        presets: ['@babel/preset-env']
+                    }
+                }
+            }
+        ]
     },
 
     plugins: [
@@ -41,23 +41,23 @@ module.exports = {
                 { from: 'package.json', to: path.resolve(__dirname, 'dist/out') },
                 {
                     from: path.resolve(__dirname, 'src/assets'),
-                    to: path.resolve(__dirname, 'dist/out/assets'),
+                    to: path.resolve(__dirname, 'dist/out/assets')
                 },
                 {
                     from: path.resolve(__dirname, 'src/assets_export'),
-                    to: path.resolve(__dirname, 'dist/out/assets_export'),
+                    to: path.resolve(__dirname, 'dist/out/assets_export')
                 },
                 {
                     from: path.resolve(__dirname, 'src/locale'),
-                    to: path.resolve(__dirname, 'dist/out/locale'),
+                    to: path.resolve(__dirname, 'dist/out/locale')
                 }
             ]
-        }),
+        })
 
     ],
 
     node: {
         __dirname: false, // Important for paths in Electron main process
-        __filename: false,
-    },
+        __filename: false
+    }
 };

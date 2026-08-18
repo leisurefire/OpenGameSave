@@ -39,7 +39,7 @@ async function main() {
         electronVersion,
         onlyModules: ['better-sqlite3'],
         force: true,
-        buildFromSource: true,
+        buildFromSource: true
     });
 
     const actualAbi = readNativeModuleAbi(nativeModulePath);

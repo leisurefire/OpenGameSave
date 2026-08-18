@@ -1,6 +1,5 @@
 const { execFile } = require('child_process');
 const fsOriginal = require('original-fs');
-const path = require('path');
 const util = require('util');
 
 const i18next = require('i18next');

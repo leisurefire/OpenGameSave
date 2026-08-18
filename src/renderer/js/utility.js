@@ -93,23 +93,21 @@ function setupHomeActions() {
 export async function updateTranslations(container) {
     const translationTasks = [];
 
-    container.querySelectorAll("[data-i18n]").forEach((el) => {
-        const key = el.getAttribute("data-i18n");
+    container.querySelectorAll('[data-i18n]').forEach((el) => {
+        const key = el.getAttribute('data-i18n');
         translationTasks.push(window.i18n.translate(key).then((translation) => {
             if (translation) {
                 // Priority 1: Specifically marked span for dynamic content protection
                 const textContentElement = el.querySelector('.text-content');
                 if (textContentElement) {
                     textContentElement.innerText = translation;
-                }
-                // Priority 2: If the element itself is marked as text-content
-                else if (el.classList.contains('text-content')) {
+                } else if (el.classList.contains('text-content')) {
+                    // Priority 2: If the element itself is marked as text-content
                     el.innerText = translation;
-                }
-                // Only leaf elements can safely replace all of their text. Buttons
-                // with child nodes may contain Lucide icon containers, so assigning
-                // innerText to the button would remove those icons.
-                else if (el.children.length === 0) {
+                } else if (el.children.length === 0) {
+                    // Only leaf elements can safely replace all of their text. Buttons
+                    // with child nodes may contain Lucide icon containers, so assigning
+                    // innerText to the button would remove those icons.
                     el.innerText = translation;
                 }
             }
@@ -164,7 +162,7 @@ export function updateProgress(progressId, progressTitle, percentage) {
     if (percentage === 'start') {
         const progressElement = document.createElement('div');
         progressElement.id = safeProgressId;
-        progressElement.className = "app-progress floating-surface animate-fadeIn";
+        progressElement.className = 'app-progress floating-surface animate-fadeIn';
         progressElement.innerHTML = `
             <div class="app-progress-header">
                 <span class="progress-title"></span>
@@ -247,7 +245,7 @@ export async function operationStartCheck(operation) {
         'update-db': { updating_db: 'alert.wait_for_updating_db', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', syncing: 'alert.wait_for_sync' },
         'export': { exporting: 'alert.wait_for_export', backuping: 'alert.wait_for_backup', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', syncing: 'alert.wait_for_sync' },
         'import': { importing: 'alert.wait_for_import', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', syncing: 'alert.wait_for_sync' },
-        'sync': { syncing: 'alert.wait_for_sync', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' },
+        'sync': { syncing: 'alert.wait_for_sync', backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore' }
     };
 
     const alerts = statusChecks[operation];
