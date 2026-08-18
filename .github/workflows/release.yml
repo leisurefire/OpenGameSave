@@ -3,187 +3,306 @@ name: Build and Release
 on:
   workflow_dispatch:
     inputs:
-      version_bump:
-        description: '版本提升类型：小版本 0.7.1 -> 0.7.2；大版本 0.7.1 -> 0.8.0'
+      release_channel:
+        description: '发布通道'
         required: true
-        default: '小版本'
+        default: stable
         type: choice
         options:
-          - 小版本
-          - 大版本
+          - stable
+          - prerelease
+      version_bump:
+        description: '版本提升：patch 0.7.1 -> 0.7.2；minor 0.7.1 -> 0.8.0'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+      prerelease_label:
+        description: '预发布标识（仅 prerelease 通道生效）'
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - rc
+
+concurrency:
+  group: application-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout code
+      - name: Checkout the exact main commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Require an up-to-date main dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Application releases can only be dispatched from main."
+            exit 1
+          fi
+          git fetch origin main --tags
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "main advanced after this workflow was dispatched; start a new release run."
+            exit 1
+          fi
+
+      - name: Enable immutable releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "RELEASE_ADMIN_TOKEN with repository Administration and Contents: write is required."
+            exit 1
+          fi
+          IMMUTABILITY_ENABLED=false
+          if gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/immutable-releases" \
+            --jq '.enabled' 2>/dev/null | grep -Fx true >/dev/null; then
+            IMMUTABILITY_ENABLED=true
+          fi
+          if ! gh release view database >/dev/null 2>&1; then
+            if [ "$IMMUTABILITY_ENABLED" = "true" ]; then
+              echo "Create the mutable database channel before running an application release."
+              exit 1
+            fi
+            gh release create database \
+              --target "$GITHUB_SHA" \
+              --title "OpenGameSave Database" \
+              --notes "Machine-consumed database update channel." \
+              --latest=false
+          fi
+          DATABASE_IMMUTABLE=$(gh api -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/releases/tags/database" --jq '.immutable // false')
+          if [ "$DATABASE_IMMUTABLE" = "true" ]; then
+            echo "The database channel is immutable and must be migrated before application releases can continue."
+            exit 1
+          fi
+          gh api --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/immutable-releases"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/immutable-releases" \
+            --jq 'select(.enabled == true) | .enabled' | grep -Fx true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Resolve next version
+      - name: Resolve next version and channel
         id: version
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION_BUMP: ${{ github.event.inputs.version_bump }}
+          VERSION_BUMP: ${{ inputs.version_bump }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          PRERELEASE_LABEL: ${{ inputs.prerelease_label }}
         run: |
           set -euo pipefail
-
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          RELEASES_JSON=$(gh release list --limit 200 --json tagName,name,isPrerelease)
-          export PACKAGE_VERSION RELEASES_JSON VERSION_BUMP
+          RELEASES_JSON=$(gh release list --limit 200 --json tagName,isPrerelease)
+          export PACKAGE_VERSION RELEASES_JSON VERSION_BUMP RELEASE_CHANNEL PRERELEASE_LABEL
+          node scripts/resolve-release-version.js >> "$GITHUB_OUTPUT"
 
-          node <<'NODE' >> "$GITHUB_OUTPUT"
-          const floorVersion = [0, 6, 22];
-          const bump = process.env.VERSION_BUMP;
-          const releases = JSON.parse(process.env.RELEASES_JSON || '[]');
-
-          function parseVersion(value) {
-            const match = String(value || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);
-            return match ? match.slice(1).map(Number) : null;
-          }
-
-          function compareVersion(left, right) {
-            for (let index = 0; index < 3; index += 1) {
-              if (left[index] !== right[index]) {
-                return left[index] - right[index];
-              }
-            }
-            return 0;
-          }
-
-          function formatVersion(version) {
-            return version.join('.');
-          }
-
-          const releaseVersions = releases
-            .filter((release) => !release.isPrerelease)
-            .flatMap((release) => [release.tagName, release.name])
-            .map(parseVersion)
-            .filter(Boolean);
-
-          const packageVersion = parseVersion(process.env.PACKAGE_VERSION);
-          const baseCandidates = [floorVersion, packageVersion, ...releaseVersions].filter(Boolean);
-          const baseVersion = baseCandidates.reduce((latest, version) => (
-            compareVersion(version, latest) > 0 ? version : latest
-          ), floorVersion);
-
-          let nextVersion;
-          if (bump === '小版本') {
-            nextVersion = [baseVersion[0], baseVersion[1], baseVersion[2] + 1];
-          } else if (bump === '大版本') {
-            nextVersion = [baseVersion[0], baseVersion[1] + 1, 0];
-          } else {
-            throw new Error(`Unsupported version bump: ${bump}`);
-          }
-
-          if (compareVersion(nextVersion, baseVersion) <= 0) {
-            throw new Error(`Next version ${formatVersion(nextVersion)} must be greater than ${formatVersion(baseVersion)}`);
-          }
-
-          console.log(`CURRENT_VERSION=${formatVersion(baseVersion)}`);
-          console.log(`NEXT_VERSION=${formatVersion(nextVersion)}`);
-          console.log(`TAG=v${formatVersion(nextVersion)}`);
-          NODE
-
-      - name: Verify release version
+      - name: Verify release identity is unused
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
           TAG="${{ steps.version.outputs.TAG }}"
-          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
-
-          echo "Base version: ${{ steps.version.outputs.CURRENT_VERSION }}"
-          echo "Next version: $VERSION"
-
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Error: Release $TAG already exists."
+            echo "Release $TAG already exists."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
             exit 1
           fi
 
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Error: Tag $TAG already exists."
-            exit 1
-          fi
+      - name: Require Windows signing configuration
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_PUBLISHER_NAME: ${{ vars.WINDOWS_PUBLISHER_NAME }}
+        run: |
+          set -euo pipefail
+          test -n "${WIN_CSC_LINK:-}" || { echo "WINDOWS_CERTIFICATE is required."; exit 1; }
+          test -n "${WIN_CSC_KEY_PASSWORD:-}" || { echo "WINDOWS_CERTIFICATE_PASSWORD is required."; exit 1; }
+          test -n "${WINDOWS_PUBLISHER_NAME:-}" || { echo "WINDOWS_PUBLISHER_NAME is required."; exit 1; }
 
       - name: Apply package version
         run: npm version "${{ steps.version.outputs.NEXT_VERSION }}" --no-git-tag-version
 
-      # 不传 GH_TOKEN，并显式禁止 electron-builder 自动创建 release
-      - name: Build distributables
-        run: npm run app:dist -- --publish never
+      - name: Run checks
+        run: npm run check
 
-      - name: Create GitHub Release
+      - name: Build signed distributables
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_PUBLISHER_NAME: ${{ vars.WINDOWS_PUBLISHER_NAME }}
+          UPDATE_CHANNEL: ${{ steps.version.outputs.UPDATE_CHANNEL }}
+        run: npm run app:dist:release
+
+      - name: Validate package, updater metadata, ProductVersion, and signature
+        shell: pwsh
+        env:
+          WINDOWS_PUBLISHER_NAME: ${{ vars.WINDOWS_PUBLISHER_NAME }}
+        run: |
+          $version = '${{ steps.version.outputs.NEXT_VERSION }}'
+          $installer = "dist/OpenGameSave-Setup-$version.exe"
+          node scripts/validate-app-release.js `
+            --dist dist `
+            --version $version `
+            --publisher $env:WINDOWS_PUBLISHER_NAME `
+            --report dist/release-artifacts.json
+          ./scripts/verify-windows-release.ps1 `
+            -InstallerPath $installer `
+            -ExpectedVersion $version `
+            -ExpectedPublisher $env:WINDOWS_PUBLISHER_NAME
+
+      - name: Create and atomically push release commit and annotated tag
+        id: release_commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.TAG }}"
+          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
+          UNEXPECTED=$(git status --porcelain --untracked-files=no | grep -Ev '^ M package(-lock)?\.json$' || true)
+          if [ -n "$UNEXPECTED" ]; then
+            echo "Build unexpectedly changed tracked files:"
+            printf '%s\n' "$UNEXPECTED"
+            exit 1
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package.json package-lock.json
+          git commit -m "chore(release): $TAG"
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          git tag -a "$TAG" -m "OpenGameSave $VERSION" "$RELEASE_COMMIT"
+          TAG_VERSION=$(git show "$TAG:package.json" | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")
+          test "$TAG_VERSION" = "$VERSION"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || {
+            echo "main advanced during the build; refusing to publish stale artifacts."
+            exit 1
+          }
+          git push --atomic origin "HEAD:refs/heads/main" "refs/tags/$TAG"
+          echo "RELEASE_COMMIT=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/OpenGameSave-Setup-${{ steps.version.outputs.NEXT_VERSION }}.exe
+            dist/OpenGameSave-Setup-${{ steps.version.outputs.NEXT_VERSION }}.exe.blockmap
+            dist/${{ steps.version.outputs.UPDATE_CHANNEL }}.yml
+
+      - name: Create draft release with verified tag
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ steps.version.outputs.TAG }}"
-          TITLE="${{ steps.version.outputs.NEXT_VERSION }}"
-
-          # 用 mapfile 数组收集产物，避免文件名含空格时出错
-          mapfile -t FILES < <(find dist -maxdepth 1 -type f \( \
-            -name "*.exe" -o \
-            -name "*.msi" -o \
-            -name "*.zip" -o \
-            -name "*.7z" -o \
-            -name "*.dmg" -o \
-            -name "*.AppImage" -o \
-            -name "*.deb" -o \
-            -name "*.rpm" -o \
-            -name "*.snap" -o \
-            -name "latest.yml" -o \
-            -name "*.blockmap" \
-          \))
-
-          if [ ${#FILES[@]} -eq 0 ]; then
-            echo "Error: No artifact files found in dist/"
-            exit 1
+          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
+          CHANNEL="${{ steps.version.outputs.UPDATE_CHANNEL }}"
+          INSTALLER="dist/OpenGameSave-Setup-$VERSION.exe"
+          FILES=("$INSTALLER" "$INSTALLER.blockmap" "dist/$CHANNEL.yml")
+          FLAGS=(--draft --verify-tag --target "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
+          if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
+            FLAGS+=(--prerelease --latest=false)
+          else
+            FLAGS+=(--latest)
           fi
+          NOTES=$(printf 'Version: %s\nChannel: %s\nBuild source: %s\n' "$VERSION" "${{ inputs.release_channel }}" "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
+          gh release create "$TAG" "${FLAGS[@]}" --title "$VERSION" --notes "$NOTES" "${FILES[@]}"
 
-          if ! printf '%s\n' "${FILES[@]}" | grep -Ei '\.exe$' >/dev/null; then
-            echo "Error: No Windows .exe installer found in dist/"
+      - name: Verify remote assets and provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_PUBLISHER_NAME: ${{ vars.WINDOWS_PUBLISHER_NAME }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.TAG }}"
+          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
+          for attempt in 1 2 3 4 5 6; do
+            gh api -H "Accept: application/vnd.github+json" "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > dist/remote-release.json
+            if node scripts/validate-app-release.js \
+              --dist dist \
+              --version "$VERSION" \
+              --publisher "$WINDOWS_PUBLISHER_NAME" \
+              --remote-json dist/remote-release.json; then
+              break
+            fi
+            if [ "$attempt" = 6 ]; then exit 1; fi
+            sleep 10
+          done
+          REMOTE_TAG_COMMIT=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+          test "$REMOTE_TAG_COMMIT" = "${{ steps.release_commit.outputs.RELEASE_COMMIT }}" || {
+            echo "Remote annotated tag does not resolve to the built release commit."
             exit 1
+          }
+          gh attestation verify "dist/OpenGameSave-Setup-$VERSION.exe" --repo "$GITHUB_REPOSITORY"
+          gh attestation verify "dist/OpenGameSave-Setup-$VERSION.exe.blockmap" --repo "$GITHUB_REPOSITORY"
+          gh attestation verify "dist/${{ steps.version.outputs.UPDATE_CHANNEL }}.yml" --repo "$GITHUB_REPOSITORY"
+
+      - name: Publish immutable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
+            gh release edit "${{ steps.version.outputs.TAG }}" --draft=false --prerelease --latest=false
+          else
+            gh release edit "${{ steps.version.outputs.TAG }}" --draft=false --prerelease=false --latest
           fi
+          gh api -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/$GITHUB_REPOSITORY/releases/tags/${{ steps.version.outputs.TAG }}" \
+            --jq 'select(.draft == false and .immutable == true) | .tag_name' \
+            | grep -Fx '${{ steps.version.outputs.TAG }}'
+          gh release verify "${{ steps.version.outputs.TAG }}"
 
-          if ! printf '%s\n' "${FILES[@]}" | grep -E '/latest\.yml$' >/dev/null; then
-            echo "Error: Auto-update metadata latest.yml was not generated"
-            exit 1
-          fi
-
-          UPDATE_FILE=$(node -e "process.stdout.write(require('js-yaml').load(require('fs').readFileSync('dist/latest.yml', 'utf8')).path)")
-          if [ -z "$UPDATE_FILE" ] || [ ! -f "dist/$UPDATE_FILE" ]; then
-            echo "Error: latest.yml references a missing installer: $UPDATE_FILE"
-            exit 1
-          fi
-
-          echo "Creating release: $TITLE (tag: $TAG)"
-          printf "Uploading: %s\n" "${FILES[@]}"
-
-          NOTES=$(cat <<EOF
-          Version: $TITLE
-          Build date: $(date +'%Y%m%d')
-
-          Download the Windows .exe installer from this release to update OpenGameSave.
-          EOF
-          )
-
-          gh release create "$TAG" \
-            --title "$TITLE" \
-            --notes "$NOTES" \
-            "${FILES[@]}"
+      - name: Add release summary
+        shell: bash
+        run: |
+          printf '## Application release\n\n- Tag: `%s`\n- Version: `%s`\n- Channel: `%s`\n- Commit: `%s`\n- Signed and attested: yes\n- Immutable: yes\n' \
+            '${{ steps.version.outputs.TAG }}' \
+            '${{ steps.version.outputs.NEXT_VERSION }}' \
+            '${{ inputs.release_channel }}' \
+            '${{ steps.release_commit.outputs.RELEASE_COMMIT }}' \
+            >> "$GITHUB_STEP_SUMMARY"

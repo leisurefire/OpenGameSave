@@ -5,6 +5,7 @@ const {
     getCurrentVersion,
     getLatestVersion,
     getRepositoryUrl,
+    isAppUpdateQuitPending,
     isNewerAppVersion,
     showBackgroundNotification,
     updateApp
@@ -44,6 +45,7 @@ module.exports = {
     getSettings,
     getStatus,
     importBackups,
+    isAppUpdateQuitPending,
     isNewerAppVersion,
     loadSettings,
     moveFilesWithProgress,

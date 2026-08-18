@@ -11,6 +11,7 @@ const {
     createMainWindow,
     getMainWin,
     getSettings,
+    isAppUpdateQuitPending,
     loadSettings,
     saveSettings,
     setLaunchAtStartup
@@ -26,6 +27,7 @@ const {
 } = require('./services/menuWindowService');
 const { denyUnexpectedPermissions } = require('./windowSecurity');
 const { refreshExperimentalXgpSource } = require('./xgpExperimentalSource');
+const { recoverWebDAVTransactions } = require('./webdavSync');
 
 function logFatalError(error) {
     const message = error?.stack || String(error);
@@ -64,6 +66,17 @@ let isQuitting = false;
 let gameDataInitializationPromise = null;
 let startupIdleQueueStarted = false;
 const startupIdleTasks = [];
+
+function waitForShutdownTask(task, timeoutMs) {
+    let timeoutId;
+    const timeout = new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
+    return Promise.race([
+        Promise.resolve(task).then(() => 'completed'),
+        timeout
+    ]).finally(() => clearTimeout(timeoutId));
+}
 
 function startGameDataInitialization() {
     if (!gameDataInitializationPromise) {
@@ -138,6 +151,9 @@ function queuePostRenderStartup(mainWindow) {
         pendingGsmPath = null;
     }
     enqueueStartupIdleTask('preload-menu-window', createMenuWindow, 150);
+    enqueueStartupIdleTask('recover-webdav-transactions', async () => {
+        await recoverWebDAVTransactions(getSettings().backupPath);
+    }, 50);
     enqueueStartupIdleTask('initialize-game-data-and-auto-backup', async () => {
         await startGameDataInitialization();
         await restoreAutoBackups();
@@ -185,7 +201,11 @@ function registerApplicationLifecycle() {
         isQuitting = true;
         try {
             destroyMenuWindow();
-            await stopAllAutoBackups();
+            const updateQuit = isAppUpdateQuitPending();
+            const result = await waitForShutdownTask(stopAllAutoBackups(), updateQuit ? 10000 : 30000);
+            if (result === 'timeout') {
+                console.warn(`Timed out stopping background backups during ${updateQuit ? 'update' : 'normal'} exit`);
+            }
         } catch (error) {
             logFatalError(error);
         } finally {

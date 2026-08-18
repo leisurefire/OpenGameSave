@@ -1,4 +1,4 @@
-const { BrowserWindow, Notification, app, shell } = require('electron');
+const { BrowserWindow, Notification, app, autoUpdater: nativeAutoUpdater, shell } = require('electron');
 const path = require('path');
 
 const axios = require('axios');
@@ -6,18 +6,28 @@ const { autoUpdater } = require('electron-updater');
 const i18next = require('i18next');
 
 const { acquireGlobalOperation } = require('../gameOperationLock');
+const {
+    isNewerAppVersion: compareNewerAppVersion,
+    normalizeAppVersion,
+    selectLatestAppRelease
+} = require('../appUpdatePolicy');
+const { getSettings } = require('./settingsService');
 const { getMainWin } = require('./windowManager');
 const { getStatus, updateStatus } = require('./statusService');
 
 const appVersion = app.getVersion();
 const appReleaseUrl = 'https://github.com/leisurefire/OpenGameSave/releases';
-const appRepositoryApiLatestReleaseUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/latest';
+const appRepositoryApiReleasesUrl = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases';
 const canAutoUpdate = app.isPackaged && process.platform === 'win32';
+const installLaunchTimeoutMs = 15000;
 
 let checkPromise = null;
 let downloadPromise = null;
 let installTimer = null;
+let installLaunchWatchdog = null;
 let releaseUpdateOperation = null;
+let activeRelease = null;
+let updateQuitRequested = false;
 const updateState = {
     status: 'idle',
     currentVersion: appVersion,
@@ -27,7 +37,9 @@ const updateState = {
     transferred: 0,
     total: 0,
     bytesPerSecond: 0,
-    error: null
+    error: null,
+    releaseUrl: null,
+    fallbackAvailable: false
 };
 
 autoUpdater.autoDownload = false;
@@ -44,33 +56,8 @@ function resource_path(resource_name) {
     return path.join(process.resourcesPath, 'assets_export', resource_name);
 }
 
-function normalizeAppVersion(version) {
-    const match = String(version || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/);
-    return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : null;
-}
-
-function compareAppVersions(left, right) {
-    const leftVersion = normalizeAppVersion(left);
-    const rightVersion = normalizeAppVersion(right);
-
-    if (!leftVersion || !rightVersion) {
-        return 0;
-    }
-
-    const leftParts = leftVersion.split('.').map(Number);
-    const rightParts = rightVersion.split('.').map(Number);
-
-    for (let index = 0; index < 3; index += 1) {
-        if (leftParts[index] !== rightParts[index]) {
-            return leftParts[index] - rightParts[index];
-        }
-    }
-
-    return 0;
-}
-
 function isNewerAppVersion(candidateVersion, currentVersion = appVersion) {
-    return compareAppVersions(candidateVersion, currentVersion) > 0;
+    return compareNewerAppVersion(candidateVersion, currentVersion);
 }
 
 function getAppUpdateState() {
@@ -98,36 +85,67 @@ function releaseAppUpdateOperation() {
     releaseUpdateOperation = null;
 }
 
+function clearInstallTimers() {
+    if (installTimer) clearTimeout(installTimer);
+    if (installLaunchWatchdog) clearTimeout(installLaunchWatchdog);
+    installTimer = null;
+    installLaunchWatchdog = null;
+}
+
 function getUpdateErrorCode(error) {
     const message = String(error?.message || error || '').toLowerCase();
-    if (message.includes('latest.yml') || message.includes('404')) return 'metadata-unavailable';
+    if (message.includes('publisher') || message.includes('signature') || message.includes('authenticode')) {
+        return 'signature-invalid';
+    }
+    if (message.includes('.yml') || message.includes('404') || message.includes('update info')) return 'metadata-unavailable';
     if (message.includes('sha512') || message.includes('checksum')) return 'verification-failed';
     if (message.includes('network') || message.includes('timeout') || message.includes('enotfound')) return 'network-failed';
     return 'update-failed';
 }
 
+function shouldIncludePrerelease() {
+    return getSettings()?.appUpdatePrerelease === true;
+}
+
+async function getLatestAppRelease() {
+    const response = await axios.get(appRepositoryApiReleasesUrl, {
+        headers: {
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'OpenGameSave'
+        },
+        params: { per_page: 100 },
+        timeout: 15000,
+        maxContentLength: 2 * 1024 * 1024
+    });
+    return selectLatestAppRelease(response.data, { includePrerelease: shouldIncludePrerelease() });
+}
+
 async function getLatestVersion(appName) {
     try {
-        const response = await axios.get(appRepositoryApiLatestReleaseUrl, {
-            headers: {
-                'Accept': 'application/vnd.github+json',
-                'User-Agent': 'OpenGameSave'
-            },
-            timeout: 15000,
-            maxContentLength: 1024 * 1024
-        });
-
-        const latestVersion = normalizeAppVersion(response.data?.tag_name) || normalizeAppVersion(response.data?.name);
-        if (latestVersion) {
-            return latestVersion;
-        }
-
+        const latestRelease = await getLatestAppRelease();
+        if (latestRelease) return latestRelease.version;
         console.error('Error: release version not found in GitHub response');
         return null;
     } catch (error) {
         console.error(`Error retrieving latest version from GitHub for ${appName}: ${error.message}`);
         return null;
     }
+}
+
+function configurePinnedUpdateFeed(release) {
+    const encodedTag = encodeURIComponent(release.tag);
+    autoUpdater.allowPrerelease = shouldIncludePrerelease();
+    autoUpdater.channel = release.channel;
+    autoUpdater.allowDowngrade = false;
+    autoUpdater.setFeedURL({
+        provider: 'generic',
+        url: `https://github.com/leisurefire/OpenGameSave/releases/download/${encodedTag}/`,
+        channel: release.channel
+    });
+}
+
+function getReleasePageUrl(release) {
+    return release ? `${appReleaseUrl}/tag/${encodeURIComponent(release.tag)}` : appReleaseUrl;
 }
 
 async function checkUnsupportedPlatformUpdate() {
@@ -158,20 +176,66 @@ async function checkAppUpdate() {
         return getAppUpdateState();
     }
 
-    setAppUpdateState({ status: 'checking', error: null });
-    checkPromise = autoUpdater.checkForUpdates()
+    setAppUpdateState({ status: 'checking', error: null, fallbackAvailable: false });
+    checkPromise = getLatestAppRelease()
+        .then((release) => {
+            if (!release) throw new Error('No application release with complete update assets was found');
+            activeRelease = release;
+            setAppUpdateState({ releaseUrl: getReleasePageUrl(release) });
+            if (!isNewerAppVersion(release.version, appVersion)) {
+                return setAppUpdateState({
+                    status: 'up-to-date',
+                    availableVersion: null,
+                    percent: 0,
+                    error: null
+                });
+            }
+            configurePinnedUpdateFeed(release);
+            return autoUpdater.checkForUpdates().then(() => getAppUpdateState());
+        })
         .then(() => getAppUpdateState())
         .catch((error) => {
             console.error('Error checking for application update:', error);
             return setAppUpdateState({
                 status: 'error',
-                error: getUpdateErrorCode(error)
+                error: getUpdateErrorCode(error),
+                fallbackAvailable: true
             });
         })
         .finally(() => {
             checkPromise = null;
         });
     return checkPromise;
+}
+
+async function openUpdateFallback() {
+    await shell.openExternal(updateState.releaseUrl || getReleasePageUrl(activeRelease)).catch((error) => {
+        console.error('An error occurred while opening the release page:', error);
+    });
+    return true;
+}
+
+function beginUpdateInstallation() {
+    setAppUpdateState({ status: 'installing', error: null });
+    installLaunchWatchdog = setTimeout(() => {
+        installLaunchWatchdog = null;
+        if (updateQuitRequested) return;
+        releaseAppUpdateOperation();
+        setAppUpdateState({
+            status: 'error',
+            error: 'install-launch-failed',
+            fallbackAvailable: true
+        });
+        void openUpdateFallback();
+    }, installLaunchTimeoutMs);
+    try {
+        autoUpdater.quitAndInstall(true, true);
+    } catch (error) {
+        clearInstallTimers();
+        releaseAppUpdateOperation();
+        setAppUpdateState({ status: 'error', error: getUpdateErrorCode(error), fallbackAvailable: true });
+        void openUpdateFallback();
+    }
 }
 
 async function downloadAppUpdate() {
@@ -186,7 +250,12 @@ async function downloadAppUpdate() {
         await checkAppUpdate();
     }
     if (updateState.status !== 'available') {
-        return getAppUpdateState();
+        const state = getAppUpdateState();
+        if (state.fallbackAvailable) {
+            await openUpdateFallback();
+            return { ...state, fallbackOpened: true };
+        }
+        return state;
     }
 
     const hasActiveOperation = Object.entries(getStatus()).some(([key, value]) => key !== 'updating_app' && value);
@@ -215,19 +284,21 @@ async function downloadAppUpdate() {
             if (!installTimer) {
                 installTimer = setTimeout(() => {
                     installTimer = null;
-                    setAppUpdateState({ status: 'installing' });
-                    autoUpdater.quitAndInstall(true, true);
+                    beginUpdateInstallation();
                 }, 500);
             }
             return getAppUpdateState();
         })
         .catch((error) => {
             console.error('Error downloading application update:', error);
+            clearInstallTimers();
             releaseAppUpdateOperation();
-            return setAppUpdateState({
+            const state = setAppUpdateState({
                 status: 'error',
-                error: getUpdateErrorCode(error)
+                error: getUpdateErrorCode(error),
+                fallbackAvailable: true
             });
+            return openUpdateFallback().then(() => ({ ...state, fallbackOpened: true }));
         })
         .finally(() => {
             downloadPromise = null;
@@ -298,7 +369,9 @@ autoUpdater.on('update-available', (info) => {
         status: 'available',
         availableVersion: latestVersion,
         percent: 0,
-        error: null
+        error: null,
+        releaseUrl: getReleasePageUrl(activeRelease),
+        fallbackAvailable: true
     });
     showBackgroundNotification(
         'app',
@@ -339,14 +412,24 @@ autoUpdater.on('update-downloaded', (info) => {
 
 autoUpdater.on('error', (error) => {
     console.error('Application updater error:', error);
+    clearInstallTimers();
     if (getStatus().updating_app) {
         releaseAppUpdateOperation();
     }
     setAppUpdateState({
         status: 'error',
-        error: getUpdateErrorCode(error)
+        error: getUpdateErrorCode(error),
+        fallbackAvailable: true
     });
 });
+
+nativeAutoUpdater.on('before-quit-for-update', () => {
+    updateQuitRequested = true;
+    if (installLaunchWatchdog) clearTimeout(installLaunchWatchdog);
+    installLaunchWatchdog = null;
+});
+
+app.on('will-quit', clearInstallTimers);
 
 module.exports = {
     checkAppUpdate,
@@ -355,6 +438,7 @@ module.exports = {
     getCurrentVersion: () => appVersion,
     getLatestVersion,
     getRepositoryUrl: () => 'https://github.com/leisurefire/OpenGameSave',
+    isAppUpdateQuitPending: () => updateQuitRequested,
     isNewerAppVersion,
     showBackgroundNotification,
     updateApp

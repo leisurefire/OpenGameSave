@@ -7,6 +7,10 @@ __pycache__
 !/scripts/sync-ludusavi-manifest.js
 !/scripts/build-db-release.js
 !/scripts/rebuild-electron-native.js
+!/scripts/resolve-release-version.js
+!/scripts/validate-app-release.js
+!/scripts/electron-builder.release.js
 *.ps1
+!/scripts/verify-windows-release.ps1
 secret_config.js
 tailwind-output.css
