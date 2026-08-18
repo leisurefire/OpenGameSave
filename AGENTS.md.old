@@ -47,17 +47,21 @@ Run commands from the repository root.
 
 ```powershell
 npm install
-npm start
+npm run dev
 npm run build
-npm run package
+npm start
+npm run app:dir
+npm run app:dist
 ```
 
 Command meanings:
 
-- `npm start`: development mode with Tailwind watch, Webpack watch, and Electron launch
+- `npm run dev`: development mode with Tailwind and Webpack watchers plus Electron
 - `npm run build`: production build into `dist/out`
-- `npm run package`: build and package with Electron Builder in directory mode
-- `npm run tailwind:build`: compile Tailwind CSS only
+- `npm start`: build and launch the application without file watchers
+- `npm run app:dir`: build an unpacked application directory for local verification
+- `npm run app:dist`: build distributable installers or archives
+- `npm run styles:build`: compile Tailwind CSS only
 
 If command shims are unavailable on Windows, run `npm install` before retrying.
 

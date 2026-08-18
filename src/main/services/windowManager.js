@@ -208,7 +208,7 @@ const loadModalWindowPage = async (browserWindow, pageName, initialData = {}) =>
 
     // Do not run executeJavaScript() before loadFile(). On a newly-created
     // hidden BrowserWindow, that can hang indefinitely and prevent the window
-    // from ever being shown when launched via npm start.
+    // from ever being shown when launched via npm run dev.
     applyModalWindowDefinition(browserWindow, definition);
     modalWindowPages.set(browserWindow, pageName);
     modalWindowData.set(browserWindow, { ...initialData, modalType: pageName });

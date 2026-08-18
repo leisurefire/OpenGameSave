@@ -124,9 +124,9 @@ jobs:
       - name: Apply package version
         run: npm version "${{ steps.version.outputs.NEXT_VERSION }}" --no-git-tag-version
 
-      # 不传 GH_TOKEN，防止 electron-builder 自动创建 release
-      - name: Run dist
-        run: npm run build && npx electron-builder --publish never
+      # 不传 GH_TOKEN，并显式禁止 electron-builder 自动创建 release
+      - name: Build distributables
+        run: npm run app:dist -- --publish never
 
       - name: Create GitHub Release
         shell: bash
