@@ -68,7 +68,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native test dependency
+        run: npm rebuild better-sqlite3
 
       - name: Resolve next version and channel
         id: version

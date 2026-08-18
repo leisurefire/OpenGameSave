@@ -23,6 +23,8 @@ test('Windows releases are version-bound, channel-aware and remotely verified', 
     });
     assert.equal(packageJson.build.artifactName, '${productName}-Setup-${version}.${ext}');
     assert.match(releaseWorkflow, /group: application-release/);
+    assert.match(releaseWorkflow, /npm ci --ignore-scripts/);
+    assert.match(releaseWorkflow, /npm rebuild better-sqlite3/);
     assert.match(releaseWorkflow, /--verify-tag/);
     assert.match(releaseWorkflow, /validate-app-release\.js/);
     assert.match(releaseWorkflow, /--remote-json/);
