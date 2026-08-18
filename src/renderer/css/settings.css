@@ -101,15 +101,8 @@
     z-index: 1000;
 }
 
-.settings-row-tall {
-    min-height: 92px;
-    align-items: flex-start;
-    padding-top: 14px;
-    padding-bottom: 14px;
-}
-
-.settings-row-tall toggle-switch {
-    margin-top: 3px;
+#database-variant {
+    width: 210px;
 }
 
 .settings-row-copy {
@@ -148,19 +141,6 @@
 
 .settings-number-control .relative {
     width: 100%;
-}
-
-.settings-inline-link {
-    margin-top: 6px;
-    padding: 0;
-    color: color-mix(in srgb, var(--system-accent) 70%, white);
-    font-size: 11.5px;
-    line-height: 18px;
-    text-align: left;
-}
-
-.settings-inline-link:hover {
-    text-decoration: underline;
 }
 
 .settings-row-action {

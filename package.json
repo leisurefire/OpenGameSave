@@ -24,6 +24,7 @@
     "app:dist:release": "npm run build && npm run rebuild:electron-native && electron-builder --config scripts/electron-builder.release.js --publish never",
     "db:sync:ludusavi": "node scripts/sync-ludusavi-manifest.js --report dist/ludusavi-sync-report.json",
     "db:sync:ludusavi:apply": "node scripts/sync-ludusavi-manifest.js --apply --report dist/ludusavi-sync-report.json",
+    "db:sync:xgp": "node scripts/sync-xgp-save-tools.js --report dist/xgp-save-tools-sync-report.json",
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
@@ -68,6 +69,14 @@
       {
         "from": "./database/database.db",
         "to": "./database/database.db"
+      },
+      {
+        "from": "./database/licenses",
+        "to": "./database/licenses"
+      },
+      {
+        "from": "./THIRD_PARTY_NOTICES.md",
+        "to": "./THIRD_PARTY_NOTICES.md"
       }
     ]
   },

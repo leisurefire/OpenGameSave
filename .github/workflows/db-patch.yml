@@ -1,16 +1,22 @@
-name: Publish Database Update
+name: Publish Database Editions
 
 'on':
   push:
     paths:
       - database/database.db
+      - database/licenses/XGPSAVETOOLS-LICENSE.txt
       - scripts/generate-db-patch.js
       - scripts/build-db-release.js
+      - scripts/sync-xgp-save-tools.js
+      - src/main/databaseManifest.js
+      - src/main/xgpSourceFormat.js
       - .github/workflows/db-patch.yml
+  schedule:
+    - cron: '47 4 * * 3'
   workflow_dispatch:
 
 concurrency:
-  group: publish-database-update
+  group: publish-database-editions
   cancel-in-progress: false
 
 permissions:
@@ -20,7 +26,7 @@ jobs:
   publish:
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DATABASE_TAG: database
@@ -38,136 +44,231 @@ jobs:
           npm ci --omit=dev --ignore-scripts
           npm rebuild better-sqlite3
 
-      - name: Download and verify the current immutable publication
-        id: previous
+      - name: Resolve the licensed upstream revision
+        id: upstream
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p previous
-          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "legacy=false" >> "$GITHUB_OUTPUT"
-            echo "same_source=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          LICENSE=$(gh api repos/brodrigz/XgpSaveTools --jq '.license.spdx_id')
+          if [ "$LICENSE" != "MIT" ]; then
+            echo "Expected upstream SPDX license MIT, received: $LICENSE" >&2
+            exit 1
           fi
-          if ! gh release download "$DATABASE_TAG" --pattern current.json --dir previous 2>/dev/null; then
-            gh release download "$DATABASE_TAG" --pattern database.db --output previous/database.db
-            node - <<'NODE'
-          const Database=require('better-sqlite3');
-          const db=new Database('previous/database.db',{readonly:true});
-          if(db.pragma('quick_check',{simple:true})!=='ok'||db.pragma('user_version',{simple:true})<1)process.exit(1);
-          db.close();
-          NODE
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "legacy=true" >> "$GITHUB_OUTPUT"
-            echo "same_source=false" >> "$GITHUB_OUTPUT"
-            echo "database=previous/database.db" >> "$GITHUB_OUTPUT"
-            exit 0
+          SHA=$(gh api repos/brodrigz/XgpSaveTools/commits/master --jq '.sha')
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid upstream commit SHA" >&2
+            exit 1
           fi
-          MANIFEST=$(node -e "const p=require('./previous/current.json');if(!/^manifest_v[0-9]+\\.json$/.test(p.manifest))process.exit(1);process.stdout.write(p.manifest)")
-          gh release download "$DATABASE_TAG" --pattern "$MANIFEST" --dir previous
-          DATABASE=$(node -e "const m=require('./previous/' + process.argv[1]);process.stdout.write(m.database.name)" "$MANIFEST")
-          gh release download "$DATABASE_TAG" --pattern "$DATABASE" --dir previous
-          node -e "const m=require('./previous/' + process.argv[1]);for(const p of m.patches||[])console.log(p.name)" "$MANIFEST" > previous/patch-names.txt
-          while IFS= read -r PATCH; do
-            [ -z "$PATCH" ] || gh release download "$DATABASE_TAG" --pattern "$PATCH" --dir previous
-          done < previous/patch-names.txt
-          node - "$MANIFEST" "$DATABASE" <<'NODE'
-          const fs=require('fs'),crypto=require('crypto'),Database=require('better-sqlite3');
-          const manifest=JSON.parse(fs.readFileSync('previous/'+process.argv[2]));
-          const file='previous/'+process.argv[3];
-          const verify=(descriptor)=>{const p='previous/'+descriptor.name,b=fs.readFileSync(p),digest=crypto.createHash('sha256').update(b).digest('hex');if(digest!==descriptor.sha256||b.length!==descriptor.size)process.exit(1)};
-          verify(manifest.database);
-          let previousTo=null;
-          for(const patch of manifest.patches||[]){if(patch.to!==patch.from+1||(previousTo!==null&&patch.from!==previousTo))process.exit(1);verify(patch);previousTo=patch.to}
-          const db=new Database(file,{readonly:true});
-          if(db.pragma('quick_check',{simple:true})!=='ok'||db.pragma('user_version',{simple:true})!==manifest.latest_version)process.exit(1);
-          db.close();
-          NODE
-          SOURCE_SHA=$(node -e "const m=require('./previous/' + process.argv[1]);process.stdout.write(m.source_sha)" "$MANIFEST")
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-          echo "legacy=false" >> "$GITHUB_OUTPUT"
-          echo "manifest=previous/$MANIFEST" >> "$GITHUB_OUTPUT"
-          echo "database=previous/$DATABASE" >> "$GITHUB_OUTPUT"
-          if [ "$SOURCE_SHA" = "$GITHUB_SHA" ]; then echo "same_source=true" >> "$GITHUB_OUTPUT"; else echo "same_source=false" >> "$GITHUB_OUTPUT"; fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Generate semantic database update
-        if: steps.previous.outputs.same_source != 'true'
+      - name: Download registry and license from the same revision
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist/generated dist/database-update
-          FROM=""
-          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then FROM="${{ steps.previous.outputs.database }}"; fi
-          node scripts/generate-db-patch.js --from "$FROM" --to database/database.db --output dist/generated --source-sha "$GITHUB_SHA"
-
-      - name: Read generation result
-        id: generated
-        if: steps.previous.outputs.same_source != 'true'
-        shell: bash
-        run: |
-          node - <<'NODE' >> "$GITHUB_OUTPUT"
-          const fs=require('fs'),Database=require('better-sqlite3');
-          const r=require('./dist/generated/generation-result.json');
-          if(process.env.LEGACY==='true'&&!r.changed){
-            const db=new Database('database/database.db');
-            db.pragma(`user_version = ${r.version}`);
-            db.close();
-            r.changed=true;
-            r.requires_full_database=true;
-            fs.writeFileSync('dist/generated/generation-result.json',JSON.stringify(r,null,2));
-          }
-          console.log(`changed=${r.changed}`);
-          console.log(`version=${r.version}`);
-          NODE
         env:
-          LEGACY: ${{ steps.previous.outputs.legacy }}
-
-      - name: Build immutable assets and current pointer
-        if: steps.generated.outputs.changed == 'true'
-        shell: bash
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
           set -euo pipefail
-          PREVIOUS_ARGS=()
-          if [ "${{ steps.previous.outputs.exists }}" = "true" ]; then PREVIOUS_ARGS=(--previous-manifest "${{ steps.previous.outputs.manifest }}"); fi
-          node scripts/build-db-release.js --database database/database.db --result dist/generated/generation-result.json --output dist/database-update --source-sha "$GITHUB_SHA" "${PREVIOUS_ARGS[@]}"
+          mkdir -p dist/upstream
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 20 --max-time 180 \
+            --output dist/upstream/games.json \
+            "https://raw.githubusercontent.com/brodrigz/XgpSaveTools/$UPSTREAM_SHA/XgpSaveTools/games.json"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 20 --max-time 180 \
+            --output dist/upstream/LICENSE \
+            "https://raw.githubusercontent.com/brodrigz/XgpSaveTools/$UPSTREAM_SHA/LICENSE"
 
-      - name: Publish immutable assets, then atomically advance current.json
-        if: steps.generated.outputs.changed == 'true'
+      - name: Build the ephemeral Xbox-enhanced database
         shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
           set -euo pipefail
-          if ! gh release view "$DATABASE_TAG" >/dev/null 2>&1; then
-            gh release create "$DATABASE_TAG" --target "$GITHUB_SHA" --title "OpenGameSave Database" --notes "Machine-consumed immutable database updates." --latest=false
-          fi
+          cp database/database.db dist/database-xbox-source.db
+          node scripts/sync-xgp-save-tools.js \
+            --apply \
+            --registry-file dist/upstream/games.json \
+            --license-file dist/upstream/LICENSE \
+            --source-url "https://raw.githubusercontent.com/brodrigz/XgpSaveTools/$UPSTREAM_SHA/XgpSaveTools/games.json" \
+            --license-url "https://github.com/brodrigz/XgpSaveTools/blob/$UPSTREAM_SHA/LICENSE" \
+            --upstream-sha "$UPSTREAM_SHA" \
+            --database dist/database-xbox-source.db \
+            --report dist/xgp-save-tools-sync-report.json
+
+      - name: Prepare and publish both database editions
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/publications dist/previous
+          RELEASE_EXISTS=false
+          if gh release view "$DATABASE_TAG" >/dev/null 2>&1; then RELEASE_EXISTS=true; fi
+
           publish_immutable() {
             local file="$1" name existing
             name=$(basename "$file")
             existing=$(mktemp)
             if gh release download "$DATABASE_TAG" --pattern "$name" --output "$existing" 2>/dev/null; then
-              cmp --silent "$file" "$existing" || { echo "Immutable asset conflict: $name"; exit 1; }
+              cmp --silent "$file" "$existing" || { echo "Immutable asset conflict: $name" >&2; exit 1; }
             else
               gh release upload "$DATABASE_TAG" "$file"
             fi
             rm -f "$existing"
           }
-          while IFS= read -r -d '' file; do publish_immutable "$file"; done < <(find dist/database-update -maxdepth 1 -type f ! -name current.json -print0)
-          gh release upload "$DATABASE_TAG" dist/database-update/current.json --clobber
-          gh release edit "$DATABASE_TAG" --target "$GITHUB_SHA" --latest=false
 
-      - name: Add publication summary
+          publish_variant() {
+            local variant="$1" target="$2" source_sha="$3"
+            local pointer suffix previous generated output exists=false legacy=false
+            local manifest_path='' database_path='' previous_source=''
+            suffix=''
+            if [ "$variant" = 'xbox' ]; then suffix='_xbox'; fi
+            pointer="current${suffix}.json"
+            previous="dist/previous/$variant"
+            generated="dist/generated-$variant"
+            output="dist/publications/$variant"
+            mkdir -p "$previous" "$generated" "$output"
+
+            if [ "$RELEASE_EXISTS" = true ] && gh release download "$DATABASE_TAG" --pattern "$pointer" --dir "$previous" 2>/dev/null; then
+              exists=true
+              local manifest database
+              manifest=$(node - "$previous/$pointer" "$variant" <<'NODE'
+          const fs = require('fs');
+          const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('./src/main/databaseManifest');
+          const pointer = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const variant = normalizeDatabaseVariant(process.argv[3]);
+          if (normalizeDatabaseVariant(pointer.variant ?? 'standard') !== variant
+              || !Number.isInteger(pointer.latest_version) || pointer.latest_version < 1
+              || pointer.manifest !== getDatabaseAssetNames(variant, pointer.latest_version).manifest) process.exit(1);
+          process.stdout.write(pointer.manifest);
+          NODE
+              )
+              gh release download "$DATABASE_TAG" --pattern "$manifest" --dir "$previous"
+              database=$(node - "$previous/$manifest" "$variant" <<'NODE'
+          const fs = require('fs');
+          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), process.argv[3]);
+          process.stdout.write(manifest.database.name);
+          NODE
+              )
+              gh release download "$DATABASE_TAG" --pattern "$database" --dir "$previous"
+              node - "$previous/$manifest" "$variant" <<'NODE' > "$previous/patch-names.txt"
+          const fs = require('fs');
+          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), process.argv[3]);
+          for (const patch of manifest.patches) console.log(patch.name);
+          NODE
+              while IFS= read -r patch; do
+                [ -z "$patch" ] || gh release download "$DATABASE_TAG" --pattern "$patch" --dir "$previous"
+              done < "$previous/patch-names.txt"
+              manifest_path="$previous/$manifest"
+              database_path="$previous/$database"
+              previous_source=$(node -e "process.stdout.write(require('./$manifest_path').source_sha)")
+              VARIANT="$variant" MANIFEST_PATH="$manifest_path" DATABASE_PATH="$database_path" node <<'NODE'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const path = require('path');
+          const Database = require('better-sqlite3');
+          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.env.MANIFEST_PATH, 'utf8')), process.env.VARIANT);
+          const verify = descriptor => {
+            const file = path.join(path.dirname(process.env.MANIFEST_PATH), descriptor.name);
+            const bytes = fs.readFileSync(file);
+            const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+            if (bytes.length !== descriptor.size || digest !== descriptor.sha256) throw new Error(`Invalid prior asset: ${descriptor.name}`);
+          };
+          verify(manifest.database);
+          for (const patch of manifest.patches) verify(patch);
+          const db = new Database(process.env.DATABASE_PATH, { readonly: true, fileMustExist: true });
+          const storedVariant = db.prepare("SELECT value FROM metadata WHERE key='database_variant'").get()?.value || 'standard';
+          if (db.pragma('quick_check', { simple: true }) !== 'ok'
+              || db.pragma('user_version', { simple: true }) !== manifest.latest_version
+              || storedVariant !== process.env.VARIANT) process.exit(1);
+          db.close();
+          NODE
+            elif [ "$variant" = 'standard' ] && [ "$RELEASE_EXISTS" = true ] \
+                && gh release download "$DATABASE_TAG" --pattern database.db --output "$previous/database.db" 2>/dev/null; then
+              exists=true
+              legacy=true
+              database_path="$previous/database.db"
+            fi
+
+            if [ "$previous_source" = "$source_sha" ]; then
+              printf -- '- %s: already published for source `%s`\n' "$variant" "$source_sha" >> "$GITHUB_STEP_SUMMARY"
+              return
+            fi
+
+            local from_args=()
+            if [ "$exists" = true ]; then from_args=(--from "$database_path"); fi
+            node scripts/generate-db-patch.js \
+              "${from_args[@]}" --to "$target" --output "$generated" \
+              --source-sha "$source_sha" --variant "$variant"
+
+            if [ "$legacy" = true ]; then
+              TARGET="$target" RESULT="$generated/generation-result.json" node <<'NODE'
+          const fs = require('fs');
+          const Database = require('better-sqlite3');
+          const result = JSON.parse(fs.readFileSync(process.env.RESULT, 'utf8'));
+          if (!result.changed) {
+            const db = new Database(process.env.TARGET);
+            db.pragma(`user_version = ${result.version}`);
+            db.close();
+            result.changed = true;
+            result.requires_full_database = true;
+            fs.writeFileSync(process.env.RESULT, JSON.stringify(result, null, 2));
+          }
+          NODE
+            fi
+
+            local changed version
+            changed=$(node -e "process.stdout.write(String(require('./$generated/generation-result.json').changed))")
+            version=$(node -e "process.stdout.write(String(require('./$generated/generation-result.json').version))")
+            if [ "$changed" != true ]; then
+              printf -- '- %s: no semantic changes\n' "$variant" >> "$GITHUB_STEP_SUMMARY"
+              return
+            fi
+
+            local previous_args=()
+            if [ -n "$manifest_path" ]; then previous_args=(--previous-manifest "$manifest_path"); fi
+            node scripts/build-db-release.js \
+              --database "$target" --result "$generated/generation-result.json" \
+              --output "$output" --source-sha "$source_sha" --variant "$variant" \
+              "${previous_args[@]}"
+
+            if [ "$RELEASE_EXISTS" = false ]; then
+              gh release create "$DATABASE_TAG" --target "$GITHUB_SHA" \
+                --title 'OpenGameSave Database' \
+                --notes 'Machine-consumed immutable standard and Xbox-enhanced database updates.' \
+                --latest=false
+              RELEASE_EXISTS=true
+            fi
+            while IFS= read -r -d '' file; do publish_immutable "$file"; done \
+              < <(find "$output" -maxdepth 1 -type f ! -name "$pointer" -print0)
+            gh release upload "$DATABASE_TAG" "$output/$pointer" --clobber
+            printf -- '- %s: published version %s\n' "$variant" "$version" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          STANDARD_SOURCE="$GITHUB_SHA"
+          XBOX_SOURCE=$(sha256sum database/database.db dist/upstream/games.json dist/upstream/LICENSE \
+            scripts/sync-xgp-save-tools.js src/main/xgpSourceFormat.js \
+            | sha256sum | awk '{print $1}')
+          printf '## Database publication\n\n- XgpSaveTools commit: `%s`\n' "$UPSTREAM_SHA" >> "$GITHUB_STEP_SUMMARY"
+          publish_variant standard database/database.db "$STANDARD_SOURCE"
+          publish_variant xbox dist/database-xbox-source.db "$XBOX_SOURCE"
+          if [ "$RELEASE_EXISTS" = true ]; then
+            gh release edit "$DATABASE_TAG" --target "$GITHUB_SHA" --latest=false
+          fi
+
+      - name: Add Xbox merge summary
         shell: bash
         run: |
-          if [ "${{ steps.previous.outputs.same_source }}" = "true" ]; then STATUS="already published for this source SHA";
-          elif [ "${{ steps.generated.outputs.changed }}" = "true" ]; then STATUS="published version ${{ steps.generated.outputs.version }}";
-          else STATUS="no semantic database changes"; fi
-          printf '## Database publication\n\n- Status: %s\n- Source: `%s`\n' "$STATUS" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const r=require('./dist/xgp-save-tools-sync-report.json'); const s=r.summary; process.stdout.write(['', '### Xbox enhanced edition','', '- Registry SHA-256: '+r.source.registry_sha256,'- Source entries: '+s.sourceEntries,'- Matched games: '+s.matchedGames,'- Mounted games: '+s.persistedMountedGames,'- Added WGS paths: '+s.addedWgsPaths,'- Added PGS paths: '+s.addedPgsPaths,'- Unmatched entries: '+s.unmatchedEntries,'- Ambiguous entries: '+s.ambiguousEntries,''].join('\n'))" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload workflow artifacts
-        if: steps.generated.outputs.changed == 'true'
+      - name: Upload generation reports
         uses: actions/upload-artifact@v4
         with:
-          name: database-update-v${{ steps.generated.outputs.version }}
-          path: dist/database-update
+          name: database-editions-${{ github.run_id }}
+          path: |
+            dist/publications
+            dist/xgp-save-tools-sync-report.json
           if-no-files-found: error
           retention-days: 30

@@ -27,10 +27,12 @@ const {
 const {
     MAX_DATABASE_DOWNLOAD_BYTES,
     MAX_PATCH_DOWNLOAD_BYTES,
+    DATABASE_VARIANT_METADATA_KEY,
+    getDatabaseAssetNames,
+    normalizeDatabaseVariant,
     validateAssetDescriptor,
     validateDatabaseManifest
 } = require('./databaseManifest');
-const { getExperimentalXgpEntries } = require('./xgpExperimentalSource');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/tags/database';
 const DATABASE_READ_WORKER_TASKS = new Set([
@@ -74,7 +76,6 @@ function createBackupWorkerContext() {
         dbPath: getUserDatabasePath(),
         installedDbPath: getInstalledDatabasePath(),
         placeholderMapping: placeholder_mapping,
-        experimentalXgpEntries: getExperimentalXgpEntries(currentSettings.experimentalXgpSource),
         labels: {
             noBackups: i18next.t('main.no_backups'),
             missingDatabase: i18next.t('alert.missing_database_file_message')
@@ -140,7 +141,7 @@ async function getLocalDbVersion(dbPath) {
 /**
  * 将一个补丁 JSON 应用到数据库
  */
-async function validateDatabaseFile(dbPath, expectedVersion, expectedSchemaVersion) {
+async function validateDatabaseFile(dbPath, expectedVersion, expectedSchemaVersion, expectedVariant) {
     const stats = await fs.promises.stat(dbPath);
     if (!stats.isFile() || stats.size === 0 || stats.size > MAX_DATABASE_DOWNLOAD_BYTES) {
         throw new Error('Downloaded database has an invalid size');
@@ -180,14 +181,19 @@ async function validateDatabaseFile(dbPath, expectedVersion, expectedSchemaVersi
         if (expectedVersion !== undefined && version !== expectedVersion) {
             throw new Error('Downloaded database user_version does not match the manifest');
         }
-        return { version, schemaVersion };
+        const variantRow = await dbGet(db, 'SELECT value FROM metadata WHERE key = ?', [DATABASE_VARIANT_METADATA_KEY]);
+        const variant = normalizeDatabaseVariant(variantRow?.value ?? 'standard');
+        if (expectedVariant !== undefined && variant !== normalizeDatabaseVariant(expectedVariant)) {
+            throw new Error('Downloaded database variant does not match the selected variant');
+        }
+        return { version, schemaVersion, variant };
     } finally {
         await closeDb(db);
     }
 }
 
-async function applyPatch(dbPath, rawPatch, expectedVersion, expectedFromVersion) {
-    const patch = validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion);
+async function applyPatch(dbPath, rawPatch, expectedVersion, expectedFromVersion, expectedVariant) {
+    const patch = validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion, expectedVariant);
     const db = await openDb(dbPath, { fileMustExist: true });
     try {
         const currentVersion = (await dbGet(db, 'PRAGMA user_version'))?.user_version || 0;
@@ -288,16 +294,21 @@ function calculateBufferSha256(buffer) {
     return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-async function loadPublishedManifest(assets) {
-    const currentAsset = findReleaseAsset(assets, 'current.json');
+async function loadPublishedManifest(assets, variant = 'standard') {
+    const normalizedVariant = normalizeDatabaseVariant(variant);
+    const names = getDatabaseAssetNames(normalizedVariant);
+    const currentAsset = findReleaseAsset(assets, names.pointer);
     const currentDescriptor = {
-        name: 'current.json',
+        name: names.pointer,
         size: currentAsset.size,
         sha256: normalizeSha256(currentAsset.digest)
     };
-    if (!currentDescriptor.sha256) throw new Error('current.json is missing a Release digest');
+    if (!currentDescriptor.sha256) throw new Error(`${names.pointer} is missing a Release digest`);
     const current = await downloadJsonAsset(currentAsset, currentDescriptor, 64 * 1024);
-    if (!current || typeof current.manifest !== 'string' || !/^manifest_v\d+\.json$/.test(current.manifest)) {
+    const pointerVariant = normalizeDatabaseVariant(current?.variant ?? 'standard');
+    if (pointerVariant !== normalizedVariant || !Number.isInteger(current?.latest_version)
+        || current.latest_version < 1
+        || current.manifest !== getDatabaseAssetNames(normalizedVariant, current.latest_version).manifest) {
         throw new Error('Invalid current database pointer');
     }
     const manifestAsset = findReleaseAsset(assets, current.manifest);
@@ -306,8 +317,12 @@ async function loadPublishedManifest(assets) {
         size: current.size,
         sha256: current.sha256
     }, current.manifest, 1024 * 1024);
-    const manifest = validateDatabaseManifest(await downloadJsonAsset(manifestAsset, manifestDescriptor, 1024 * 1024));
-    if (current.latest_version !== manifest.latest_version || current.manifest !== `manifest_v${manifest.latest_version}.json`) {
+    const manifest = validateDatabaseManifest(
+        await downloadJsonAsset(manifestAsset, manifestDescriptor, 1024 * 1024),
+        normalizedVariant
+    );
+    if (current.latest_version !== manifest.latest_version
+        || current.manifest !== getDatabaseAssetNames(normalizedVariant, manifest.latest_version).manifest) {
         throw new Error('Current pointer and database manifest versions differ');
     }
     return manifest;
@@ -324,7 +339,8 @@ function sendDatabaseUpdateEvent(targetWebContents, channel, ...args) {
     }
 }
 
-async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progressTitle, expectedSchemaVersion, targetWebContents) {
+async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progressTitle,
+    expectedSchemaVersion, expectedVariant, targetWebContents) {
     const assetUrl = verifyReleaseAssetMetadata(asset, descriptor);
     const { data, headers } = await axios({
         method: 'get',
@@ -361,13 +377,14 @@ async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progr
 
     await pipeline(data, fs.createWriteStream(dbPath, { flags: 'wx', mode: 0o600 }));
     await verifyFileDescriptor(dbPath, descriptor, { maxBytes: MAX_DATABASE_DOWNLOAD_BYTES });
-    await validateDatabaseFile(dbPath, descriptor.user_version, expectedSchemaVersion);
+    await validateDatabaseFile(dbPath, descriptor.user_version, expectedSchemaVersion, expectedVariant);
 }
 
 async function performDatabaseUpdate(targetWebContents) {
     const progressId = 'update-db';
     const progressTitle = i18next.t('alert.updating_database');
     const dbPath = getUserDatabasePath();
+    const requestedVariant = normalizeDatabaseVariant(getSettings().databaseVariant, 'standard');
     let stagedPath = null;
 
     sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'start');
@@ -391,12 +408,17 @@ async function performDatabaseUpdate(targetWebContents) {
             throw new Error('Release information is malformed');
         }
         const assets = releaseData.assets.slice(0, 1000);
-        const manifest = await loadPublishedManifest(assets);
+        const manifest = await loadPublishedManifest(assets, requestedVariant);
         const localVersion = await getLocalDbVersion(dbPath);
-        console.log(`本地数据库版本：${localVersion}`);
-        if (localVersion === manifest.latest_version) {
+        let localVariant = 'standard';
+        if (fs.existsSync(dbPath)) {
+            localVariant = (await validateDatabaseFile(dbPath)).variant;
+        }
+        const sameVariant = localVariant === requestedVariant;
+        console.log(`本地数据库版本：${localVersion}（${localVariant}），请求版本：${requestedVariant}`);
+        if (sameVariant && localVersion === manifest.latest_version) {
             try {
-                await validateDatabaseFile(dbPath, manifest.latest_version, manifest.schema_version);
+                await validateDatabaseFile(dbPath, manifest.latest_version, manifest.schema_version, requestedVariant);
                 console.log('数据库已是最新版本');
                 sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'end');
                 return { success: true, alreadyLatest: true };
@@ -404,10 +426,12 @@ async function performDatabaseUpdate(targetWebContents) {
                 console.warn(`本地数据库版本相同但内容无效，将下载完整数据库：${error.message}`);
             }
         }
-        if (localVersion > manifest.latest_version) throw new Error('Local database is newer than the published manifest');
+        if (sameVariant && localVersion > manifest.latest_version) {
+            throw new Error('Local database is newer than the published manifest');
+        }
 
         const pendingPatches = [];
-        let nextVersion = localVersion + 1;
+        let nextVersion = sameVariant ? localVersion + 1 : manifest.latest_version + 1;
         while (nextVersion <= manifest.latest_version) {
             const patch = manifest.patches.find(item => item.from === nextVersion - 1 && item.to === nextVersion);
             if (!patch) break;
@@ -415,9 +439,9 @@ async function performDatabaseUpdate(targetWebContents) {
             nextVersion += 1;
         }
         let localSchemaMatches = false;
-        if (fs.existsSync(dbPath)) {
+        if (sameVariant && fs.existsSync(dbPath)) {
             try {
-                await validateDatabaseFile(dbPath, localVersion, manifest.schema_version);
+                await validateDatabaseFile(dbPath, localVersion, manifest.schema_version, requestedVariant);
                 localSchemaMatches = true;
             } catch (_) { }
         }
@@ -428,25 +452,27 @@ async function performDatabaseUpdate(targetWebContents) {
         if (!canPatch) {
             console.log('本地数据库不存在或补丁链不完整，下载完整数据库');
             const databaseAsset = findReleaseAsset(assets, manifest.database.name);
-            await downloadFullDatabase(databaseAsset, manifest.database, newPath, progressId, progressTitle, manifest.schema_version, targetWebContents);
+            await downloadFullDatabase(databaseAsset, manifest.database, newPath, progressId, progressTitle,
+                manifest.schema_version, requestedVariant, targetWebContents);
         } else {
             await fs.promises.copyFile(dbPath, newPath, fs.constants.COPYFILE_EXCL);
             for (let i = 0; i < pendingPatches.length; i++) {
                 const descriptor = pendingPatches[i];
                 const patchAsset = findReleaseAsset(assets, descriptor.name);
                 const patch = await downloadJsonAsset(patchAsset, descriptor, MAX_PATCH_DOWNLOAD_BYTES);
-                await applyPatch(newPath, patch, descriptor.to, descriptor.from);
+                await applyPatch(newPath, patch, descriptor.to, descriptor.from, requestedVariant);
                 sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, Math.round(((i + 1) / pendingPatches.length) * 100));
             }
-            await validateDatabaseFile(newPath, manifest.latest_version, manifest.schema_version);
+            await validateDatabaseFile(newPath, manifest.latest_version, manifest.schema_version, requestedVariant);
         }
 
-        await atomicInstallDatabase(newPath, dbPath, candidate => validateDatabaseFile(candidate, manifest.latest_version, manifest.schema_version));
+        await atomicInstallDatabase(newPath, dbPath,
+            candidate => validateDatabaseFile(candidate, manifest.latest_version, manifest.schema_version, requestedVariant));
         stagedPath = null;
 
         sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'end');
         sendDatabaseUpdateEvent(targetWebContents, 'show-alert', 'success', i18next.t('alert.update_db_success'));
-        return { success: true };
+        return { success: true, variant: requestedVariant };
 
     } catch (error) {
         console.error(`更新数据库时发生错误：${error.message}`);

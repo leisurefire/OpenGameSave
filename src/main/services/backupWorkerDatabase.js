@@ -5,12 +5,11 @@ const path = require('path');
 const fse = require('fs-extra');
 
 const { getNewestBackup: getNewestBackupFromPath } = require('../fileSystemUtils');
-const { closeDb, dbAll, openDb, stmtAll } = require('../sqliteUtils');
-const { mergeXgpEntriesIntoGameRow, normalizeTitleKey } = require('../xgpSourceFormat');
+const { closeDb, dbAll, dbGet, openDb, stmtAll } = require('../sqliteUtils');
+const { XGP_WIKI_IDS_METADATA_KEY } = require('../xgpSourceFormat');
 const {
     getContext,
     getSettings,
-    getXgpEntryIndex,
     reportProgress
 } = require('./backupWorkerContext');
 const { processGame } = require('./backupWorkerGameProcessor');
@@ -46,7 +45,6 @@ function parseDbRow(row) {
     row.wiki_page_id = row.wiki_page_id.toString();
     row.platform = JSON.parse(row.platform);
     row.save_location = JSON.parse(row.save_location);
-    mergeXgpEntriesIntoGameRow(row, getXgpEntryIndex());
     row.latest_backup = getNewestBackup(row.wiki_page_id);
 }
 
@@ -70,14 +68,25 @@ async function processAndPushGame(row, games) {
     }
 }
 
-async function processXgpCandidateGames(db, games, errors) {
-    if (getXgpEntryIndex().size === 0) return;
+async function processXboxCandidateGames(db, games, errors) {
+    const metadata = await dbGet(db, 'SELECT value FROM metadata WHERE key = ?', [XGP_WIKI_IDS_METADATA_KEY]);
+    let wikiIds;
+    try {
+        wikiIds = JSON.parse(metadata?.value || '[]');
+    } catch (_) {
+        return;
+    }
+    if (!Array.isArray(wikiIds) || wikiIds.length === 0 || wikiIds.length > 1000
+        || wikiIds.some(value => !Number.isSafeInteger(Number(value)) || Number(value) < 0)) {
+        return;
+    }
 
     const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
-    const rows = await dbAll(db, 'SELECT * FROM games');
+    const placeholders = wikiIds.map(() => '?').join(',');
+    const rows = await dbAll(db, `SELECT * FROM games WHERE wiki_page_id IN (${placeholders})`, wikiIds);
     for (const row of rows) {
         const wikiPageId = String(row.wiki_page_id);
-        if (processedWikiIds.has(wikiPageId) || !getXgpEntryIndex().has(normalizeTitleKey(row.title))) continue;
+        if (processedWikiIds.has(wikiPageId)) continue;
 
         try {
             parseDbRow(row);
@@ -85,7 +94,7 @@ async function processXgpCandidateGames(db, games, errors) {
             await processAndPushGame(row, games);
             if (games.length > previousLength) processedWikiIds.add(wikiPageId);
         } catch (error) {
-            console.error(`Error processing experimental XgpSaveTools game ${row.title}: ${error.stack}`);
+            console.error(`Error processing Xbox candidate game ${row.title}: ${error.stack}`);
             errors.push(`Error processing ${row.title}: ${error.message}`);
         }
     }
@@ -165,7 +174,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
 
         stmtInstallFolder = null;
 
-        await processXgpCandidateGames(db, games, errors);
+        await processXboxCandidateGames(db, games, errors);
 
         if (!ignoreUninstalled && getSettings().saveUninstalledGames) {
             const uninstalledWikiIds = getSettings().uninstalledGames || [];

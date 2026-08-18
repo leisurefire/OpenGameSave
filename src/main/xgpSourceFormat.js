@@ -1,5 +1,6 @@
 const MAX_XGP_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_XGP_ENTRIES = 1000;
+const XGP_WIKI_IDS_METADATA_KEY = 'xgp_save_tools_wiki_ids';
 const PACKAGE_PATTERN = /^[A-Za-z0-9._-]{1,255}$/;
 const PGS_GAME_ID_PATTERN = /^[A-Fa-f0-9]{1,32}$/;
 
@@ -154,53 +155,9 @@ function parseXgpGamesJson(rawJson) {
     return normalizeXgpEntries(parsed.games);
 }
 
-function buildXgpEntryIndex(entries) {
-    const index = new Map();
-    for (const rawEntry of Array.isArray(entries) ? entries : []) {
-        let entry;
-        try {
-            entry = normalizeXgpEntry(rawEntry);
-        } catch (_) {
-            continue;
-        }
-        const matches = index.get(entry.titleKey) || [];
-        matches.push(entry);
-        index.set(entry.titleKey, matches);
-    }
-    return index;
-}
-
-function mergeXgpEntriesIntoGameRow(row, entryIndex) {
-    if (!row || !(entryIndex instanceof Map)) return false;
-    const matches = entryIndex.get(normalizeTitleKey(row.title));
-    if (!matches || matches.length === 0) return false;
-
-    if (!row.save_location || typeof row.save_location !== 'object' || Array.isArray(row.save_location)) {
-        row.save_location = {};
-    }
-    if (!Array.isArray(row.save_location.win)) row.save_location.win = [];
-    const existingPaths = new Set(row.save_location.win.map(value => String(value).toLowerCase()));
-
-    for (const entry of matches) {
-        const comparisonPath = entry.savePath.toLowerCase();
-        if (!existingPaths.has(comparisonPath)) {
-            row.save_location.win.push(entry.savePath);
-            existingPaths.add(comparisonPath);
-        }
-    }
-
-    if (!Array.isArray(row.platform)) row.platform = [];
-    if (!row.platform.some(value => String(value).toLowerCase() === 'xbox')) {
-        row.platform.push('Xbox');
-    }
-    row.experimental_sources = [...new Set([...(row.experimental_sources || []), 'XgpSaveTools'])];
-    return true;
-}
-
 module.exports = {
     MAX_XGP_SOURCE_BYTES,
-    buildXgpEntryIndex,
-    mergeXgpEntriesIntoGameRow,
+    XGP_WIKI_IDS_METADATA_KEY,
     normalizeTitleKey,
     normalizeXgpEntries,
     parseXgpGamesJson,

@@ -16,7 +16,7 @@ const {
     saveSettings,
     setLaunchAtStartup
 } = require('./global');
-const { initializeDatabaseStorage } = require('./backup');
+const { initializeDatabaseStorage, updateDatabase } = require('./backup');
 const { restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
 const { detectGamePaths, getGameData, initializeGameData } = require('./gameData');
 const { registerIpcHandlers } = require('./ipc');
@@ -26,7 +26,6 @@ const {
     registerMenuWindowIpc
 } = require('./services/menuWindowService');
 const { denyUnexpectedPermissions } = require('./windowSecurity');
-const { refreshExperimentalXgpSource } = require('./xgpExperimentalSource');
 const { recoverWebDAVTransactions } = require('./webdavSync');
 
 function logFatalError(error) {
@@ -161,18 +160,8 @@ function queuePostRenderStartup(mainWindow) {
     if (getSettings().autoAppUpdate) {
         enqueueStartupIdleTask('check-app-update', checkAppUpdate, 2500);
     }
-    if (getSettings().experimentalXgpSource) {
-        enqueueStartupIdleTask('refresh-experimental-xgp-source', async () => {
-            try {
-                const result = await refreshExperimentalXgpSource();
-                if (result.refreshed && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('update-backup-table');
-                    mainWindow.webContents.send('update-restore-table');
-                }
-            } catch (error) {
-                console.warn(`Unable to refresh experimental XgpSaveTools source: ${error.message}`);
-            }
-        }, 1800);
+    if (getSettings().autoDbUpdate) {
+        enqueueStartupIdleTask('update-database', () => updateDatabase(mainWindow.webContents), 1000);
     }
     startStartupIdleQueue(250);
 }

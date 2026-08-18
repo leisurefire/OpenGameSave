@@ -25,11 +25,9 @@
 ### 海量支持
 基于 PCGamingWiki 数据库，轻松支持超过 14,000 款游戏的存档位置。
 
-项目还会通过自动 PR 工作流，从 MIT 许可的 Ludusavi Manifest 增量同步存档路径。详见[数据库来源与 Xbox 格式说明](database/SOURCES.md)。
+项目还会使用 MIT 许可的 Ludusavi Manifest 与 XgpSaveTools 登记表。GitHub Actions 会分别发布“标准版”和“Xbox 增强版”数据库；Xbox 登记表仅合并到临时构建数据库，不会覆盖仓库中的标准数据库。详见[数据库来源与 Xbox 格式说明](database/SOURCES.md)。
 
-设置中另有默认关闭的 XgpSaveTools 实验性数据源。用户确认第三方许可状态与条款提示后，应用才会在运行时获取 WGS/PGS 映射。由于上游仓库目前未声明开源许可证，项目不会随包分发该数据，且不保证可用性。
-
-合并到默认分支的数据库变更会自动发布为连续增量补丁，并同时提供经过校验的完整数据库作为回退。可在设置中开启“自动检查数据库更新”，让应用启动时检查并应用更新，也可在设置中点击“更新数据库”手动更新。
+用户可在设置中选择数据库版本，再开启“自动检查数据库更新”或点击“更新数据库”。两个版本各自维护连续增量补丁和完整数据库回退；切换版本时始终下载完整数据库，避免跨版本混用补丁。
 
 ### 无缝迁徙
 换了新电脑？只需导出一个极简的 .gsmr 归档文件，在新设备上一键导入。
@@ -46,4 +44,4 @@
 WebDAV 必须使用 HTTPS。本地集成测试可同时设置 `NODE_ENV=development` 与 `OPENGAMESAVE_ALLOW_INSECURE_LOCALHOST=1`，仅对回环地址显式启用 HTTP。
 
 ## 许可
-OpenGameSave 基于 GPL-3.0-only 许可发布。
+OpenGameSave 基于 GPL-3.0-only 许可发布。随项目分发的 MIT 数据库来源详见[第三方声明](THIRD_PARTY_NOTICES.md)。

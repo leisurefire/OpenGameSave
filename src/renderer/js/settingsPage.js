@@ -25,7 +25,7 @@ window.api.receive('apply-language', async () => {
     await updateTranslations(document);
 });
 
-function setupDatabaseUpdateButton(button, icon, text) {
+function setupDatabaseUpdateButton(button, icon, text, databaseVariantSelect) {
     button.addEventListener('click', async () => {
         if (!await operationStartCheck('update-db')) return;
 
@@ -38,6 +38,7 @@ function setupDatabaseUpdateButton(button, icon, text) {
             busy: true
         });
         try {
+            await window.api.invoke('save-settings', 'databaseVariant', databaseVariantSelect.value);
             const result = await window.api.invoke('update-database');
             if (result?.success) {
                 window.api.send('update-backup-table');
@@ -66,10 +67,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoAppUpdateCheckbox = document.getElementById('auto-app-update');
     const appUpdatePrereleaseCheckbox = document.getElementById('app-update-prerelease');
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
+    const databaseVariantSelect = document.getElementById('database-variant');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
     const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
-    const experimentalXgpSourceCheckbox = document.getElementById('experimental-xgp-source');
-    const xgpSourceProjectButton = document.getElementById('xgp-source-project');
     const updateDatabaseButton = document.getElementById('update-database');
     const updateDatabaseIcon = document.getElementById('update-database-icon');
     const updateDatabaseText = document.getElementById('update-database-text');
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const addNewPathButton = document.getElementById('add-new-path');
 
     wrapNumberInput(maxBackupsInput);
-    setupDatabaseUpdateButton(updateDatabaseButton, updateDatabaseIcon, updateDatabaseText);
+    setupDatabaseUpdateButton(updateDatabaseButton, updateDatabaseIcon, updateDatabaseText, databaseVariantSelect);
 
     // Initial load
     window.api.invoke('get-settings').then(async (settings) => {
@@ -90,9 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
             autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
             appUpdatePrereleaseCheckbox.checked = settings.appUpdatePrerelease ?? false;
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
+            databaseVariantSelect.value = settings.databaseVariant ?? 'standard';
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
             syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
-            experimentalXgpSourceCheckbox.checked = settings.experimentalXgpSource ?? false;
             // ToggleSwitch uses the same .checked property, so no extra logic needed.
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
@@ -165,6 +165,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (previousSettings.autoDbUpdate !== autoDbUpdateCheckbox.checked) {
                 updates.autoDbUpdate = autoDbUpdateCheckbox.checked;
             }
+            if (previousSettings.databaseVariant !== databaseVariantSelect.value) {
+                updates.databaseVariant = databaseVariantSelect.value;
+            }
 
             if (Object.keys(updates).length > 0) {
                 try {
@@ -202,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     [maxBackupsInput, launchAtStartupCheckbox, autoAppUpdateCheckbox, appUpdatePrereleaseCheckbox,
-        autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
+        autoDbUpdateCheckbox, databaseVariantSelect, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
         el.addEventListener('change', autoSave);
     });
 
@@ -214,36 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle.checked = !toggle.checked;
             toggle.dispatchEvent(new Event('change', { bubbles: true }));
         });
-    });
-
-    let xgpSourceToggleBusy = false;
-    experimentalXgpSourceCheckbox.addEventListener('change', async () => {
-        if (xgpSourceToggleBusy) return;
-        xgpSourceToggleBusy = true;
-        experimentalXgpSourceCheckbox.disabled = true;
-        const requestedState = experimentalXgpSourceCheckbox.checked;
-        try {
-            const result = await window.api.invoke('set-experimental-xgp-source', requestedState);
-            experimentalXgpSourceCheckbox.checked = result.enabled === true;
-            if (result.enabled && result.available) {
-                showAlert('success', await window.i18n.translate('settings.xgp_source_enabled', { count: result.entryCount }));
-                window.api.send('update-backup-table');
-            } else if (result.enabled && !result.available) {
-                showAlert('warning', await window.i18n.translate('settings.xgp_source_fetch_failed'));
-            }
-        } catch (error) {
-            console.error('Failed to change experimental XgpSaveTools source:', error);
-            const latestSettings = await window.api.invoke('get-settings');
-            experimentalXgpSourceCheckbox.checked = latestSettings.experimentalXgpSource === true;
-            showAlert('error', await window.i18n.translate('settings.xgp_source_change_failed'));
-        } finally {
-            experimentalXgpSourceCheckbox.disabled = false;
-            xgpSourceToggleBusy = false;
-        }
-    });
-
-    xgpSourceProjectButton.addEventListener('click', () => {
-        window.api.invoke('open-url', 'https://github.com/brodrigz/XgpSaveTools');
     });
 
     maxBackupsInput.addEventListener('input', function () {

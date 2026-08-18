@@ -100,6 +100,44 @@ test('an empty semantic diff does not advance user_version or create a patch', (
     }
 });
 
+test('Xbox publication uses an independent immutable asset namespace', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-db-xbox-'));
+    try {
+        const oldPath = path.join(tempDir, 'old.db');
+        const newPath = path.join(tempDir, 'new.db');
+        const generatedPath = path.join(tempDir, 'generated');
+        const publishedPath = path.join(tempDir, 'published');
+        const metadata = [{ key: 'database_variant', value: 'xbox' }];
+        createDatabase(oldPath, 3, [{ wiki_page_id: 1, title: 'Game', paths: ['C:/old'] }], metadata);
+        createDatabase(newPath, 0, [{ wiki_page_id: 1, title: 'Game', paths: ['C:/new'] }], metadata);
+        execFileSync(process.execPath, [
+            path.join(PROJECT_ROOT, 'scripts', 'generate-db-patch.js'),
+            '--from', oldPath, '--to', newPath, '--output', generatedPath,
+            '--source-sha', 'a'.repeat(64), '--variant', 'xbox'
+        ]);
+        execFileSync(process.execPath, [
+            path.join(PROJECT_ROOT, 'scripts', 'build-db-release.js'),
+            '--database', newPath,
+            '--result', path.join(generatedPath, 'generation-result.json'),
+            '--output', publishedPath,
+            '--source-sha', 'a'.repeat(64), '--variant', 'xbox'
+        ]);
+
+        assert.deepEqual(fs.readdirSync(publishedPath).sort(), [
+            'current_xbox.json',
+            'database_xbox_v4.db',
+            'db_patch_xbox_v4.json',
+            'manifest_xbox_v4.json'
+        ]);
+        const pointer = JSON.parse(fs.readFileSync(path.join(publishedPath, 'current_xbox.json'), 'utf8'));
+        const manifest = JSON.parse(fs.readFileSync(path.join(publishedPath, pointer.manifest), 'utf8'));
+        assert.equal(pointer.variant, 'xbox');
+        assert.equal(manifest.variant, 'xbox');
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
 test('schema changes require a full database instead of a data patch', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-db-schema-'));
     try {
@@ -148,13 +186,17 @@ test('database publication workflow runs automatically and targets a dedicated r
     const workflowPath = path.join(PROJECT_ROOT, '.github', 'workflows', 'db-patch.yml');
     const workflow = yaml.load(fs.readFileSync(workflowPath, 'utf8'));
     assert.ok(workflow.on.push.paths.includes('database/database.db'));
+    assert.ok(Array.isArray(workflow.on.schedule));
     assert.ok(workflow.on.workflow_dispatch !== undefined);
     assert.equal(workflow.permissions.contents, 'write');
     assert.equal(workflow.jobs.publish.env.DATABASE_TAG, 'database');
     const workflowSource = fs.readFileSync(workflowPath, 'utf8');
-    assert.match(workflowSource, /current\.json/);
+    assert.match(workflowSource, /pointer="current\$\{suffix\}\.json"/);
+    assert.match(workflowSource, /suffix='_xbox'/);
+    assert.match(workflowSource, /database-xbox-source/);
+    assert.doesNotMatch(workflowSource, /pull-requests:/);
     const releaseBuilderSource = fs.readFileSync(path.join(PROJECT_ROOT, 'scripts', 'build-db-release.js'), 'utf8');
-    assert.match(releaseBuilderSource, /database_v/);
+    assert.match(releaseBuilderSource, /getDatabaseAssetNames/);
     assert.doesNotMatch(workflowSource, /db_patch[^\n]*--clobber/);
 
     const updaterSource = fs.readFileSync(path.join(PROJECT_ROOT, 'src', 'main', 'backup.js'), 'utf8');

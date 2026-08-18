@@ -85,14 +85,16 @@ test('asset verification rejects digest mismatches and truncated downloads befor
     }
 });
 
-function manifestWithPatches(patches) {
+function manifestWithPatches(patches, variant = 'standard') {
+    const suffix = variant === 'xbox' ? '_xbox' : '';
     return {
+        variant,
         latest_version: 5,
         source_sha: 'a'.repeat(40),
         schema_version: 'b'.repeat(64),
-        database: { name: 'database_v5.db', size: 100, sha256: 'c'.repeat(64), user_version: 5 },
+        database: { name: `database${suffix}_v5.db`, size: 100, sha256: 'c'.repeat(64), user_version: 5 },
         patches: patches.map(({ from, to }) => ({
-            name: `db_patch_v${to}.json`, from, to, size: 10, sha256: 'd'.repeat(64)
+            name: `db_patch${suffix}_v${to}.json`, from, to, size: 10, sha256: 'd'.repeat(64)
         }))
     };
 }
@@ -103,4 +105,14 @@ test('manifest validation rejects wrong, duplicate and missing patch versions', 
     assert.throws(() => validateDatabaseManifest(manifestWithPatches([{ from: 3, to: 5 }])), /range/);
     assert.throws(() => validateDatabaseManifest(manifestWithPatches([{ from: 3, to: 4 }, { from: 3, to: 4 }])), /duplicate/);
     assert.throws(() => validateDatabaseManifest(manifestWithPatches([{ from: 1, to: 2 }, { from: 3, to: 4 }])), /gap/);
+});
+
+test('manifest validation keeps standard and Xbox publication chains separate', () => {
+    const xbox = validateDatabaseManifest(manifestWithPatches([{ from: 4, to: 5 }], 'xbox'), 'xbox');
+    assert.equal(xbox.variant, 'xbox');
+    assert.equal(xbox.database.name, 'database_xbox_v5.db');
+    assert.throws(() => validateDatabaseManifest(manifestWithPatches([], 'xbox'), 'standard'), /variant/);
+    const legacyStandard = manifestWithPatches([]);
+    delete legacyStandard.variant;
+    assert.equal(validateDatabaseManifest(legacyStandard).variant, 'standard');
 });

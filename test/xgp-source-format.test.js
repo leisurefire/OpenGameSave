@@ -2,11 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-    buildXgpEntryIndex,
-    mergeXgpEntriesIntoGameRow,
     normalizeXgpEntries,
     parseXgpGamesJson
 } = require('../src/main/xgpSourceFormat');
+const { buildSyncPlan, validateMitLicense } = require('../scripts/sync-xgp-save-tools');
 
 test('XgpSaveTools JSON-with-comments is parsed into bounded WGS and PGS paths', () => {
     const entries = parseXgpGamesJson(`{
@@ -34,23 +33,41 @@ test('XgpSaveTools JSON-with-comments is parsed into bounded WGS and PGS paths',
     assert.equal(normalizeXgpEntries(entries)[1].gameId, '16D460');
 });
 
-test('XgpSaveTools mappings merge conservatively by normalized full title', () => {
+test('XgpSaveTools mappings merge conservatively into existing database rows', () => {
     const entries = normalizeXgpEntries([{
         name: 'Hi-Fi RUSH',
         package: 'BethesdaSoftworks.Hibiki_3275kfvn8vcwc'
     }]);
-    const index = buildXgpEntryIndex(entries);
-    const row = {
+    const rows = [{
+        wiki_page_id: 123,
         title: 'Hi Fi RUSH™',
-        platform: ['Steam'],
-        save_location: { win: ['{{p|userprofile}}/Saved Games/HiFi'] }
-    };
+        platform: JSON.stringify(['Steam']),
+        save_location: JSON.stringify({ win: ['{{p|userprofile}}/Saved Games/HiFi'] })
+    }];
 
-    assert.equal(mergeXgpEntriesIntoGameRow(row, index), true);
-    assert.equal(row.save_location.win.length, 2);
-    assert.deepEqual(row.platform, ['Steam', 'Xbox']);
-    assert.deepEqual(row.experimental_sources, ['XgpSaveTools']);
-    assert.equal(mergeXgpEntriesIntoGameRow({ title: 'Hi Fi Rush 2', platform: [], save_location: {} }, index), false);
+    const plan = buildSyncPlan(entries, rows);
+    assert.equal(plan.updates.length, 1);
+    assert.equal(JSON.parse(plan.updates[0].save_location).win.length, 2);
+    assert.deepEqual(JSON.parse(plan.updates[0].platform), ['Steam', 'Xbox']);
+    assert.equal(plan.counters.addedWgsPaths, 1);
+    assert.equal(buildSyncPlan(entries, [{ ...rows[0], title: 'Hi Fi Rush 2' }]).updates.length, 0);
+});
+
+test('XgpSaveTools sync does not delete paths and reports ambiguous title matches', () => {
+    const entries = normalizeXgpEntries([{
+        name: 'Shared Game',
+        package: 'Publisher.SharedGame_123'
+    }]);
+    const location = JSON.stringify({ win: ['{{p|localappdata}}/existing'] });
+    const rows = [
+        { wiki_page_id: 1, title: 'Shared Game', platform: '[]', save_location: location },
+        { wiki_page_id: 2, title: 'Shared Game™', platform: '[]', save_location: location }
+    ];
+
+    const plan = buildSyncPlan(entries, rows);
+    assert.equal(plan.updates.length, 0);
+    assert.equal(plan.conflicts.length, 1);
+    assert.equal(JSON.parse(rows[0].save_location).win[0], '{{p|localappdata}}/existing');
 });
 
 test('XgpSaveTools parser rejects unsupported sources and unsafe package names', () => {
@@ -62,4 +79,12 @@ test('XgpSaveTools parser rejects unsupported sources and unsafe package names',
         source: 'pgs',
         source_args: { game_id: '../escape' }
     }]));
+});
+
+test('XgpSaveTools notice must retain its MIT grant and copyright', () => {
+    assert.doesNotThrow(() => validateMitLicense(`MIT License
+Copyright (c) 2026 Bruno Rodrigues
+Permission is hereby granted, free of charge
+THE SOFTWARE IS PROVIDED "AS IS"`));
+    assert.throws(() => validateMitLicense('MIT License'));
 });
