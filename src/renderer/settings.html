@@ -10,7 +10,10 @@
 </head>
 
 <body class="mica-effect settings-window-body" style="visibility:hidden">
-    <div id="alert-container" class="notification-region"></div>
+    <div class="notification-region">
+        <div id="progress-container"></div>
+        <div id="alert-container"></div>
+    </div>
 
     <form class="settings-form scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
         <section class="settings-section" aria-labelledby="settings-application-heading">
@@ -59,6 +62,17 @@
                         <p class="settings-row-description" data-i18n="settings.auto_db_update_hint">Keep game save-location data up to date</p>
                     </div>
                     <toggle-switch id="auto-db-update" aria-label="Update database automatically" data-i18n-aria-label="settings.auto_db_update"></toggle-switch>
+                </div>
+
+                <div class="settings-row">
+                    <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="main.update_database">Update Database</div>
+                        <p class="settings-row-description" data-i18n="settings.update_database_hint">Check for the latest game save-location database now</p>
+                    </div>
+                    <button type="button" id="update-database" class="settings-row-action home-action-button">
+                        <span id="update-database-icon" data-lucide-icon="database-zap"></span>
+                        <span id="update-database-text" data-i18n="settings.update_now">Update now</span>
+                    </button>
                 </div>
 
                 <div class="settings-row settings-toggle-row">

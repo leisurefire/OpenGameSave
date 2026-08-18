@@ -8,6 +8,9 @@ const {
     saveSyncProviderConfig
 } = require('../syncProviders');
 const {
+    checkAppUpdate,
+    downloadAppUpdate,
+    getAppUpdateState,
     getCurrentVersion,
     getLatestVersion,
     getMainWin,
@@ -29,6 +32,9 @@ function registerApplicationIpc() {
         }
     });
     ipcMain.handle('get-current-version', getCurrentVersion);
+    ipcMain.handle('get-app-update-state', getAppUpdateState);
+    ipcMain.handle('check-app-update', checkAppUpdate);
+    ipcMain.handle('download-app-update', downloadAppUpdate);
     ipcMain.handle('get-repository-url', getRepositoryUrl);
     ipcMain.handle('get-latest-version', () => getLatestVersion('OpenGameSave'));
     ipcMain.handle('is-newer-version', (event, candidateVersion, currentVersion) => (

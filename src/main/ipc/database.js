@@ -65,7 +65,7 @@ function registerDatabaseIpc({ ensureGameDataReady }) {
         reportDataErrors(result.errors);
         return result.games;
     });
-    ipcMain.handle('update-database', updateDatabase);
+    ipcMain.handle('update-database', (event) => updateDatabase(event.sender));
 }
 
 module.exports = { registerDatabaseIpc };

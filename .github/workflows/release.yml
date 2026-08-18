@@ -147,7 +147,7 @@ jobs:
             -name "*.deb" -o \
             -name "*.rpm" -o \
             -name "*.snap" -o \
-            -name "*.yml" -o \
+            -name "latest.yml" -o \
             -name "*.blockmap" \
           \))
 
@@ -158,6 +158,17 @@ jobs:
 
           if ! printf '%s\n' "${FILES[@]}" | grep -Ei '\.exe$' >/dev/null; then
             echo "Error: No Windows .exe installer found in dist/"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "${FILES[@]}" | grep -E '/latest\.yml$' >/dev/null; then
+            echo "Error: Auto-update metadata latest.yml was not generated"
+            exit 1
+          fi
+
+          UPDATE_FILE=$(node -e "process.stdout.write(require('js-yaml').load(require('fs').readFileSync('dist/latest.yml', 'utf8')).path)")
+          if [ -z "$UPDATE_FILE" ] || [ ! -f "dist/$UPDATE_FILE" ]; then
+            echo "Error: latest.yml references a missing installer: $UPDATE_FILE"
             exit 1
           fi
 

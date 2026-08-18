@@ -60,6 +60,9 @@ const ALLOWED_INVOKE = new Set([
     'delete-local-save',
     'get-status',
     'get-current-version',
+    'get-app-update-state',
+    'check-app-update',
+    'download-app-update',
     'get-repository-url',
     'get-latest-version',
     'is-newer-version',
@@ -96,7 +99,8 @@ const ALLOWED_RECEIVE = new Set([
     'auto-backup-started',
     'auto-backup-stopped',
     'auto-backup-performed',
-    'restore-conflict-prompt'
+    'restore-conflict-prompt',
+    'app-update-state'
 ]);
 
 function setAccentColor(color) {

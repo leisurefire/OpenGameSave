@@ -154,9 +154,6 @@ function setupBackupTabButtons() {
         })().catch(console.error);
     });
 
-    document.getElementById('update-database').addEventListener('click', async () => {
-        await updateDatabase();
-    });
 }
 
 async function performBackup() {
@@ -196,35 +193,9 @@ async function performBackup() {
 }
 
 async function updateDatabase() {
-    const updateButton = document.getElementById('update-database');
-    const updateButtonIcon = document.getElementById('update-database-icon');
-    const updateButtonText = document.getElementById('update-database-text');
-
-    if (updateButton.disabled) return;
-
     const start = await operationStartCheck('update-db');
     if (start) {
-        await setActionButtonState({
-            button: updateButton,
-            icon: updateButtonIcon,
-            text: updateButtonText,
-            iconName: 'database-zap',
-            i18nKey: 'alert.updating_database',
-            busy: true
-        });
-
-        try {
-            const result = await window.api.invoke('update-database');
-            if (result?.success) await updateBackupTable(true);
-        } finally {
-            await setActionButtonState({
-                button: updateButton,
-                icon: updateButtonIcon,
-                text: updateButtonText,
-                iconName: 'database-zap',
-                i18nKey: 'main.update_database',
-                busy: false
-            });
-        }
+        const result = await window.api.invoke('update-database');
+        if (result?.success) await updateBackupTable(true);
     }
 }

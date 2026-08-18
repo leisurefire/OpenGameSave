@@ -690,7 +690,7 @@ async function renderScanFullModal(root) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <span class="modal-message-icon" data-lucide-icon="info"></span>
+                <span class="modal-message-icon" aria-hidden="true"><span data-lucide-icon="info"></span></span>
                 <div>
                     <p class="text-sm opacity-80 leading-relaxed mb-2">${escapeHtml(explain)}
                     <br>
@@ -753,7 +753,9 @@ async function renderDialogModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <span class="modal-message-icon" ${isWarning ? 'data-status="warning" data-lucide-icon="triangle-alert"' : 'data-lucide-icon="info"'}></span>
+                <span class="modal-message-icon" ${isWarning ? 'data-status="warning"' : ''} aria-hidden="true">
+                    <span data-lucide-icon="${isWarning ? 'triangle-alert' : 'info'}"></span>
+                </span>
                 <div class="flex-1">
                     ${renderDialogContent(initData?.content)}
                     ${checkboxHtml}
@@ -788,7 +790,7 @@ async function renderConfirmModal(root, initData) {
     root.innerHTML = `
         <section class="modal-window-panel">
             <div class="modal-window-content flex items-start gap-4">
-                <span class="modal-message-icon" data-status="warning" data-lucide-icon="triangle-alert"></span>
+                <span class="modal-message-icon" data-status="warning" aria-hidden="true"><span data-lucide-icon="triangle-alert"></span></span>
                 <div class="flex-1">
                     <p class="text-sm opacity-80 leading-relaxed whitespace-pre-line">${escapeHtml(message)}</p>
                 </div>

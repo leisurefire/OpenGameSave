@@ -1,5 +1,7 @@
 const {
     checkAppUpdate,
+    downloadAppUpdate,
+    getAppUpdateState,
     getCurrentVersion,
     getLatestVersion,
     getRepositoryUrl,
@@ -31,8 +33,10 @@ module.exports = {
     checkAppUpdate,
     createMainWindow,
     deleteLocalSave,
+    downloadAppUpdate,
     exportBackups,
     getCurrentVersion,
+    getAppUpdateState,
     getGameDisplayName,
     getLatestVersion,
     getMainWin,

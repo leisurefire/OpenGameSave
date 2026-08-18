@@ -272,13 +272,22 @@
     border-radius: 10px;
 }
 
+.modal-message-icon > [data-lucide-icon] {
+    width: 17px;
+    height: 17px;
+    display: grid;
+    place-items: center;
+    line-height: 0;
+}
+
 .modal-message-icon[data-status="warning"] {
     color: rgb(250, 204, 21);
 }
 
-.modal-message-icon .lucide-icon {
+.modal-window-panel .modal-message-icon .lucide-icon {
     width: 17px;
     height: 17px;
+    flex-basis: 17px;
 }
 
 .danger-button {

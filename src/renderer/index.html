@@ -42,15 +42,17 @@
                     <span data-lucide-icon="upload"></span>
                     <span data-i18n="main.export">Export</span>
                 </button>
-                <button id="home-options-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <span data-lucide-icon="sliders-horizontal"></span>
-                    <span data-i18n="main.options">Options</span>
-                    <span data-lucide-icon="chevron-up" class="text-[10px] ml-auto"></span>
-                </button>
-                <button id="update-database" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3 text-theme-accent">
-                    <span id="update-database-icon" data-lucide-icon="database-zap"></span>
-                    <span id="update-database-text" data-i18n="main.update_database">Update Database</span>
-                </button>
+                <div class="sidebar-options-row">
+                    <button id="home-options-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
+                        <span data-lucide-icon="sliders-horizontal"></span>
+                        <span data-i18n="main.options">Options</span>
+                        <span data-lucide-icon="chevron-up" class="text-[10px] ml-auto"></span>
+                    </button>
+                    <button id="app-update-download" type="button" class="home-action-button sidebar-update-button hidden"
+                        data-i18n-title="settings.app_update_download" data-i18n-aria-label="settings.app_update_download">
+                        <span id="app-update-download-icon" data-lucide-icon="download"></span>
+                    </button>
+                </div>
             </div>
         </aside>
 

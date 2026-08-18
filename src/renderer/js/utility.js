@@ -1,5 +1,6 @@
 import { showToast } from './toast.js';
 import { getFilteredVirtualSelectedIds, getVirtualState } from './virtualTable.js';
+import { renderIcon } from './icons.js';
 
 window.api.receive('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
@@ -17,6 +18,10 @@ window.api.receive('menu-hidden', () => {
     window.activeMenuTrigger = null;
 });
 
+window.api.receive('app-update-state', (state) => {
+    void applyAppUpdateState(state);
+});
+
 window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
     const table = document.querySelector(`#${tableId}`);
     const tableBody = table?.querySelector('tbody');
@@ -30,7 +35,70 @@ window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
 
 document.addEventListener('DOMContentLoaded', () => {
     setupHomeActions();
+    setupAppUpdateButton();
 });
+
+async function applyAppUpdateState(state) {
+    const updateButton = document.getElementById('app-update-download');
+    const updateIcon = document.getElementById('app-update-download-icon');
+    if (!updateButton || !updateIcon || !state) return;
+
+    const canShow = state.canAutoUpdate === true && !!state.availableVersion &&
+        ['available', 'downloading', 'downloaded', 'installing', 'error'].includes(state.status);
+    updateButton.classList.toggle('hidden', !canShow);
+    if (!canShow) return;
+
+    const isBusy = ['downloading', 'downloaded', 'installing'].includes(state.status);
+    const percent = Math.round(Math.min(100, Math.max(0, Number(state.percent) || 0)));
+    const i18nKey = state.status === 'available'
+        ? 'settings.app_update_download'
+        : state.status === 'downloading'
+            ? 'settings.app_update_downloading'
+            : state.status === 'error'
+                ? 'settings.app_update_retry'
+                : 'settings.app_update_installing';
+    const label = await window.i18n.translate(i18nKey, {
+        version: state.availableVersion,
+        percent
+    });
+
+    updateButton.disabled = isBusy;
+    updateButton.dataset.state = state.status;
+    updateButton.style.setProperty('--update-progress', `${percent}%`);
+    updateButton.title = label;
+    updateButton.setAttribute('aria-label', label);
+    updateIcon.classList.toggle('is-spinning', isBusy);
+    renderIcon(updateIcon, isBusy ? 'loader-circle' : 'download');
+}
+
+function setupAppUpdateButton() {
+    const updateButton = document.getElementById('app-update-download');
+    if (!updateButton) return;
+
+    updateButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (updateButton.disabled) return;
+        updateButton.disabled = true;
+        try {
+            const state = await window.api.invoke('download-app-update');
+            await applyAppUpdateState(state);
+            if (state?.status === 'error') {
+                const errorKey = state.error === 'app-busy'
+                    ? 'settings.app_update_busy'
+                    : 'settings.app_update_failed';
+                showAlert(state.error === 'app-busy' ? 'warning' : 'error', await window.i18n.translate(errorKey));
+            }
+        } catch (error) {
+            console.error('Failed to download application update:', error);
+            showAlert('error', await window.i18n.translate('settings.app_update_failed'));
+            updateButton.disabled = false;
+        }
+    });
+
+    window.api.invoke('get-app-update-state')
+        .then(applyAppUpdateState)
+        .catch((error) => console.error('Failed to load application update state:', error));
+}
 
 function setupHomeActions() {
     const optionsButton = document.getElementById('home-options-button');
@@ -236,6 +304,10 @@ export function wrapNumberInput(input) {
 
 export async function operationStartCheck(operation) {
     const status = await window.api.invoke('get-status');
+    if (status.updating_app) {
+        showAlert('warning', await window.i18n.translate('alert.wait_for_app_update'));
+        return false;
+    }
     const statusChecks = {
         'backup': { restoring: 'alert.wait_for_restore', scanning_full: 'alert.wait_for_scan_full', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', updating_restore: 'alert.wait_for_updating_restore', syncing: 'alert.wait_for_sync' },
         'scan-full': { backuping: 'alert.wait_for_backup', restoring: 'alert.wait_for_restore', migrating: 'alert.wait_for_migrate', updating_db: 'alert.wait_for_updating_db', exporting: 'alert.wait_for_export', importing: 'alert.wait_for_import', updating_backup: 'alert.wait_for_updating_backup', syncing: 'alert.wait_for_sync' },

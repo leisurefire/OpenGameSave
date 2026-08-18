@@ -10,6 +10,7 @@ const STATUS_KEYS = new Set([
     'importing',
     'updating_backup',
     'updating_restore',
+    'updating_app',
     'syncing'
 ]);
 

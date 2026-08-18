@@ -77,9 +77,61 @@
     background: rgba(255, 255, 255, 0.025);
 }
 
-#update-database,
-#update-database > [data-lucide-icon]:first-child {
+.sidebar-options-row {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.sidebar-options-row #home-options-button {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.sidebar-update-button {
+    --update-progress: 0%;
+    position: relative;
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    display: grid;
+    flex: 0 0 34px;
+    place-items: center;
+    padding: 0;
+    overflow: hidden;
     color: var(--color-theme-accent-bright);
+}
+
+.sidebar-update-button.hidden {
+    display: none;
+}
+
+.sidebar-update-button::before {
+    position: absolute;
+    inset: 3px;
+    content: '';
+    background: conic-gradient(
+        color-mix(in srgb, var(--system-accent) 50%, transparent) var(--update-progress),
+        transparent var(--update-progress)
+    );
+    border-radius: 8px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sidebar-update-button[data-state="downloading"]::before {
+    opacity: 1;
+}
+
+.sidebar-update-button > span {
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar-update-button .lucide-icon {
+    width: 15px;
+    height: 15px;
 }
 
 .app-content {

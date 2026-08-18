@@ -313,7 +313,18 @@ async function loadPublishedManifest(assets) {
     return manifest;
 }
 
-async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progressTitle, expectedSchemaVersion) {
+function sendDatabaseUpdateEvent(targetWebContents, channel, ...args) {
+    const mainWindow = getMainWin();
+    const fallbackWebContents = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null;
+    const webContents = targetWebContents && !targetWebContents.isDestroyed()
+        ? targetWebContents
+        : fallbackWebContents;
+    if (webContents && !webContents.isDestroyed()) {
+        webContents.send(channel, ...args);
+    }
+}
+
+async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progressTitle, expectedSchemaVersion, targetWebContents) {
     const assetUrl = verifyReleaseAssetMetadata(asset, descriptor);
     const { data, headers } = await axios({
         method: 'get',
@@ -344,7 +355,7 @@ async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progr
             : 0;
         if (percentage !== lastPercentage) {
             lastPercentage = percentage;
-            getMainWin().webContents.send('update-progress', progressId, progressTitle, percentage);
+            sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, percentage);
         }
     });
 
@@ -353,14 +364,13 @@ async function downloadFullDatabase(asset, descriptor, dbPath, progressId, progr
     await validateDatabaseFile(dbPath, descriptor.user_version, expectedSchemaVersion);
 }
 
-async function performDatabaseUpdate() {
+async function performDatabaseUpdate(targetWebContents) {
     const progressId = 'update-db';
     const progressTitle = i18next.t('alert.updating_database');
     const dbPath = getUserDatabasePath();
     let stagedPath = null;
 
-    const win = getMainWin();
-    win.webContents.send('update-progress', progressId, progressTitle, 'start');
+    sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'start');
 
     try {
         await recoverDatabaseFiles(dbPath, validateDatabaseFile);
@@ -388,7 +398,7 @@ async function performDatabaseUpdate() {
             try {
                 await validateDatabaseFile(dbPath, manifest.latest_version, manifest.schema_version);
                 console.log('数据库已是最新版本');
-                win.webContents.send('update-progress', progressId, progressTitle, 'end');
+                sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'end');
                 return { success: true, alreadyLatest: true };
             } catch (error) {
                 console.warn(`本地数据库版本相同但内容无效，将下载完整数据库：${error.message}`);
@@ -418,7 +428,7 @@ async function performDatabaseUpdate() {
         if (!canPatch) {
             console.log('本地数据库不存在或补丁链不完整，下载完整数据库');
             const databaseAsset = findReleaseAsset(assets, manifest.database.name);
-            await downloadFullDatabase(databaseAsset, manifest.database, newPath, progressId, progressTitle, manifest.schema_version);
+            await downloadFullDatabase(databaseAsset, manifest.database, newPath, progressId, progressTitle, manifest.schema_version, targetWebContents);
         } else {
             await fs.promises.copyFile(dbPath, newPath, fs.constants.COPYFILE_EXCL);
             for (let i = 0; i < pendingPatches.length; i++) {
@@ -426,7 +436,7 @@ async function performDatabaseUpdate() {
                 const patchAsset = findReleaseAsset(assets, descriptor.name);
                 const patch = await downloadJsonAsset(patchAsset, descriptor, MAX_PATCH_DOWNLOAD_BYTES);
                 await applyPatch(newPath, patch, descriptor.to, descriptor.from);
-                win.webContents.send('update-progress', progressId, progressTitle, Math.round(((i + 1) / pendingPatches.length) * 100));
+                sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, Math.round(((i + 1) / pendingPatches.length) * 100));
             }
             await validateDatabaseFile(newPath, manifest.latest_version, manifest.schema_version);
         }
@@ -434,21 +444,21 @@ async function performDatabaseUpdate() {
         await atomicInstallDatabase(newPath, dbPath, candidate => validateDatabaseFile(candidate, manifest.latest_version, manifest.schema_version));
         stagedPath = null;
 
-        win.webContents.send('update-progress', progressId, progressTitle, 'end');
-        win.webContents.send('show-alert', 'success', i18next.t('alert.update_db_success'));
+        sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'end');
+        sendDatabaseUpdateEvent(targetWebContents, 'show-alert', 'success', i18next.t('alert.update_db_success'));
         return { success: true };
 
     } catch (error) {
         console.error(`更新数据库时发生错误：${error.message}`);
-        win.webContents.send('show-alert', 'modal', i18next.t('alert.error_during_db_update'), error.message);
+        sendDatabaseUpdateEvent(targetWebContents, 'show-alert', 'modal', i18next.t('alert.error_during_db_update'), error.message);
         if (stagedPath) await fs.promises.rm(stagedPath, { force: true }).catch(() => undefined);
 
-        win.webContents.send('update-progress', progressId, progressTitle, 'end');
+        sendDatabaseUpdateEvent(targetWebContents, 'update-progress', progressId, progressTitle, 'end');
         return { success: false, error: error.message };
     }
 }
 
-async function updateDatabase() {
+async function updateDatabase(targetWebContents) {
     if (getStatus().updating_db) {
         return { success: false, busy: true };
     }
@@ -456,7 +466,7 @@ async function updateDatabase() {
     let releaseDatabase;
     try {
         releaseDatabase = await acquireDatabaseWrite();
-        return await performDatabaseUpdate();
+        return await performDatabaseUpdate(targetWebContents);
     } finally {
         updateStatus('updating_db', false);
         releaseDatabase?.();

@@ -26,13 +26,15 @@ Database paths are also additively synchronized from the MIT-licensed Ludusavi M
 
 An optional, default-off experimental setting can fetch XgpSaveTools WGS/PGS mappings at runtime after an explicit third-party license-status and terms warning. Its upstream repository currently declares no open-source license, so the data is not bundled and availability is not guaranteed.
 
-Database changes merged to the default branch are published automatically as sequential patches plus a validated full-database fallback. Enable **Update database automatically** in Settings to check and apply them at startup, or use the sidebar update button.
+Database changes merged to the default branch are published automatically as sequential patches plus a validated full-database fallback. Enable **Update database automatically** in Settings to check and apply them at startup, or use **Update Database** in Settings for a manual update.
 
 ### Seamless migration.
 Upgraded your PC? Just export a sleek .gsmr archive and bring your entire gaming history to your new device with one simple click.
 
 ### Installation
 Head over to the [Latest Release page](https://github.com/leisurefire/OpenGameSave/releases/latest), download the newest installer built for Windows, launch OpenGameSave, and enjoy your games with absolute peace of mind.
+
+Installed builds can check for application updates at startup. When an update is available, use the download button beside **Options**; OpenGameSave verifies the release metadata, downloads the installer, closes safely, installs the update, and starts again.
 
 ### Developers
 - Current developers: [leisurefire](https://github.com/leisurefire)

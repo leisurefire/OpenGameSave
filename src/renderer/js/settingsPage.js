@@ -1,4 +1,5 @@
-import { updateTranslations, showAlert, wrapNumberInput } from './utility.js';
+import { operationStartCheck, updateTranslations, showAlert, wrapNumberInput } from './utility.js';
+import { setActionButtonState } from './tableUi.js';
 import './components/ToggleSwitch.js';
 import './components/DropdownSelect.js';
 
@@ -24,6 +25,40 @@ window.api.receive('apply-language', async () => {
     await updateTranslations(document);
 });
 
+function setupDatabaseUpdateButton(button, icon, text) {
+    button.addEventListener('click', async () => {
+        if (!await operationStartCheck('update-db')) return;
+
+        await setActionButtonState({
+            button,
+            icon,
+            text,
+            iconName: 'database-zap',
+            i18nKey: 'alert.updating_database',
+            busy: true
+        });
+        try {
+            const result = await window.api.invoke('update-database');
+            if (result?.success) {
+                window.api.send('update-backup-table');
+                window.api.send('update-restore-table');
+                if (result.alreadyLatest) {
+                    showAlert('info', await window.i18n.translate('settings.database_up_to_date'));
+                }
+            }
+        } finally {
+            await setActionButtonState({
+                button,
+                icon,
+                text,
+                iconName: 'database-zap',
+                i18nKey: 'settings.update_now',
+                busy: false
+            });
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const languageSelect = document.getElementById('language');
     const maxBackupsInput = document.getElementById('max-backups');
@@ -34,12 +69,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
     const experimentalXgpSourceCheckbox = document.getElementById('experimental-xgp-source');
     const xgpSourceProjectButton = document.getElementById('xgp-source-project');
+    const updateDatabaseButton = document.getElementById('update-database');
+    const updateDatabaseIcon = document.getElementById('update-database-icon');
+    const updateDatabaseText = document.getElementById('update-database-text');
     // toggle-switch exposes .checked as a property, same interface as <input type="checkbox">
     const autoDetectButton = document.getElementById('auto-detect-paths');
     const gamePathsContainer = document.getElementById('game-paths-container');
     const addNewPathButton = document.getElementById('add-new-path');
 
     wrapNumberInput(maxBackupsInput);
+    setupDatabaseUpdateButton(updateDatabaseButton, updateDatabaseIcon, updateDatabaseText);
 
     // Initial load
     window.api.invoke('get-settings').then(async (settings) => {

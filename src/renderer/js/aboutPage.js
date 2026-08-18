@@ -35,8 +35,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             latestVersionSpan.style.color = 'var(--gsm-green-soft)';
 
             updateButton.classList.remove('hidden');
-            updateButton.addEventListener('click', () => {
-                window.api.send('update-app');
+            updateButton.addEventListener('click', async () => {
+                updateButton.disabled = true;
+                try {
+                    const result = await window.api.invoke('download-app-update');
+                    if (result?.fallbackOpened || result?.status === 'error') {
+                        updateButton.disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Failed to start application update:', error);
+                    updateButton.disabled = false;
+                }
             });
             autoResizeWindow();
         }
