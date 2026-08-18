@@ -530,6 +530,52 @@ input[type="text"].search-input::placeholder {
     line-height: 20px;
 }
 
+.sync-provider-selector {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 12px;
+}
+
+.sync-provider-option {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 14px;
+    color: rgba(255, 255, 255, 0.54);
+    font-size: 12.5px;
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px !important;
+}
+
+.sync-provider-option:hover {
+    color: rgba(255, 255, 255, 0.82);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.sync-provider-option[aria-checked="true"] {
+    color: rgba(255, 255, 255, 0.94);
+    background: rgba(255, 255, 255, 0.075);
+    border-color: rgba(255, 255, 255, 0.095);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15);
+}
+
+.sync-provider-option[aria-checked="true"] > [data-lucide-icon] {
+    color: color-mix(in srgb, var(--system-accent) 72%, white);
+}
+
+.sync-provider-option .lucide-icon {
+    width: 16px;
+    height: 16px;
+}
+
 .sync-card,
 .sync-transfer-list {
     overflow: hidden;
@@ -540,6 +586,62 @@ input[type="text"].search-input::placeholder {
 
 .sync-setting-block {
     padding: 14px;
+}
+
+.sync-provider-panel {
+    padding: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.sync-config-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px 12px;
+}
+
+.sync-config-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 11.5px;
+}
+
+.sync-config-field-wide {
+    grid-column: 1 / -1;
+}
+
+.sync-config-field input {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 10px;
+    color: rgba(255, 255, 255, 0.78);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    background: rgba(0, 0, 0, 0.13);
+    border: 1px solid var(--color-control-border);
+    border-radius: 8px;
+    outline: none;
+}
+
+.sync-config-field input:focus {
+    border-color: color-mix(in srgb, var(--system-accent) 52%, rgba(255, 255, 255, 0.18));
+}
+
+.sync-config-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.sync-config-security {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10.5px;
+    line-height: 16px;
 }
 
 .sync-setting-heading {

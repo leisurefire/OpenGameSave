@@ -1,6 +1,7 @@
 const path = require('path');
 
 const SUPPORTED_LANGUAGES = new Set(['en_US', 'zh_CN']);
+const SUPPORTED_SYNC_PROVIDERS = new Set(['github', 'webdav']);
 const AUTO_BACKUP_MODES = new Set(['interval', 'watcher']);
 const BACKUP_PATH_TYPES = new Set(['file', 'folder', 'reg']);
 const WIKI_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -33,6 +34,10 @@ const ALLOWED_SETTING_KEYS = new Set([
     'language',
     'backupPath',
     'exportPath',
+    'syncProvider',
+    'webdavUrl',
+    'webdavUsername',
+    'webdavRemotePath',
     'maxBackups',
     ...BOOLEAN_SETTING_KEYS,
     'gameInstalls',
@@ -42,6 +47,52 @@ const ALLOWED_SETTING_KEYS = new Set([
 
 function normalizeLanguage(language) {
     return SUPPORTED_LANGUAGES.has(language) ? language : 'en_US';
+}
+
+function normalizeSyncProvider(provider, fallback = 'github') {
+    return SUPPORTED_SYNC_PROVIDERS.has(provider) ? provider : fallback;
+}
+
+function normalizeWebDAVUrl(value, { allowEmpty = true, fallback = null } = {}) {
+    if ((value === null || value === undefined || value === '') && allowEmpty) return '';
+    if (typeof value !== 'string' || value.length > 2048 || value.includes('\0') || /[\r\n]/.test(value)) {
+        if (fallback !== null) return fallback;
+        throw new Error('Invalid WebDAV URL');
+    }
+    try {
+        const parsed = new URL(value.trim());
+        if (!['http:', 'https:'].includes(parsed.protocol)
+            || parsed.username || parsed.password || parsed.hash || parsed.search) {
+            throw new Error('Invalid WebDAV URL');
+        }
+        return parsed.toString().replace(/\/$/, '');
+    } catch (_) {
+        if (fallback !== null) return fallback;
+        throw new Error('Invalid WebDAV URL');
+    }
+}
+
+function normalizeWebDAVUsername(value, fallback = null) {
+    if (typeof value !== 'string' || value.length > 512 || value.includes('\0') || /[\r\n]/.test(value)) {
+        if (fallback !== null) return fallback;
+        throw new Error('Invalid WebDAV username');
+    }
+    return value.trim();
+}
+
+function normalizeWebDAVRemotePath(value, fallback = null) {
+    if (typeof value !== 'string' || value.length === 0 || value.length > 1024
+        || value.includes('\0') || /[\r\n]/.test(value)) {
+        if (fallback !== null) return fallback;
+        throw new Error('Invalid WebDAV remote path');
+    }
+    const normalized = `/${value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}`;
+    const segments = normalized.split('/').filter(Boolean);
+    if (segments.length === 0 || segments.some(segment => segment === '.' || segment === '..')) {
+        if (fallback !== null) return fallback;
+        throw new Error('WebDAV remote path must be a dedicated subdirectory');
+    }
+    return `/${segments.join('/')}`;
 }
 
 function normalizeWikiId(wikiId) {
@@ -268,6 +319,10 @@ function sanitizeSettingValue(key, value, fallback) {
     if (key === 'language') return normalizeLanguage(value);
     if (key === 'backupPath') return normalizeBackupRoot(value, fallback);
     if (key === 'exportPath') return normalizeAbsolutePath(value, { allowEmpty: true, fallback });
+    if (key === 'syncProvider') return normalizeSyncProvider(value, fallback);
+    if (key === 'webdavUrl') return normalizeWebDAVUrl(value, { allowEmpty: true, fallback });
+    if (key === 'webdavUsername') return normalizeWebDAVUsername(value, fallback);
+    if (key === 'webdavRemotePath') return normalizeWebDAVRemotePath(value, fallback);
     if (key === 'maxBackups') return normalizeBoundedInteger(value, 1, 1000, fallback);
     if (BOOLEAN_SETTING_KEYS.has(key)) return normalizeBoolean(value, fallback);
     if (WIKI_ID_ARRAY_SETTING_KEYS.has(key)) return normalizeWikiIdArray(value, fallback);
@@ -484,6 +539,10 @@ module.exports = {
     normalizeBackupDate,
     normalizeBoundedInteger,
     normalizeLanguage,
+    normalizeSyncProvider,
+    normalizeWebDAVRemotePath,
+    normalizeWebDAVUrl,
+    normalizeWebDAVUsername,
     normalizeRegistryKeyPath,
     normalizeWikiId,
     normalizeWikiIdArray,

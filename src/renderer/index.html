@@ -28,7 +28,7 @@
                     <span class="text-content">Restore</span>
                 </button>
                 <button id="sync-tab" data-tabs-target="#sync" role="tab" aria-controls="sync" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.sync">
-                    <span data-lucide-icon="git-compare-arrows"></span>
+                    <span data-lucide-icon="cloud"></span>
                     <span class="text-content">Sync</span>
                 </button>
             </nav>
@@ -247,7 +247,7 @@
             <div id="sync-content" class="sync-layout animate-fadeInShift">
                 <header class="page-header">
                     <div class="page-heading">
-                        <span class="page-heading-icon" data-lucide-icon="git-compare-arrows"></span>
+                        <span class="page-heading-icon" data-lucide-icon="cloud"></span>
                         <div class="min-w-0">
                             <h1 class="page-title text-content" data-i18n="main.sync">Sync</h1>
                         </div>
@@ -259,14 +259,28 @@
                         <p data-i18n="main.sync_description">Manage backup storage and sync backups with external services.</p>
                     </div>
 
+                    <section class="sync-section" aria-labelledby="sync-provider-heading">
+                        <h2 id="sync-provider-heading" class="sync-section-title" data-i18n="main.sync_provider">Cloud provider</h2>
+                        <div id="sync-provider-selector" class="sync-provider-selector" role="radiogroup" data-i18n-aria-label="main.sync_provider">
+                            <button type="button" class="sync-provider-option" data-sync-provider="github" role="radio" aria-checked="false">
+                                <span data-lucide-icon="git-compare-arrows"></span>
+                                <span data-i18n="main.sync_provider_github">GitHub repository</span>
+                            </button>
+                            <button type="button" class="sync-provider-option" data-sync-provider="webdav" role="radio" aria-checked="false">
+                                <span data-lucide-icon="cloud"></span>
+                                <span data-i18n="main.sync_provider_webdav">WebDAV</span>
+                            </button>
+                        </div>
+                    </section>
+
                     <section class="sync-section" aria-labelledby="sync-storage-heading">
-                        <h2 id="sync-storage-heading" class="sync-section-title" data-i18n="main.sync_storage">Storage and repository</h2>
+                        <h2 id="sync-storage-heading" class="sync-section-title" data-i18n="main.sync_storage">Local backup storage</h2>
                         <div class="sync-card">
                             <div class="sync-setting-block">
                                 <div class="sync-setting-heading">
                                     <div class="sync-setting-copy">
                                         <div class="sync-row-title" data-i18n="settings.backupPath">Backup Save Path</div>
-                                        <p class="sync-row-description" data-i18n="main.backup_path_sync_hint">Select a backup storage folder. If this folder is a Git repository, it can be synced with its configured remote.</p>
+                                        <p class="sync-row-description" data-i18n="main.backup_path_sync_hint">This folder is the local source and destination for cloud sync.</p>
                                     </div>
                                     <button id="backup-path-open" class="compact-action-button sync-compact-button home-action-button" data-i18n-title="main.open_directory" data-i18n-aria-label="main.open_directory">
                                         <span data-action-icon="openDirectory"></span>
@@ -281,15 +295,43 @@
                                 </div>
                             </div>
 
-                            <div class="sync-status-row">
-                                <span class="sync-status-icon" data-lucide-icon="git-compare-arrows"></span>
-                                <div class="sync-status-copy">
-                                    <div id="github-sync-status-message" class="sync-status-message"></div>
-                                    <pre id="github-sync-status-details" class="sync-status-details"></pre>
+                            <div id="webdav-config-panel" class="sync-provider-panel hidden">
+                                <div class="sync-config-grid">
+                                    <label class="sync-config-field sync-config-field-wide">
+                                        <span data-i18n="main.webdav_server_url">Server URL</span>
+                                        <input id="webdav-url" type="url" maxlength="2048" placeholder="https://dav.example.com/remote.php/dav/files/user">
+                                    </label>
+                                    <label class="sync-config-field">
+                                        <span data-i18n="main.webdav_username">Username</span>
+                                        <input id="webdav-username" type="text" maxlength="512" autocomplete="off">
+                                    </label>
+                                    <label class="sync-config-field">
+                                        <span data-i18n="main.webdav_password">Password / app password</span>
+                                        <input id="webdav-password" type="password" maxlength="4096" autocomplete="new-password" data-i18n-placeholder="main.webdav_password_placeholder">
+                                    </label>
+                                    <label class="sync-config-field sync-config-field-wide">
+                                        <span data-i18n="main.webdav_remote_path">Remote folder</span>
+                                        <input id="webdav-remote-path" type="text" maxlength="1024" value="/OpenGameSave">
+                                    </label>
                                 </div>
-                                <button id="github-sync-refresh" class="sync-compact-button home-action-button" data-i18n-title="main.github_sync_check" data-i18n-aria-label="main.github_sync_check">
+                                <div class="sync-config-footer">
+                                    <span class="sync-config-security" data-i18n="main.webdav_security_hint">The password is encrypted with the operating system credential store.</span>
+                                    <button id="webdav-save" class="compact-action-button sync-compact-button home-action-button">
+                                        <span data-lucide-icon="check"></span>
+                                        <span data-i18n="main.webdav_save_check">Save and check</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="sync-status-row">
+                                <span class="sync-status-icon" data-lucide-icon="cloud"></span>
+                                <div class="sync-status-copy">
+                                    <div id="sync-status-message" class="sync-status-message"></div>
+                                    <pre id="sync-status-details" class="sync-status-details"></pre>
+                                </div>
+                                <button id="sync-refresh" class="sync-compact-button home-action-button" data-i18n-title="main.sync_check" data-i18n-aria-label="main.sync_check">
                                     <span data-lucide-icon="refresh-cw"></span>
-                                    <span data-i18n="main.github_sync_check">Check</span>
+                                    <span data-i18n="main.sync_check">Check</span>
                                 </button>
                             </div>
                         </div>
@@ -297,24 +339,24 @@
 
                     <div class="sync-notice">
                         <span data-lucide-icon="triangle-alert"></span>
-                        <span data-i18n="main.github_sync_note">Requires Git to be installed and the selected folder to be a cloned repository with a configured remote. Authentication is handled by your local Git credential manager.</span>
+                        <span id="sync-provider-note" data-i18n="main.github_sync_note">Requires Git to be installed and the selected folder to be a cloned repository with a configured remote. Authentication is handled by your local Git credential manager.</span>
                     </div>
 
                     <section class="sync-section" aria-labelledby="sync-actions-heading">
                         <h2 id="sync-actions-heading" class="sync-section-title" data-i18n="main.sync_actions">Sync actions</h2>
                         <div class="sync-transfer-list">
-                            <button id="github-sync-upload" class="sync-transfer-action">
+                            <button id="sync-upload" class="sync-transfer-action">
                                 <span class="sync-transfer-icon" data-lucide-icon="cloud-upload"></span>
                                 <span class="sync-transfer-copy">
-                                    <span class="sync-row-title" data-i18n="main.github_sync_upload">Upload Local Backups</span>
-                                    <span class="sync-row-description" data-i18n="main.github_sync_upload_hint">Commit local backups and push</span>
+                                    <span class="sync-row-title" data-i18n="main.sync_upload">Upload Local Backups</span>
+                                    <span id="sync-upload-hint" class="sync-row-description" data-i18n="main.github_sync_upload_hint">Commit local backups and push</span>
                                 </span>
                             </button>
-                            <button id="github-sync-download" class="sync-transfer-action">
+                            <button id="sync-download" class="sync-transfer-action">
                                 <span class="sync-transfer-icon" data-lucide-icon="cloud-download"></span>
                                 <span class="sync-transfer-copy">
-                                    <span class="sync-row-title" data-i18n="main.github_sync_download">Download Backups</span>
-                                    <span class="sync-row-description" data-i18n="main.github_sync_download_hint">Pull Git backups into local storage</span>
+                                    <span class="sync-row-title" data-i18n="main.sync_download">Download Backups</span>
+                                    <span id="sync-download-hint" class="sync-row-description" data-i18n="main.github_sync_download_hint">Pull Git backups into local storage</span>
                                 </span>
                             </button>
                         </div>

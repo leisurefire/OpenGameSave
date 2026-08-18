@@ -187,7 +187,10 @@ export async function setActionButtonState({ button, icon, text, iconName, i18nK
     icon.classList.toggle('is-spinning', busy);
     renderIcon(icon, busy ? 'loader-circle' : iconName);
 
-    button.setAttribute('data-i18n', i18nKey);
+    // Keep the translation marker on the text node. Placing it on the button
+    // allows a language refresh to replace the button's children, including
+    // its icon container.
+    text.setAttribute('data-i18n', i18nKey);
     text.textContent = await window.i18n.translate(i18nKey);
 }
 

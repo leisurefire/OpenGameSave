@@ -56,7 +56,7 @@ const isWindows = process.platform === 'win32';
 const rendererRoot = path.join(__dirname, '../renderer');
 const STATUS_KEYS = new Set([
     'backuping', 'scanning_full', 'restoring', 'migrating', 'updating_db',
-    'exporting', 'importing', 'updating_backup', 'updating_restore', 'github_syncing'
+    'exporting', 'importing', 'updating_backup', 'updating_restore', 'syncing'
 ]);
 const PUBLIC_MODAL_PAGES = new Set(['export', 'import', 'account', 'auto-backup', 'manage-backups', 'local-save', 'scan-full']);
 const MAX_ARCHIVE_ENTRIES = 100000;
@@ -91,7 +91,7 @@ let status = {
     importing: false,
     updating_backup: false,
     updating_restore: false,
-    github_syncing: false
+    syncing: false
 }
 
 const dynamicModalPages = new Set(['export', 'import', 'account', 'auto-backup', 'manage-backups', 'local-save', 'scan-full', 'confirm', 'dialog']);
@@ -1225,6 +1225,10 @@ const loadSettings = () => {
         language: detectedLanguage,
         backupPath: path.join(appDataPath, "OGS Backups"),
         exportPath: "",
+        syncProvider: 'github',
+        webdavUrl: '',
+        webdavUsername: '',
+        webdavRemotePath: '/OpenGameSave',
         maxBackups: 5,
         launchAtStartup: false,
         autoAppUpdate: true,

@@ -24,7 +24,13 @@ const {
     startAutoBackup, stopAutoBackup, getAutoBackupState, refreshAutoBackupWatchers,
     restoreAutoBackups, stopAllAutoBackups
 } = require('./autoBackup');
-const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } = require('./githubSync');
+const {
+    checkSyncProviderStatus,
+    getSyncProviderConfig,
+    listSyncProviders,
+    runSyncProviderAction,
+    saveSyncProviderConfig
+} = require('./syncProviders');
 const {
     assertNoSymlinkAncestors,
     isPathInside,
@@ -1145,33 +1151,35 @@ ipcMain.handle('update-database', async () => {
     return await updateDatabase();
 });
 
-ipcMain.handle('github-sync-status', async (event, syncPath) => {
-    return await checkGitSyncStatus(syncPath);
+ipcMain.handle('sync-provider-list', () => {
+    return listSyncProviders();
 });
 
-ipcMain.handle('github-sync-upload', async (event, syncPath) => {
-    if (getStatus().github_syncing) throw new Error('Git synchronization is already running');
-    const releaseOperation = acquireGlobalOperation('upload backups to Git');
-    updateStatus('github_syncing', true);
-    try {
-        return await uploadBackupsToGitHub(syncPath);
-    } finally {
-        updateStatus('github_syncing', false);
-        releaseOperation();
-    }
+ipcMain.handle('sync-provider-config', async (event, providerId) => {
+    return await getSyncProviderConfig(providerId);
 });
 
-ipcMain.handle('github-sync-download', async (event, syncPath) => {
-    if (getStatus().github_syncing) throw new Error('Git synchronization is already running');
-    const releaseOperation = acquireGlobalOperation('download backups from Git');
-    updateStatus('github_syncing', true);
+ipcMain.handle('sync-provider-save-config', async (event, providerId, config) => {
+    return await saveSyncProviderConfig(providerId, config);
+});
+
+ipcMain.handle('sync-provider-status', async (event, providerId, syncPath) => {
+    return await checkSyncProviderStatus(providerId, syncPath);
+});
+
+ipcMain.handle('sync-provider-run', async (event, providerId, direction, syncPath) => {
+    if (getStatus().syncing) throw new Error('Synchronization is already running');
+    const releaseOperation = acquireGlobalOperation(`${direction} backups with ${providerId}`);
+    updateStatus('syncing', true);
     try {
-        return await downloadBackupsFromGitHub(syncPath);
+        return await runSyncProviderAction(providerId, direction, syncPath);
     } finally {
-        updateStatus('github_syncing', false);
+        updateStatus('syncing', false);
         releaseOperation();
-        getMainWin().webContents.send('update-restore-table');
-        getMainWin().webContents.send('update-backup-table');
+        if (direction === 'download') {
+            getMainWin().webContents.send('update-restore-table');
+            getMainWin().webContents.send('update-backup-table');
+        }
     }
 });
 

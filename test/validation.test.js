@@ -8,6 +8,10 @@ const {
     normalizeBackupRoot,
     normalizeBackupDate,
     normalizeRegistryKeyPath,
+    normalizeSyncProvider,
+    normalizeWebDAVRemotePath,
+    normalizeWebDAVUrl,
+    normalizeWebDAVUsername,
     resolveInside,
     sanitizeSettingValue,
     validateArchiveEntryPath,
@@ -60,6 +64,19 @@ test('auto-backup settings discard malformed jobs and zero-delay intervals', () 
     assert.equal(sanitizeSettingValue('launchAtStartup', 'yes', false), false);
     assert.equal(sanitizeSettingValue('experimentalXgpSource', true, false), true);
     assert.equal(sanitizeSettingValue('experimentalXgpSource', 'yes', false), false);
+});
+
+test('sync provider and WebDAV settings reject unsafe or ambiguous values', () => {
+    assert.equal(normalizeSyncProvider('webdav'), 'webdav');
+    assert.equal(normalizeSyncProvider('google-drive'), 'github');
+    assert.equal(normalizeWebDAVUrl('https://dav.example.com/root/'), 'https://dav.example.com/root');
+    assert.equal(normalizeWebDAVUsername('  player  '), 'player');
+    assert.equal(normalizeWebDAVRemotePath('OpenGameSave/backups/'), '/OpenGameSave/backups');
+    assert.throws(() => normalizeWebDAVUrl('file:///C:/secrets'));
+    assert.throws(() => normalizeWebDAVUrl('https://user:password@example.com/dav'));
+    assert.throws(() => normalizeWebDAVUrl('https://example.com/dav?token=secret'));
+    assert.throws(() => normalizeWebDAVRemotePath('/'));
+    assert.throws(() => normalizeWebDAVRemotePath('/OpenGameSave/../other'));
 });
 
 test('backup metadata and archive paths reject traversal or forged folder names', () => {
