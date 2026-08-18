@@ -1,0 +1,158 @@
+name: Recover v0.7.3 Release
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/recover-v0.7.3.yml
+
+concurrency:
+  group: application-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install validation dependency
+        run: npm ci --ignore-scripts
+
+      - name: Verify and publish the existing draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=v0.7.3
+          VERSION=0.7.3
+          INSTALLER="OpenGameSave-Setup-$VERSION.exe"
+          BLOCKMAP="$INSTALLER.blockmap"
+          METADATA=latest.yml
+          mkdir -p dist/recovery
+
+          if gh api -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > dist/recovery/published.json 2>/dev/null; then
+            echo "$TAG is already published."
+            exit 0
+          fi
+
+          git fetch origin --tags
+          TAG_COMMIT=$(git rev-parse "$TAG^{}")
+          TAG_VERSION=$(git show "$TAG:package.json" | node -e \
+            "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")
+          test "$TAG_VERSION" = "$VERSION" || {
+            echo "Tag $TAG contains package version $TAG_VERSION instead of $VERSION."
+            exit 1
+          }
+
+          RELEASE_ID=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.draft == true and .tag_name == \"$TAG\") | .id" | head -n 1)
+          test -n "$RELEASE_ID" || {
+            echo "Draft release $TAG was not found."
+            exit 1
+          }
+          gh api -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > dist/recovery/release.json
+
+          node <<'NODE' > dist/recovery/assets.tsv
+          const fs = require('fs');
+          const release = JSON.parse(fs.readFileSync('dist/recovery/release.json', 'utf8'));
+          const expected = ['OpenGameSave-Setup-0.7.3.exe', 'OpenGameSave-Setup-0.7.3.exe.blockmap', 'latest.yml'];
+          const actual = release.assets.map(asset => asset.name).sort();
+          if (!release.draft || release.tag_name !== 'v0.7.3') throw new Error('Unexpected draft release identity');
+          if (JSON.stringify(actual) !== JSON.stringify(expected.sort())) {
+              throw new Error(`Unexpected draft assets: ${actual.join(', ')}`);
+          }
+          for (const asset of release.assets) {
+              if (!Number.isSafeInteger(asset.id) || asset.size <= 0) throw new Error(`Invalid asset ${asset.name}`);
+              process.stdout.write(`${asset.id}\t${asset.name}\n`);
+          }
+          NODE
+
+          while IFS=$'\t' read -r ASSET_ID ASSET_NAME; do
+            gh api -H "Accept: application/octet-stream" \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" > "dist/recovery/$ASSET_NAME"
+          done < dist/recovery/assets.tsv
+
+          node <<'NODE'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          const release = JSON.parse(fs.readFileSync('dist/recovery/release.json', 'utf8'));
+          const version = '0.7.3';
+          const installerName = `OpenGameSave-Setup-${version}.exe`;
+          const installer = fs.readFileSync(`dist/recovery/${installerName}`);
+          const blockmap = fs.readFileSync(`dist/recovery/${installerName}.blockmap`);
+          const metadata = yaml.load(fs.readFileSync('dist/recovery/latest.yml', 'utf8'));
+          const sha512 = crypto.createHash('sha512').update(installer).digest('base64');
+          const sha256 = name => `sha256:${crypto.createHash('sha256')
+              .update(fs.readFileSync(`dist/recovery/${name}`)).digest('hex')}`;
+          if (blockmap.length === 0) throw new Error('Blockmap is empty');
+          if (metadata.version !== version || metadata.path !== installerName) {
+              throw new Error('Updater metadata identity mismatch');
+          }
+          if (!Array.isArray(metadata.files) || metadata.files.length !== 1) {
+              throw new Error('Updater metadata must contain one file');
+          }
+          const file = metadata.files[0];
+          if (file.url !== installerName || file.size !== installer.length || file.sha512 !== sha512
+              || metadata.sha512 !== sha512) {
+              throw new Error('Updater metadata does not match the installer');
+          }
+          for (const asset of release.assets) {
+              if (asset.digest !== sha256(asset.name)) throw new Error(`Digest mismatch for ${asset.name}`);
+          }
+          NODE
+
+          PUBLISHED=false
+          for attempt in 1 2 3 4 5 6; do
+            if gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -F draft=false \
+              -F prerelease=false \
+              -f make_latest=true >/dev/null; then
+              PUBLISHED=true
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "Draft release $TAG could not be published."
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$PUBLISHED" = true
+          VISIBLE=false
+          for attempt in 1 2 3 4 5 6; do
+            if gh api -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+              --jq 'select(.draft == false and .prerelease == false) | .tag_name' \
+              | grep -Fx "$TAG"; then
+              VISIBLE=true
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "Published release $TAG did not become publicly visible in time."
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$VISIBLE" = true
+          printf '## Recovered application release\n\n- Tag: `%s`\n- Commit: `%s`\n- Assets verified: yes\n- Published: yes\n' \
+            "$TAG" "$TAG_COMMIT" >> "$GITHUB_STEP_SUMMARY"

@@ -154,6 +154,7 @@ jobs:
           echo "RELEASE_COMMIT=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release with verified tag
+        id: draft_release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -166,12 +167,17 @@ jobs:
           FILES=("$INSTALLER" "$INSTALLER.blockmap" "dist/$CHANNEL.yml")
           FLAGS=(--draft --verify-tag --target "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
           if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
-            FLAGS+=(--prerelease --latest=false)
-          else
-            FLAGS+=(--latest)
+            FLAGS+=(--prerelease)
           fi
           NOTES=$(printf 'Version: %s\nChannel: %s\nBuild source: %s\n' "$VERSION" "${{ inputs.release_channel }}" "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
           gh release create "$TAG" "${FLAGS[@]}" --title "$VERSION" --notes "$NOTES" "${FILES[@]}"
+          RELEASE_ID=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.draft == true and .tag_name == \"$TAG\") | .id" | head -n 1)
+          test -n "$RELEASE_ID" || {
+            echo "Draft release $TAG was created but could not be resolved by ID."
+            exit 1
+          }
+          echo "RELEASE_ID=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Verify remote assets
         shell: bash
@@ -181,17 +187,25 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.version.outputs.TAG }}"
           VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
+          RELEASE_ID="${{ steps.draft_release.outputs.RELEASE_ID }}"
+          VERIFIED=false
           for attempt in 1 2 3 4 5 6; do
-            gh api -H "Accept: application/vnd.github+json" "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > dist/remote-release.json
-            if node scripts/validate-app-release.js \
-              --dist dist \
-              --version "$VERSION" \
-              --remote-json dist/remote-release.json; then
+            if gh api -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > dist/remote-release.json \
+              && node scripts/validate-app-release.js \
+                --dist dist \
+                --version "$VERSION" \
+                --remote-json dist/remote-release.json; then
+              VERIFIED=true
               break
             fi
-            if [ "$attempt" = 6 ]; then exit 1; fi
+            if [ "$attempt" = 6 ]; then
+              echo "Draft release assets did not become verifiable in time."
+              exit 1
+            fi
             sleep 10
           done
+          test "$VERIFIED" = true
           REMOTE_TAG_COMMIT=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
           test "$REMOTE_TAG_COMMIT" = "${{ steps.release_commit.outputs.RELEASE_COMMIT }}" || {
             echo "Remote annotated tag does not resolve to the built release commit."
@@ -204,11 +218,49 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          TAG="${{ steps.version.outputs.TAG }}"
+          RELEASE_ID="${{ steps.draft_release.outputs.RELEASE_ID }}"
           if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
-            gh release edit "${{ steps.version.outputs.TAG }}" --draft=false --prerelease --latest=false
+            PRERELEASE=true
+            MAKE_LATEST=false
           else
-            gh release edit "${{ steps.version.outputs.TAG }}" --draft=false --prerelease=false --latest
+            PRERELEASE=false
+            MAKE_LATEST=true
           fi
+          PUBLISHED=false
+          for attempt in 1 2 3 4 5 6; do
+            if gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -F draft=false \
+              -F prerelease="$PRERELEASE" \
+              -f make_latest="$MAKE_LATEST" >/dev/null; then
+              PUBLISHED=true
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "Draft release could not be published."
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$PUBLISHED" = true
+          VISIBLE=false
+          for attempt in 1 2 3 4 5 6; do
+            if gh api -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+              --jq "select(.draft == false and .prerelease == $PRERELEASE) | .tag_name" \
+              | grep -Fx "$TAG"; then
+              VISIBLE=true
+              break
+            fi
+            if [ "$attempt" = 6 ]; then
+              echo "Published release did not become publicly visible in time."
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$VISIBLE" = true
 
       - name: Add release summary
         shell: bash

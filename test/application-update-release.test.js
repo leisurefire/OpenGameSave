@@ -26,6 +26,10 @@ test('Windows releases are version-bound, channel-aware and remotely verified', 
     assert.match(releaseWorkflow, /npm ci --ignore-scripts/);
     assert.match(releaseWorkflow, /npm rebuild better-sqlite3/);
     assert.match(releaseWorkflow, /--verify-tag/);
+    assert.match(releaseWorkflow, /releases\?per_page=100/);
+    assert.match(releaseWorkflow, /steps\.draft_release\.outputs\.RELEASE_ID/);
+    assert.match(releaseWorkflow, /releases\/\$RELEASE_ID/);
+    assert.match(releaseWorkflow, /--method PATCH/);
     assert.match(releaseWorkflow, /validate-app-release\.js/);
     assert.match(releaseWorkflow, /--remote-json/);
     assert.match(releaseWorkflow, /permissions:\s+contents: write/);
