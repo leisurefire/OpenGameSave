@@ -27,6 +27,78 @@ export function runWhenDomReady(callback) {
 }
 
 const displayCollators = new Map();
+const tableUpdateStates = new Map();
+
+function getTableUpdateState(tabName) {
+    if (!tableUpdateStates.has(tabName)) {
+        tableUpdateStates.set(tabName, {
+            promise: null,
+            fullUpdatePending: false,
+            loaderRequested: false,
+            loadTable: null,
+            rowActions: new Map()
+        });
+    }
+    return tableUpdateStates.get(tabName);
+}
+
+async function processTableUpdates(tabName, state) {
+    window.api.send('update-status', `updating_${tabName}`, true);
+    try {
+        while (state.fullUpdatePending || state.rowActions.size > 0) {
+            if (state.fullUpdatePending) {
+                const loadTable = state.loadTable;
+                const loaderRequested = state.loaderRequested;
+                state.fullUpdatePending = false;
+                state.loaderRequested = false;
+
+                // A full reload includes every row action queued before it.
+                // Actions arriving while the reload is in progress remain in
+                // the map and are applied to the freshly loaded table.
+                state.rowActions.clear();
+                if (loadTable) await loadTable(loaderRequested);
+                continue;
+            }
+
+            const actions = [...state.rowActions.values()];
+            state.rowActions.clear();
+            for (const action of actions) {
+                if (action.type === 'remove') {
+                    performRemoveTableRow(tabName, action.wikiId);
+                } else {
+                    await performAddOrUpdateTableRow(tabName, action.wikiId);
+                }
+            }
+        }
+    } finally {
+        window.api.send('update-status', `updating_${tabName}`, false);
+    }
+}
+
+function scheduleTableUpdates(tabName, state) {
+    if (!state.promise) {
+        state.promise = processTableUpdates(tabName, state)
+            .catch(error => {
+                console.error(`Failed to update ${tabName} table:`, error);
+                state.fullUpdatePending = false;
+                state.loaderRequested = false;
+                state.rowActions.clear();
+                throw error;
+            })
+            .finally(() => {
+                state.promise = null;
+            });
+    }
+    return state.promise;
+}
+
+export function queueFullTableUpdate(tabName, loader, loadTable) {
+    const state = getTableUpdateState(tabName);
+    state.fullUpdatePending = true;
+    state.loaderRequested = state.loaderRequested || Boolean(loader);
+    state.loadTable = loadTable;
+    return scheduleTableUpdates(tabName, state);
+}
 
 function getDisplayCollator(language) {
     const locale = language === 'zh_CN' ? 'zh-CN' : 'en-US';
@@ -97,11 +169,15 @@ window.api.receive('auto-backup-stopped', (wikiId) => {
 });
 
 window.api.receive('auto-backup-performed', async (wikiId) => {
-    if (window.backupTableDataMap) {
-        await addOrUpdateTableRow('backup', wikiId);
-    }
-    if (window.restoreTableDataMap) {
-        await addOrUpdateTableRow('restore', wikiId);
+    try {
+        if (window.backupTableDataMap) {
+            await addOrUpdateTableRow('backup', wikiId);
+        }
+        if (window.restoreTableDataMap) {
+            await addOrUpdateTableRow('restore', wikiId);
+        }
+    } catch (error) {
+        console.error('Failed to refresh auto-backup table rows:', error);
     }
 });
 
@@ -521,7 +597,6 @@ const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox'
 export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId) {
     const row = document.createElement('tr');
     row.setAttribute('data-wiki-id', wikiPageId);
-    row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
         <td class="p-4">
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
@@ -556,7 +631,6 @@ export function createBackupTableRow(gameTitle, platformIcons, backupSize, newes
 export function createRestoreTableRow(gameTitle, backupCount, backupSize, newestBackupTime, wikiPageId) {
     const row = document.createElement('tr');
     row.setAttribute('data-wiki-id', wikiPageId);
-    row.classList.add('border-b', 'border-white/5');
     row.innerHTML = `
         <td class="p-4">
             <input type="checkbox" class="row-checkbox w-4 h-4 accent-theme-accent">
@@ -588,7 +662,7 @@ export function createRestoreTableRow(gameTitle, backupCount, backupSize, newest
     return row;
 }
 
-export async function addOrUpdateTableRow(tabName, wikiId) {
+async function performAddOrUpdateTableRow(tabName, wikiId) {
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     const tableBody = document.querySelector(`#${tabName} tbody`);
     if (!dataMap || !tableBody) {
@@ -721,8 +795,15 @@ export async function addOrUpdateTableRow(tabName, wikiId) {
     applyTableFilters(tabName);
 }
 
+export function addOrUpdateTableRow(tabName, wikiId) {
+    const state = getTableUpdateState(tabName);
+    const normalizedWikiId = String(wikiId);
+    state.rowActions.set(normalizedWikiId, { type: 'update', wikiId: normalizedWikiId });
+    return scheduleTableUpdates(tabName, state);
+}
+
 // Helper function to remove a game row from a tab's table and clean up its data map
-export function removeTableRow(tabName, wikiId) {
+function performRemoveTableRow(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
     if (!dataMap || !tableBody) {
@@ -737,6 +818,13 @@ export function removeTableRow(tabName, wikiId) {
     }
     dataMap.delete(wikiId);
     updateSelectedCountAndSize(tabName);
+}
+
+export function removeTableRow(tabName, wikiId) {
+    const state = getTableUpdateState(tabName);
+    const normalizedWikiId = String(wikiId);
+    state.rowActions.set(normalizedWikiId, { type: 'remove', wikiId: normalizedWikiId });
+    return scheduleTableUpdates(tabName, state);
 }
 
 window.api.receive('execute-menu-action', async (action, data) => {

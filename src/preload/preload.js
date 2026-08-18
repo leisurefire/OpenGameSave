@@ -36,6 +36,7 @@ const ALLOWED_SEND = new Set([
 const ALLOWED_INVOKE = new Set([
   'translate',
   'change-language',
+  'save-settings',
   'get-settings',
   'set-experimental-xgp-source',
   'get-detected-game-paths',

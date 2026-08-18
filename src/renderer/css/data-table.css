@@ -21,6 +21,9 @@ table th {
     letter-spacing: 0.02em;
     color: rgba(255, 255, 255, 0.55);
     padding: 8px 12px;
+}
+
+table thead th {
     border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
@@ -38,7 +41,7 @@ table tr[data-virtual-spacer] {
 data-table .dt-row {
     display: grid;
     grid-template-columns: var(--dt-columns, repeat(3, minmax(0, 1fr)));
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid var(--color-win-border);
     transition: background-color 0.1s ease;
     border-radius: 0;
     margin: 0;

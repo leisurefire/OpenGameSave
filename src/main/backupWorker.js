@@ -25,6 +25,7 @@ const { buildXgpEntryIndex, mergeXgpEntriesIntoGameRow, normalizeTitleKey } = re
 
 const execFilePromise = util.promisify(execFile);
 const MAX_GLOB_MATCHES = 10000;
+const MAX_REGISTRY_MATCHES = 1000;
 const MAX_UID_PLACEHOLDERS = 4;
 
 let context = null;
@@ -333,9 +334,36 @@ function getWinRegHive(hive) {
 
 function parseRegistryPath(registryPath) {
     const parts = registryPath.split('\\');
-    const hive = parts.shift();
-    const key = '\\' + parts.join('\\');
+    const hive = String(parts.shift() || '').toUpperCase();
+    const key = parts.length > 0 ? '\\' + parts.join('\\') : '';
     return { hive, key };
+}
+
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function createFinalTemplate(resolvedPath, placeholderMappings) {
+    let finalTemplate = resolvedPath.replace(/\\/g, '/');
+    const sortedMappings = Object.entries(placeholderMappings)
+        .filter(([, resolvedValue]) => typeof resolvedValue === 'string' && resolvedValue.length > 0)
+        .sort((a, b) => b[1].length - a[1].length);
+
+    for (const [placeholder, resolvedValue] of sortedMappings) {
+        const normalizedValue = resolvedValue.replace(/\\/g, '/');
+        finalTemplate = finalTemplate.replace(new RegExp(escapeRegExp(normalizedValue), 'gi'), placeholder);
+    }
+    return finalTemplate;
+}
+
+function* generateUidCombinations(count, uidValues, current = []) {
+    if (current.length === count) {
+        yield current;
+        return;
+    }
+    for (const uid of uidValues) {
+        yield* generateUidCombinations(count, uidValues, [...current, uid]);
+    }
 }
 
 async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegistry = false) {
@@ -372,40 +400,13 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
     }
 
     if (isRegistry) {
-        return [{ template: templatedPath, finalTemplate: basePath, resolved: basePath }];
+        return fillRegistryPathUid(templatedPath, basePath, placeholderMappings);
     }
 
     return await fillPathUid(templatedPath, basePath, placeholderMappings);
 }
 
 async function fillPathUid(templatedPath, basePath, placeholderMappings) {
-    function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    function createFinalTemplate(resolvedPath) {
-        let finalTemplate = resolvedPath.replace(/\\/g, '/');
-        const sortedMappings = Object.entries(placeholderMappings)
-            .sort((a, b) => b[1].length - a[1].length);
-
-        for (const [placeholder, resolvedValue] of sortedMappings) {
-            const normalizedValue = resolvedValue.replace(/\\/g, '/');
-            const regex = new RegExp(escapeRegExp(normalizedValue), 'gi');
-            finalTemplate = finalTemplate.replace(regex, placeholder);
-        }
-        return finalTemplate;
-    }
-
-    function* generateUidCombinations(count, uidValues, current = []) {
-        if (current.length === count) {
-            yield current;
-            return;
-        }
-        for (const uid of uidValues) {
-            yield* generateUidCombinations(count, uidValues, [...current, uid]);
-        }
-    }
-
     function findGlobMatches(testPath) {
         const files = [];
         for (const filePath of glob.globIterateSync(testPath.replace(/\\/g, '/'), {
@@ -428,7 +429,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
             .filter(filePath => fsOriginal.existsSync(filePath))
             .map(filePath => ({
                 template: templatedPath,
-                finalTemplate: createFinalTemplate(filePath),
+                finalTemplate: createFinalTemplate(filePath, placeholderMappings),
                 resolved: filePath
             }));
     }
@@ -499,9 +500,141 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     const latestPath = await findLatestModifiedPath(wildcardResolvedPaths);
     return [{
         template: templatedPath,
-        finalTemplate: createFinalTemplate(latestPath),
+        finalTemplate: createFinalTemplate(latestPath, placeholderMappings),
         resolved: latestPath
     }];
+}
+
+async function fillRegistryPathUid(templatedPath, basePath, placeholderMappings) {
+    const uidPlaceholderPattern = /\{\{p\|(?:uid|xbox_uid)\}\}/i;
+
+    function getSafeRegistryPath(candidatePath) {
+        try {
+            return normalizeRegistryKeyPath(candidatePath);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function registryKeyExists(candidatePath) {
+        const registryPath = getSafeRegistryPath(candidatePath);
+        if (!registryPath) return Promise.resolve(false);
+
+        const { hive, key } = parseRegistryPath(registryPath);
+        const winRegHive = getWinRegHive(hive);
+        if (!winRegHive) return Promise.resolve(false);
+
+        const registryKey = new WinReg({ hive: winRegHive, key });
+        return new Promise(resolve => {
+            registryKey.keyExists((err, exists) => resolve(!err && exists));
+        });
+    }
+
+    function getRegistryChildNames(candidatePath) {
+        const registryPath = getSafeRegistryPath(candidatePath);
+        if (!registryPath) return Promise.resolve([]);
+
+        const { hive, key } = parseRegistryPath(registryPath);
+        const winRegHive = getWinRegHive(hive);
+        if (!winRegHive) return Promise.resolve([]);
+
+        const registryKey = new WinReg({ hive: winRegHive, key });
+        return new Promise(resolve => {
+            registryKey.keys((err, subKeys) => {
+                if (err || !Array.isArray(subKeys)) {
+                    resolve([]);
+                    return;
+                }
+
+                const parentSegments = key.split('\\').filter(Boolean);
+                const childNames = subKeys
+                    .slice(0, MAX_REGISTRY_MATCHES + 1)
+                    .map(subKey => String(subKey.key || '').split('\\').filter(Boolean))
+                    .filter(segments => segments.length === parentSegments.length + 1)
+                    .map(segments => segments[segments.length - 1]);
+
+                resolve([...new Set(childNames)].slice(0, MAX_REGISTRY_MATCHES));
+            });
+        });
+    }
+
+    async function expandUidWildcards(candidatePath, matches = [], budget = { remaining: MAX_REGISTRY_MATCHES }) {
+        if (matches.length >= MAX_REGISTRY_MATCHES || budget.remaining <= 0) return matches;
+
+        const { hive, key } = parseRegistryPath(candidatePath);
+        const segments = key.split('\\').filter(Boolean);
+        const uidSegmentIndex = segments.findIndex(segment => uidPlaceholderPattern.test(segment));
+        if (uidSegmentIndex === -1) {
+            const registryPath = getSafeRegistryPath(candidatePath);
+            if (registryPath) matches.push(registryPath);
+            return matches;
+        }
+
+        const parentSegments = segments.slice(0, uidSegmentIndex);
+        const parentPath = parentSegments.length > 0
+            ? `${hive}\\${parentSegments.join('\\')}`
+            : hive;
+        const childNames = await getRegistryChildNames(parentPath);
+        const segmentPattern = new RegExp(
+            `^${segments[uidSegmentIndex]
+                .split(/\{\{p\|(?:uid|xbox_uid)\}\}/i)
+                .map(escapeRegExp)
+                .join('(.+)')}$`,
+            'i'
+        );
+
+        for (const childName of childNames) {
+            if (matches.length >= MAX_REGISTRY_MATCHES || budget.remaining <= 0) break;
+            budget.remaining -= 1;
+            if (!segmentPattern.test(childName)) continue;
+
+            const candidateSegments = [...segments];
+            candidateSegments[uidSegmentIndex] = childName;
+            await expandUidWildcards(`${hive}\\${candidateSegments.join('\\')}`, matches, budget);
+        }
+        return matches;
+    }
+
+    const toResolvedPathObject = resolvedPath => ({
+        template: templatedPath,
+        finalTemplate: createFinalTemplate(resolvedPath, placeholderMappings),
+        resolved: resolvedPath
+    });
+
+    if (!uidPlaceholderPattern.test(basePath)) {
+        const registryPath = getSafeRegistryPath(basePath);
+        return registryPath ? [toResolvedPathObject(registryPath)] : [];
+    }
+
+    const uidMatches = basePath.match(/\{\{p\|(?:uid|xbox_uid)\}\}/gi) || [];
+    if (uidMatches.length > MAX_UID_PLACEHOLDERS) return [];
+
+    if (!settings().backupAllAccounts) {
+        const uidValues = [...new Set(Object.values(allUserIds())
+            .filter(uid => uid && uid !== 'N/A')
+            .map(String))];
+
+        for (const uidCombination of generateUidCombinations(uidMatches.length, uidValues)) {
+            let uidIndex = 0;
+            const candidatePath = basePath.replace(
+                /\{\{p\|(?:uid|xbox_uid)\}\}/gi,
+                () => uidCombination[uidIndex++]
+            );
+            if (await registryKeyExists(candidatePath)) {
+                return [toResolvedPathObject(getSafeRegistryPath(candidatePath))];
+            }
+        }
+    }
+
+    const expandedPaths = await expandUidWildcards(basePath);
+    const existingPaths = [];
+    for (const registryPath of expandedPaths) {
+        if (await registryKeyExists(registryPath)) {
+            existingPaths.push(toResolvedPathObject(registryPath));
+            if (!settings().backupAllAccounts) break;
+        }
+    }
+    return existingPaths;
 }
 
 async function findLatestModifiedPath(paths) {

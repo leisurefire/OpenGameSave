@@ -8,6 +8,7 @@ const WinReg = require('winreg');
 const yaml = require('js-yaml');
 
 const { getLatestModificationTimeAsync } = require('./fileSystemUtils');
+const { getSteamAccountId } = require('./steamAccount');
 
 class GameData {
     constructor() {
@@ -83,7 +84,8 @@ class GameData {
 
     async getCurrentUserIds() {
         if (this.steamPath) {
-            // Get current Steam user id64 and user name
+            // Prefer Steam's explicit auto-login account, then fall back to the
+            // most recently used account for installations without AutoLogin.
             const loginUsersPath = path.join(this.steamPath, 'config', 'loginusers.vdf');
             if (fs.existsSync(loginUsersPath)) {
                 try {
@@ -91,13 +93,15 @@ class GameData {
                     const parsedData = vdf.parse(vdfContent);
 
                     if (parsedData.users) {
-                        for (const userId64 in parsedData.users) {
-                            const userData = parsedData.users[userId64];
-                            if (userData.MostRecent == 1) {
-                                this.currentSteamUserId64 = userId64;
-                                this.currentSteamUserName = userData.PersonaName;
-                                break;
-                            }
+                        const accounts = Object.entries(parsedData.users);
+                        const selectedAccount = accounts.find(([, account]) => Number(account.AutoLogin) === 1)
+                            || accounts.find(([, account]) => Number(account.MostRecent) === 1);
+
+                        if (selectedAccount) {
+                            const [steamId64, accountData] = selectedAccount;
+                            this.currentSteamUserId64 = steamId64;
+                            this.currentSteamUserId3 = getSteamAccountId(steamId64);
+                            this.currentSteamUserName = accountData.PersonaName;
                         }
                     } else {
                         console.log(`No users found in ${loginUsersPath}`);
@@ -109,34 +113,38 @@ class GameData {
                 console.log(`Steam loginusers.vdf file not found at: ${loginUsersPath}`);
             }
 
-            // Get current Steam user id3
-            const userdataPath = path.join(this.steamPath, 'userdata');
-            try {
-                const userDirectories = fs.readdirSync(userdataPath, { withFileTypes: true })
-                    .filter(dirent => dirent.isDirectory())
-                    .map(dirent => dirent.name);
+            // SteamID64 normally gives us the account ID directly. Retain the
+            // older userdata scan as a compatibility fallback for malformed or
+            // non-standard loginusers.vdf entries.
+            if (!this.currentSteamUserId3) {
+                const userdataPath = path.join(this.steamPath, 'userdata');
+                try {
+                    const userDirectories = fs.readdirSync(userdataPath, { withFileTypes: true })
+                        .filter(dirent => dirent.isDirectory())
+                        .map(dirent => dirent.name);
 
-                for (const userId3 of userDirectories) {
-                    const configPath = path.join(userdataPath, userId3, 'config', 'localconfig.vdf');
-                    if (fs.existsSync(configPath)) {
-                        const localConfigContent = fs.readFileSync(configPath, 'utf-8');
-                        const localConfigData = vdf.parse(localConfigContent);
+                    for (const userId3 of userDirectories) {
+                        const configPath = path.join(userdataPath, userId3, 'config', 'localconfig.vdf');
+                        if (fs.existsSync(configPath)) {
+                            const localConfigContent = fs.readFileSync(configPath, 'utf-8');
+                            const localConfigData = vdf.parse(localConfigContent);
 
-                        if (localConfigData.UserLocalConfigStore && localConfigData.UserLocalConfigStore.friends) {
-                            const personaName = localConfigData.UserLocalConfigStore.friends.PersonaName;
-                            if (personaName === this.currentSteamUserName) {
-                                this.currentSteamUserId3 = userId3;
-                                break;
+                            if (localConfigData.UserLocalConfigStore && localConfigData.UserLocalConfigStore.friends) {
+                                const personaName = localConfigData.UserLocalConfigStore.friends.PersonaName;
+                                if (personaName === this.currentSteamUserName) {
+                                    this.currentSteamUserId3 = userId3;
+                                    break;
+                                }
+                            } else {
+                                console.log(`No persona name found in ${configPath}`);
                             }
                         } else {
-                            console.log(`No persona name found in ${configPath}`);
+                            console.log(`Steam localconfig.vdf file not found at: ${configPath}`);
                         }
-                    } else {
-                        console.log(`Steam localconfig.vdf file not found at: ${configPath}`);
                     }
+                } catch (e) {
+                    console.log('Error reading or parsing Steam userdata directory:', e);
                 }
-            } catch (e) {
-                console.log('Error reading or parsing Steam userdata directory:', e);
             }
         } else {
             console.log('Steam not installed');

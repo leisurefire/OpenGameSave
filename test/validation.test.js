@@ -56,6 +56,8 @@ test('auto-backup settings discard malformed jobs and zero-delay intervals', () 
     assert.equal(normalized['123'].intervalMinutes, 15);
     assert.equal(normalized.watcher.intervalMinutes, null);
     assert.throws(() => sanitizeSettingValue('__proto__', true, false));
+    assert.equal(sanitizeSettingValue('launchAtStartup', true, false), true);
+    assert.equal(sanitizeSettingValue('launchAtStartup', 'yes', false), false);
     assert.equal(sanitizeSettingValue('experimentalXgpSource', true, false), true);
     assert.equal(sanitizeSettingValue('experimentalXgpSource', 'yes', false), false);
 });

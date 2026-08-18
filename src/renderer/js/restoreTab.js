@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showRestoreConflictDialog } from './dialog.js';
-import { showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
@@ -18,7 +18,7 @@ function initializeRestoreTab() {
     restoreTabInitialized = true;
 
     setupRestoreButton();
-    updateRestoreTable(true);
+    void updateRestoreTable(true).catch(console.error);
 }
 
 runWhenDomReady(() => {
@@ -26,24 +26,21 @@ runWhenDomReady(() => {
 });
 
 window.api.receive('update-restore-table', () => {
-    updateRestoreTable(true);
+    void updateRestoreTable(true).catch(console.error);
 });
 
-async function updateRestoreTable(loader) {
-    window.api.send('update-status', 'updating_restore', true);
-    if (loader) {
-        await showLoadingIndicator('restore');
-    }
-
-    const viewModel = await window.api.invoke('get-table-view-model', 'restore');
-    await populateRestoreTable(viewModel);
-    updateSelectedCountAndSize('restore');
-    updateUninstalledButtonVisibility('restore');
-
-    if (loader) {
-        hideLoadingIndicator('restore');
-    }
-    window.api.send('update-status', 'updating_restore', false);
+function updateRestoreTable(loader) {
+    return queueFullTableUpdate('restore', loader, async (showLoader) => {
+        if (showLoader) await showLoadingIndicator('restore');
+        try {
+            const viewModel = await window.api.invoke('get-table-view-model', 'restore');
+            await populateRestoreTable(viewModel);
+            updateSelectedCountAndSize('restore');
+            updateUninstalledButtonVisibility('restore');
+        } finally {
+            if (showLoader) hideLoadingIndicator('restore');
+        }
+    });
 }
 
 // Function to populate restore table
@@ -100,7 +97,6 @@ function setupRestoreButton() {
 
         // Update table rows in background
         (async () => {
-            window.api.send('update-status', 'updating_backup', true);
             await setActionButtonState({
                 button: restoreButton,
                 icon: restoreIcon,
@@ -122,8 +118,7 @@ function setupRestoreButton() {
                 i18nKey: 'main.restore_selected',
                 busy: false
             });
-            window.api.send('update-status', 'updating_backup', false);
-        })();
+        })().catch(console.error);
     });
 }
 

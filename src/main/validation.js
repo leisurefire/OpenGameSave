@@ -12,6 +12,7 @@ const MAX_AUTO_BACKUP_GAMES = 1000;
 const MAX_DATABASE_PATCH_ROWS = 100000;
 
 const BOOLEAN_SETTING_KEYS = new Set([
+    'launchAtStartup',
     'autoAppUpdate',
     'autoDbUpdate',
     'syncAccentColor',

@@ -185,6 +185,48 @@ async function setupFileWatcher(wikiId, entry) {
     }
 }
 
+/**
+ * Re-resolve active watcher paths after an account-scope setting changes.
+ * Interval jobs do not retain resolved paths and therefore need no refresh.
+ *
+ * @returns {Promise<Array<{wikiId: string, error: string}>>}
+ */
+async function refreshAutoBackupWatchers() {
+    const failures = [];
+
+    for (const [wikiId, entry] of activeAutoBackups) {
+        if (entry.mode !== 'watcher') continue;
+
+        const previousWatcher = entry.watcher;
+        entry.watcher = null;
+
+        const cooldown = watcherCooldowns.get(wikiId);
+        if (cooldown) clearTimeout(cooldown);
+        watcherCooldowns.delete(wikiId);
+        pendingWatcherBackups.delete(wikiId);
+
+        try {
+            await setupFileWatcher(wikiId, entry);
+        } catch (error) {
+            // Keep the last known-good watcher alive when the new account scope
+            // does not currently resolve to a usable filesystem path.
+            entry.watcher = previousWatcher;
+            failures.push({ wikiId, error: error.message });
+            continue;
+        }
+
+        if (previousWatcher) {
+            try {
+                await previousWatcher.close();
+            } catch (error) {
+                console.error(`Error closing previous file watcher for ${wikiId}:`, error.message);
+            }
+        }
+    }
+
+    return failures;
+}
+
 function startWatcherCooldown(wikiId) {
     const existingTimer = watcherCooldowns.get(wikiId);
     if (existingTimer) clearTimeout(existingTimer);
@@ -316,6 +358,7 @@ module.exports = {
     startAutoBackup,
     stopAutoBackup,
     getAutoBackupState,
+    refreshAutoBackupWatchers,
     restoreAutoBackups,
     stopAllAutoBackups
 };

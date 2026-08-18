@@ -1170,6 +1170,20 @@ const osKeyMap = {
     linux: 'linux'
 };
 
+function setLaunchAtStartup(enabled) {
+    if (!app.isPackaged || (process.platform !== 'win32' && process.platform !== 'darwin')) {
+        return;
+    }
+
+    const loginItemSettings = { openAtLogin: Boolean(enabled) };
+    if (process.platform === 'win32') {
+        loginItemSettings.path = process.execPath;
+        loginItemSettings.args = [];
+        loginItemSettings.name = 'OpenGameSave';
+    }
+    app.setLoginItemSettings(loginItemSettings);
+}
+
 // ======================================================================
 // Settings
 // ======================================================================
@@ -1212,6 +1226,7 @@ const loadSettings = () => {
         backupPath: path.join(appDataPath, "OGS Backups"),
         exportPath: "",
         maxBackups: 5,
+        launchAtStartup: false,
         autoAppUpdate: true,
         autoDbUpdate: false,
         syncAccentColor: false,
@@ -1241,12 +1256,29 @@ const loadSettings = () => {
     }
 };
 
-function saveSettings(key, value) {
+function saveSettings(keyOrUpdates, value) {
     const userDataPath = app.getPath('userData');
     const settingsPath = path.join(userDataPath, 'OGS Settings', 'settings.json');
 
-    if (!ALLOWED_SETTING_KEYS.has(key)) throw new Error(`Unknown setting: ${key}`);
-    settings[key] = sanitizeSettingValue(key, value, settings[key]);
+    const updates = keyOrUpdates && typeof keyOrUpdates === 'object' && !Array.isArray(keyOrUpdates)
+        ? keyOrUpdates
+        : { [keyOrUpdates]: value };
+    const updateEntries = Object.entries(updates);
+    if (updateEntries.length === 0) return Promise.resolve([]);
+
+    // Validate the whole transaction before changing the in-memory settings so
+    // a single invalid value cannot partially apply a batch.
+    const sanitizedUpdates = {};
+    for (const [key, nextValue] of updateEntries) {
+        if (!ALLOWED_SETTING_KEYS.has(key)) throw new Error(`Unknown setting: ${key}`);
+        sanitizedUpdates[key] = sanitizeSettingValue(key, nextValue, settings[key]);
+    }
+
+    const changedKeys = Object.keys(sanitizedUpdates)
+        .filter(key => !Object.is(settings[key], sanitizedUpdates[key]));
+    if (changedKeys.length === 0) return Promise.resolve([]);
+
+    settings = { ...settings, ...sanitizedUpdates };
     const settingsSnapshot = JSON.stringify(settings, null, 2);
 
     writeQueue = writeQueue.catch(() => undefined).then(async () => {
@@ -1259,13 +1291,18 @@ function saveSettings(key, value) {
             await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
         }
 
-        if ((key === 'gameInstalls' || key === 'saveUninstalledGames' || key === 'experimentalXgpSource') && win && !win.isDestroyed()) {
+        if (changedKeys.includes('launchAtStartup')) {
+            setLaunchAtStartup(settings.launchAtStartup);
+        }
+
+        if (changedKeys.some(key => key === 'gameInstalls' || key === 'saveUninstalledGames' || key === 'experimentalXgpSource')
+            && win && !win.isDestroyed()) {
             win.webContents.send('update-backup-table');
             win.webContents.send('update-restore-table');
         }
 
-        if (key === 'language') {
-            await i18next.changeLanguage(settings[key]);
+        if (changedKeys.includes('language')) {
+            await i18next.changeLanguage(settings.language);
             BrowserWindow.getAllWindows().forEach((window) => {
                 if (!window.isDestroyed()) window.webContents.send('apply-language');
             });
@@ -1275,6 +1312,8 @@ function saveSettings(key, value) {
             }
             Menu.setApplicationMenu(null);
         }
+
+        return changedKeys;
     });
     return writeQueue;
 }
@@ -1508,6 +1547,7 @@ module.exports = {
     osKeyMap,
     loadSettings,
     saveSettings,
+    setLaunchAtStartup,
     getSettings: () => settings,
     moveFilesWithProgress,
 };

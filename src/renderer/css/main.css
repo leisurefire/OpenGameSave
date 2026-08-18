@@ -396,7 +396,7 @@ input[type="text"].search-input::placeholder {
 
 .table-container table tbody tr {
     background: transparent;
-    box-shadow: inset 0 -1px rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 -1px var(--color-win-border);
 }
 
 .table-container table tbody tr:last-child {
@@ -409,6 +409,11 @@ input[type="text"].search-input::placeholder {
 
 .table-container table tbody tr:has(.row-checkbox:checked) {
     background: color-mix(in srgb, var(--color-theme-accent-bright) 7%, transparent);
+}
+
+.table-container table tbody th,
+.table-container table tbody td {
+    border-bottom: 0;
 }
 
 .table-container table tbody th[scope="row"] {

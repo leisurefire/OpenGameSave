@@ -14,12 +14,16 @@ const {
     windowVisualEffect, applyWindowsMicaEffect,
     createMainWindow, getMainWin, getStatus, updateStatus, checkAppUpdate, exportBackups,
     importBackups, browseLocalSave, deleteLocalSave, osKeyMap, loadSettings, saveSettings, getSettings,
-    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, isNewerAppVersion, updateApp
+    moveFilesWithProgress, getCurrentVersion, getRepositoryUrl, getLatestVersion, isNewerAppVersion, updateApp,
+    setLaunchAtStartup
 } = require('./global');
 const { getGameData, initializeGameData, detectGamePaths, getAllUserIds } = require('./gameData');
 const { getGameDataFromDB, getAllGameDataFromDB, backupGame, initializeDatabaseStorage, updateDatabase } = require('./backup');
 const { getGameDataForRestore, restoreGame } = require("./restore");
-const { startAutoBackup, stopAutoBackup, getAutoBackupState, restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
+const {
+    startAutoBackup, stopAutoBackup, getAutoBackupState, refreshAutoBackupWatchers,
+    restoreAutoBackups, stopAllAutoBackups
+} = require('./autoBackup');
 const { checkGitSyncStatus, uploadBackupsToGitHub, downloadBackupsFromGitHub } = require('./githubSync');
 const {
     assertNoSymlinkAncestors,
@@ -439,6 +443,7 @@ app.whenReady().then(async () => {
     app.setAsDefaultProtocolClient('gamesavemanager');
 
     loadSettings();
+    setLaunchAtStartup(getSettings().launchAtStartup);
     await initializeI18next(getSettings().language);
     await initializeDatabaseStorage();
 
@@ -636,12 +641,28 @@ ipcMain.handle('change-language', async (event, language) => {
     return getSettings().language;
 });
 
-ipcMain.on('save-settings', async (event, key, value) => {
+async function persistRendererSettings(keyOrUpdates, value) {
+    const updateKeys = keyOrUpdates && typeof keyOrUpdates === 'object' && !Array.isArray(keyOrUpdates)
+        ? Object.keys(keyOrUpdates)
+        : [keyOrUpdates];
+    if (updateKeys.includes('experimentalXgpSource')) {
+        throw new Error('Experimental XgpSaveTools source must be changed through its consent prompt');
+    }
+
+    const changedKeys = await saveSettings(keyOrUpdates, value);
+    const watcherFailures = changedKeys.includes('backupAllAccounts')
+        ? await refreshAutoBackupWatchers()
+        : [];
+    return { success: true, changedKeys, watcherFailures };
+}
+
+ipcMain.handle('save-settings', async (event, keyOrUpdates, value) => {
+    return persistRendererSettings(keyOrUpdates, value);
+});
+
+ipcMain.on('save-settings', async (event, keyOrUpdates, value) => {
     try {
-        if (key === 'experimentalXgpSource') {
-            throw new Error('Experimental XgpSaveTools source must be changed through its consent prompt');
-        }
-        await saveSettings(key, value);
+        await persistRendererSettings(keyOrUpdates, value);
     } catch (error) {
         console.error('Failed to save setting:', error);
         const mainWin = getMainWin();

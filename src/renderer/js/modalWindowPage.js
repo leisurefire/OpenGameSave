@@ -256,11 +256,19 @@ async function renderAccountModal(root) {
         </section>
     `;
 
-    document.getElementById('modal-account-confirm').addEventListener('click', () => {
+    document.getElementById('modal-account-confirm').addEventListener('click', async (event) => {
+        const confirmButton = event.currentTarget;
         const isAllAccountsSelected = document.getElementById('backup-scope-all').checked;
-        window.api.send('save-settings', 'backupAllAccounts', isAllAccountsSelected);
-        window.api.send('update-backup-table');
-        closeModalWindow();
+        confirmButton.disabled = true;
+        try {
+            await window.api.invoke('save-settings', 'backupAllAccounts', isAllAccountsSelected);
+            window.api.send('update-backup-table');
+            closeModalWindow();
+        } catch (error) {
+            console.error('Failed to save backup scope:', error);
+            showAlert('error', await window.i18n.translate('settings.save_settings_error'));
+            confirmButton.disabled = false;
+        }
     });
 }
 

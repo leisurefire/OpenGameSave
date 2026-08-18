@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -34,7 +34,7 @@ runWhenDomReady(() => {
 });
 
 window.api.receive('update-backup-table', () => {
-    updateBackupTable(true);
+    void updateBackupTable(true).catch(console.error);
 });
 
 window.api.receive('run-scan-full', async () => {
@@ -43,41 +43,29 @@ window.api.receive('run-scan-full', async () => {
         const fullScanGameData = await window.api.invoke('start-scan-full');
 
         if (fullScanGameData) {
-            window.api.send('update-status', 'updating_backup', true);
-            await showLoadingIndicator('backup');
-            let normalScanGameData = await window.api.invoke('fetch-backup-table-data', true);
+            const normalScanGameData = await window.api.invoke('fetch-backup-table-data', true);
 
             const allIds = new Set(fullScanGameData.map(game => game.wiki_page_id));
             const installedGameIds = new Set(normalScanGameData.map(game => game.wiki_page_id));
             const uninstalledGameIds = [...allIds].filter(id => !installedGameIds.has(id));
-            if (uninstalledGameIds.length > 0) {
-                window.api.send('save-settings', 'uninstalledGames', uninstalledGameIds);
-            }
-
-            const viewModel = await window.api.invoke('get-table-view-model', 'backup');
-            await populateBackupTable(viewModel);
-            updateSelectedCountAndSize('backup');
-            hideLoadingIndicator('backup');
-            window.api.send('update-status', 'updating_backup', false);
+            await window.api.invoke('save-settings', 'uninstalledGames', uninstalledGameIds);
+            await updateBackupTable(true);
         }
     }
 });
 
-export async function updateBackupTable(loader) {
-    window.api.send('update-status', 'updating_backup', true);
-    if (loader) {
-        await showLoadingIndicator('backup');
-    }
-
-    const viewModel = await window.api.invoke('get-table-view-model', 'backup');
-    await populateBackupTable(viewModel);
-    updateSelectedCountAndSize('backup');
-    updateUninstalledButtonVisibility('backup');
-
-    if (loader) {
-        hideLoadingIndicator('backup');
-    }
-    window.api.send('update-status', 'updating_backup', false);
+export function updateBackupTable(loader) {
+    return queueFullTableUpdate('backup', loader, async (showLoader) => {
+        if (showLoader) await showLoadingIndicator('backup');
+        try {
+            const viewModel = await window.api.invoke('get-table-view-model', 'backup');
+            await populateBackupTable(viewModel);
+            updateSelectedCountAndSize('backup');
+            updateUninstalledButtonVisibility('backup');
+        } finally {
+            if (showLoader) hideLoadingIndicator('backup');
+        }
+    });
 }
 
 // Function to populate backup table
@@ -141,8 +129,6 @@ function setupBackupTabButtons() {
 
         // Update table rows in background
         (async () => {
-            window.api.send('update-status', 'updating_backup', true);
-            window.api.send('update-status', 'updating_restore', true);
             await setActionButtonState({
                 button: backupButton,
                 icon: backupIcon,
@@ -165,9 +151,7 @@ function setupBackupTabButtons() {
                 i18nKey: 'main.backup_selected',
                 busy: false
             });
-            window.api.send('update-status', 'updating_backup', false);
-            window.api.send('update-status', 'updating_restore', false);
-        })();
+        })().catch(console.error);
     });
 
     document.getElementById('update-database').addEventListener('click', async () => {
@@ -231,7 +215,7 @@ async function updateDatabase() {
 
         try {
             const result = await window.api.invoke('update-database');
-            if (result?.success) updateBackupTable(true);
+            if (result?.success) await updateBackupTable(true);
         } finally {
             await setActionButtonState({
                 button: updateButton,

@@ -27,6 +27,7 @@ window.api.receive('apply-language', async () => {
 document.addEventListener('DOMContentLoaded', () => {
     const languageSelect = document.getElementById('language');
     const maxBackupsInput = document.getElementById('max-backups');
+    const launchAtStartupCheckbox = document.getElementById('launch-at-startup');
     const autoAppUpdateCheckbox = document.getElementById('auto-app-update');
     const autoDbUpdateCheckbox = document.getElementById('auto-db-update');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (settings) {
             languageSelect.value = settings.language;
             maxBackupsInput.value = settings.maxBackups;
+            launchAtStartupCheckbox.checked = settings.launchAtStartup ?? false;
             autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
             autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
@@ -79,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function autoSave() {
         autoSaveQueue = autoSaveQueue.catch(() => undefined).then(async () => {
             const previousSettings = await window.api.invoke('get-settings');
+            const updates = {};
 
             const newGameInstallPaths = [];
             document.querySelectorAll('.game-path-item .display-path').forEach((input) => {
@@ -94,27 +97,41 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             if (!areArraysEqual(previousSettings.gameInstalls, newGameInstallPaths)) {
-                window.api.send('save-settings', 'gameInstalls', newGameInstallPaths);
+                updates.gameInstalls = newGameInstallPaths;
             }
 
             if (previousSettings.saveUninstalledGames !== saveUninstalledCheckbox.checked) {
-                window.api.send('save-settings', 'saveUninstalledGames', saveUninstalledCheckbox.checked);
+                updates.saveUninstalledGames = saveUninstalledCheckbox.checked;
             }
 
             if (previousSettings.syncAccentColor !== syncAccentColorCheckbox.checked) {
-                window.api.send('save-settings', 'syncAccentColor', syncAccentColorCheckbox.checked);
-                window.api.send('apply-accent-color-setting', syncAccentColorCheckbox.checked);
+                updates.syncAccentColor = syncAccentColorCheckbox.checked;
             }
 
             const maxBackups = Number(maxBackupsInput.value);
             if (previousSettings.maxBackups !== maxBackups) {
-                window.api.send('save-settings', 'maxBackups', maxBackups);
+                updates.maxBackups = maxBackups;
+            }
+            if (previousSettings.launchAtStartup !== launchAtStartupCheckbox.checked) {
+                updates.launchAtStartup = launchAtStartupCheckbox.checked;
             }
             if (previousSettings.autoAppUpdate !== autoAppUpdateCheckbox.checked) {
-                window.api.send('save-settings', 'autoAppUpdate', autoAppUpdateCheckbox.checked);
+                updates.autoAppUpdate = autoAppUpdateCheckbox.checked;
             }
             if (previousSettings.autoDbUpdate !== autoDbUpdateCheckbox.checked) {
-                window.api.send('save-settings', 'autoDbUpdate', autoDbUpdateCheckbox.checked);
+                updates.autoDbUpdate = autoDbUpdateCheckbox.checked;
+            }
+
+            if (Object.keys(updates).length > 0) {
+                try {
+                    await window.api.invoke('save-settings', updates);
+                    if (Object.prototype.hasOwnProperty.call(updates, 'syncAccentColor')) {
+                        window.api.send('apply-accent-color-setting', updates.syncAccentColor);
+                    }
+                } catch (error) {
+                    console.error('Failed to save settings:', error);
+                    showAlert('error', await window.i18n.translate('settings.save_settings_error'));
+                }
             }
         });
         return autoSaveQueue;
@@ -140,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    [maxBackupsInput, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
+    [maxBackupsInput, launchAtStartupCheckbox, autoAppUpdateCheckbox, autoDbUpdateCheckbox, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
         el.addEventListener('change', autoSave);
     });
 
