@@ -87,13 +87,13 @@
                         <span class="page-heading-icon" data-lucide-icon="library-big"></span>
                         <div class="min-w-0">
                             <h1 id="library-title" class="page-title text-content" data-i18n="main.library">Library</h1>
-                            <p id="library-count" class="library-count"></p>
+                            <p id="library-count" class="library-count" aria-live="polite" aria-atomic="true"></p>
                         </div>
                     </div>
                     <div class="library-header-actions">
                         <label class="library-search search-field">
                             <span data-lucide-icon="search" class="search-field-icon"></span>
-                            <input id="library-search" class="search-input" type="search" data-i18n-placeholder="main.search_library">
+                            <input id="library-search" class="search-input" type="search" data-i18n-placeholder="main.search_library" data-i18n-aria-label="main.search_library">
                         </label>
                         <button id="library-refresh" class="titlebar-button library-refresh" type="button" data-i18n-title="main.refresh_library" data-i18n-aria-label="main.refresh_library">
                             <span data-lucide-icon="refresh-cw"></span>
@@ -102,7 +102,7 @@
                 </header>
 
                 <div class="library-scroll">
-                    <div id="library-loading" class="library-state">
+                    <div id="library-loading" class="library-state" role="status" aria-live="polite">
                         <span class="is-spinning" data-lucide-icon="loader-circle"></span>
                         <span data-i18n="main.scanning_library">Scanning installed games…</span>
                     </div>
@@ -132,17 +132,17 @@
                     <div id="library-controls" class="library-controls hidden">
                         <div id="library-platform-filters" class="library-platform-filters" role="group" data-i18n-aria-label="main.filter_platform"></div>
                         <div class="library-view-options" role="group" data-i18n-aria-label="main.library_view">
-                            <button class="library-view-button active" type="button" data-library-view="grid" data-i18n-title="main.grid_view" data-i18n-aria-label="main.grid_view">
+                            <button class="library-view-button active" type="button" data-library-view="grid" aria-pressed="true" data-i18n-title="main.grid_view" data-i18n-aria-label="main.grid_view">
                                 <span data-lucide-icon="layout-grid"></span>
                             </button>
-                            <button class="library-view-button" type="button" data-library-view="list" data-i18n-title="main.list_view" data-i18n-aria-label="main.list_view">
+                            <button class="library-view-button" type="button" data-library-view="list" aria-pressed="false" data-i18n-title="main.list_view" data-i18n-aria-label="main.list_view">
                                 <span data-lucide-icon="rows-3"></span>
                             </button>
                         </div>
                     </div>
 
-                    <div id="library-grid" class="library-grid"></div>
-                    <div id="library-empty" class="library-empty hidden">
+                    <div id="library-grid" class="library-grid" role="list"></div>
+                    <div id="library-empty" class="library-empty hidden" role="status">
                         <span data-lucide-icon="gamepad-2"></span>
                         <h2 data-i18n="main.library_empty_title">No installed games found</h2>
                         <p data-i18n="main.library_empty_hint">Install a game with Steam, Epic, GOG or Battle.net, then refresh the library.</p>
@@ -164,13 +164,13 @@
                     </div>
                     <div class="library-search search-field guides-game-search">
                         <span data-lucide-icon="search" class="search-field-icon"></span>
-                        <input id="guides-search" class="search-input" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="guides-game-results" data-i18n-placeholder="main.search_guide_games" data-i18n-aria-label="main.search_guide_games">
+                        <input id="guides-search" class="search-input" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="guides-game-results" aria-haspopup="listbox" aria-expanded="false" data-i18n-placeholder="main.search_guide_games" data-i18n-aria-label="main.search_guide_games">
                         <div id="guides-game-results" class="guide-game-results hidden" role="listbox"></div>
                     </div>
                 </header>
 
                 <div class="guides-scroll">
-                    <div id="guides-loading" class="library-state">
+                    <div id="guides-loading" class="library-state" role="status" aria-live="polite">
                         <span class="is-spinning" data-lucide-icon="loader-circle"></span>
                         <span data-i18n="main.loading_guides">Loading guide catalog…</span>
                     </div>
@@ -186,7 +186,7 @@
                                 <h2 id="guides-hero-title">Reliable references for Overwatch 2</h2>
                                 <p id="guides-hero-description">Open the reviewed technical wiki and any curated sources available for this game.</p>
                             </div>
-                            <div id="guides-hero-mark" class="guides-hero-mark">OW</div>
+                            <div id="guides-hero-mark" class="guides-hero-mark" aria-hidden="true">OW</div>
                         </section>
 
                         <aside class="guides-data-note">
@@ -204,9 +204,9 @@
                         <div class="guides-toolbar">
                             <div>
                                 <h2 data-i18n="main.guide_sources">Sources</h2>
-                                <p id="guides-source-count"></p>
+                                <p id="guides-source-count" aria-live="polite" aria-atomic="true"></p>
                             </div>
-                            <div id="guides-category-filters" class="library-platform-filters"></div>
+                            <div id="guides-category-filters" class="library-platform-filters" role="group" data-i18n-aria-label="main.filter_guide_category"></div>
                         </div>
                         <div id="guides-source-grid" class="guides-source-grid"></div>
                         <div id="guides-empty" class="library-empty hidden">

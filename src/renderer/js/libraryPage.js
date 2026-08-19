@@ -18,7 +18,9 @@ let currentView = 'grid';
 let artObserver;
 let activeArtLoads = 0;
 let searchRenderFrame;
+let countRenderId = 0;
 const pendingArtLoads = [];
+const activeGameActions = new Set();
 
 function getElements() {
     if (libraryElements) return libraryElements;
@@ -62,7 +64,8 @@ function appendPlatformBadge(container, platform, includeLabel = false) {
     if (iconUrl) {
         const image = document.createElement('img');
         image.src = iconUrl;
-        image.alt = accessibleLabel;
+        image.alt = '';
+        image.setAttribute('aria-hidden', 'true');
         container.appendChild(image);
     }
     if (includeLabel) {
@@ -77,7 +80,9 @@ async function translate(key, options) {
 }
 
 async function runGameAction(game, action, button) {
-    if (!game || button?.disabled) return;
+    const actionKey = game ? `${action}:${game.id}` : '';
+    if (!game || button?.disabled || activeGameActions.has(actionKey)) return;
+    activeGameActions.add(actionKey);
     button?.setAttribute('disabled', '');
     try {
         await window.api.invoke(action, game.id);
@@ -88,6 +93,7 @@ async function runGameAction(game, action, button) {
             { game: game.title }
         ));
     } finally {
+        activeGameActions.delete(actionKey);
         button?.removeAttribute('disabled');
     }
 }
@@ -104,6 +110,7 @@ function navigateToGuides(game) {
 async function showGameMenu(game, button) {
     if (button === window.activeMenuTrigger) {
         window.api.send('hide-popup-menu');
+        button.setAttribute('aria-expanded', 'false');
         window.activeMenuTrigger = null;
         return;
     }
@@ -136,6 +143,7 @@ async function showGameMenu(game, button) {
         y: rect.bottom + 3,
         direction: 'down'
     });
+    button.setAttribute('aria-expanded', 'true');
     window.activeMenuTrigger = button;
 }
 
@@ -184,11 +192,21 @@ function loadArt(gameId, artType, image, expectedGameId = gameId) {
     });
 }
 
+function discardDetachedArtLoads() {
+    for (let index = pendingArtLoads.length - 1; index >= 0; index -= 1) {
+        if (pendingArtLoads[index].image?.isConnected) continue;
+        const [request] = pendingArtLoads.splice(index, 1);
+        request.resolve();
+    }
+}
+
 function createCard(game) {
     const card = document.createElement('article');
     card.className = 'library-card';
     card.tabIndex = 0;
     card.dataset.gameId = game.id;
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('aria-label', `${game.title}, ${platformLabel(game.platform)}`);
 
     const artwork = document.createElement('div');
     artwork.className = 'library-card-art';
@@ -202,6 +220,7 @@ function createCard(game) {
     const monogram = document.createElement('span');
     monogram.className = 'library-card-monogram';
     monogram.textContent = game.title.slice(0, 1).toLocaleUpperCase();
+    monogram.setAttribute('aria-hidden', 'true');
     artwork.appendChild(monogram);
 
     const overlay = document.createElement('div');
@@ -210,6 +229,7 @@ function createCard(game) {
     playButton.className = 'library-card-play';
     playButton.type = 'button';
     playButton.setAttribute('data-i18n-title', 'main.play');
+    playButton.setAttribute('data-i18n-aria-label', 'main.play');
     playButton.setAttribute('data-lucide-icon', 'play');
     playButton.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -240,6 +260,7 @@ function createCard(game) {
     const manageButton = document.createElement('button');
     manageButton.className = 'library-card-manage';
     manageButton.type = 'button';
+    manageButton.setAttribute('aria-expanded', 'false');
     manageButton.setAttribute('data-i18n-title', 'main.manage_game');
     manageButton.setAttribute('data-i18n-aria-label', 'main.manage_game');
     manageButton.setAttribute('data-lucide-icon', 'ellipsis-vertical');
@@ -259,6 +280,7 @@ function createCard(game) {
     card.addEventListener('click', () => selectGame(game));
     card.addEventListener('dblclick', () => void runGameAction(game, 'launch-library-game'));
     card.addEventListener('keydown', (event) => {
+        if (event.target !== card) return;
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             selectGame(game);
@@ -281,10 +303,12 @@ function filteredGames() {
 
 async function updateCount(visibleCount) {
     const count = getElements().count;
-    if (count) count.textContent = await translate('main.library_game_count', {
+    const renderId = ++countRenderId;
+    const label = await translate('main.library_game_count', {
         count: visibleCount,
         total: games.length
     });
+    if (count && renderId === countRenderId) count.textContent = label;
 }
 
 function renderGames() {
@@ -292,6 +316,7 @@ function renderGames() {
     const visibleGames = filteredGames();
     artObserver?.disconnect();
     elements.grid.replaceChildren(...visibleGames.map(createCard));
+    discardDetachedArtLoads();
     elements.grid.querySelectorAll('[data-lazy-game-id]').forEach(image => artObserver?.observe(image));
     elements.grid.classList.toggle('library-list', currentView === 'list');
     elements.empty.classList.toggle('hidden', visibleGames.length !== 0);
@@ -311,6 +336,7 @@ function renderFilters() {
         button.type = 'button';
         button.className = 'library-filter-button';
         button.classList.toggle('active', platform === activePlatform);
+        button.setAttribute('aria-pressed', String(platform === activePlatform));
         if (platform === 'All') {
             button.dataset.i18n = 'main.all_platforms';
             button.textContent = 'All';
@@ -332,7 +358,10 @@ function selectGame(game) {
     const elements = getElements();
     selectedGameId = game.id;
     elements.grid.querySelectorAll('.library-card').forEach(card => {
-        card.classList.toggle('selected', card.dataset.gameId === game.id);
+        const selected = card.dataset.gameId === game.id;
+        card.classList.toggle('selected', selected);
+        if (selected) card.setAttribute('aria-current', 'true');
+        else card.removeAttribute('aria-current');
     });
     elements.hero.classList.remove('hidden');
     elements.heroTitle.textContent = game.title;
@@ -351,6 +380,7 @@ function selectGame(game) {
 
 async function refreshLibrary() {
     const elements = getElements();
+    document.getElementById('library')?.setAttribute('aria-busy', 'true');
     elements.loading.classList.remove('hidden');
     elements.empty.classList.add('hidden');
     elements.controls.classList.add('hidden');
@@ -377,6 +407,7 @@ async function refreshLibrary() {
         renderGames();
         showAlert('error', await translate('alert.library_scan_failed'));
     } finally {
+        document.getElementById('library')?.setAttribute('aria-busy', 'false');
         elements.loading.classList.add('hidden');
         elements.refresh.disabled = false;
         elements.refresh.querySelector('.lucide-icon')?.classList.remove('is-spinning');
@@ -404,7 +435,11 @@ function initializeLibrary() {
     elements.refresh?.addEventListener('click', () => void refreshLibrary());
     document.querySelectorAll('[data-library-view]').forEach(button => button.addEventListener('click', () => {
         currentView = button.dataset.libraryView;
-        document.querySelectorAll('[data-library-view]').forEach(option => option.classList.toggle('active', option === button));
+        document.querySelectorAll('[data-library-view]').forEach((option) => {
+            const selected = option === button;
+            option.classList.toggle('active', selected);
+            option.setAttribute('aria-pressed', String(selected));
+        });
         renderGames();
     }));
     window.api.receive('apply-language', () => {

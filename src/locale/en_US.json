@@ -115,6 +115,7 @@
         "no_guides_found": "No matching guide sources found",
         "no_guide_games_found": "No guide references found for “{{query}}”",
         "all_sources": "All",
+        "filter_guide_category": "Filter guide sources by category",
         "guide_category_official": "Official",
         "guide_category_wiki": "Wiki",
         "guide_category_esports": "Esports",

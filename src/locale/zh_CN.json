@@ -115,6 +115,7 @@
         "no_guides_found": "没有匹配的攻略来源",
         "no_guide_games_found": "未找到“{{query}}”对应的游戏资料",
         "all_sources": "全部",
+        "filter_guide_category": "按类别筛选攻略来源",
         "guide_category_official": "官方",
         "guide_category_wiki": "百科",
         "guide_category_esports": "赛事",

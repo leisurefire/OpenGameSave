@@ -45,3 +45,17 @@ test('library artwork remains lazy, bounded, and renderer-network independent', 
     assert.match(artworkService, /redirect: 'manual'/);
     assert.doesNotMatch(indexHtml, /connect-src[^;]*https:/);
 });
+
+test('library and guide interactions expose keyboard and assistive-technology state', () => {
+    const indexHtml = readProjectFile('src/renderer/index.html');
+    const libraryPage = readProjectFile('src/renderer/js/libraryPage.js');
+    const guidesPage = readProjectFile('src/renderer/js/guidesPage.js');
+
+    assert.match(indexHtml, /id="guides-search"[^>]*role="combobox"[^>]*aria-expanded="false"/);
+    assert.match(indexHtml, /id="library-count"[^>]*aria-live="polite"/);
+    assert.match(indexHtml, /data-library-view="grid"[^>]*aria-pressed="true"/);
+    assert.match(libraryPage, /if \(event\.target !== card\) return;/);
+    assert.match(libraryPage, /activeGameActions\.has\(actionKey\)/);
+    assert.match(guidesPage, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
+    assert.match(guidesPage, /setSearchResultsExpanded/);
+});

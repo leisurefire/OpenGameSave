@@ -15,6 +15,8 @@ let language = 'en_US';
 let activeCategory = 'all';
 let searchTimer = null;
 let searchRequestId = 0;
+let heroRenderId = 0;
+let sourceCountRenderId = 0;
 
 function localize(item, field) {
     return language === 'zh_CN' ? item?.[`${field}_zh_CN`] || item?.[field] : item?.[field];
@@ -39,6 +41,8 @@ function createSourceCard(source) {
     const card = document.createElement('article');
     card.className = 'guide-source-card';
     card.tabIndex = 0;
+    card.setAttribute('role', 'link');
+    card.setAttribute('aria-label', `${localize(source, 'name')}, ${new URL(source.url).hostname}`);
 
     const header = document.createElement('div');
     header.className = 'guide-source-card-header';
@@ -49,7 +53,8 @@ function createSourceCard(source) {
     const trusted = document.createElement('span');
     trusted.className = 'guide-trusted-mark';
     trusted.title = localize(source, 'trust_reason') || '';
-    trusted.setAttribute('aria-label', trusted.title);
+    if (trusted.title) trusted.setAttribute('aria-label', trusted.title);
+    else trusted.setAttribute('data-i18n-aria-label', 'main.trusted_source');
     trusted.setAttribute('data-lucide-icon', 'shield-check');
     header.append(category, trusted);
 
@@ -69,7 +74,7 @@ function createSourceCard(source) {
         const verified = document.createElement('span');
         verified.className = 'guide-source-verified';
         window.i18n.translate('main.guide_verified_at', { date: source.verified_at })
-            .then(label => { verified.textContent = label; });
+            .then((label) => { if (verified.isConnected) verified.textContent = label; });
         metadata.appendChild(verified);
     }
     const open = document.createElement('button');
@@ -86,6 +91,7 @@ function createSourceCard(source) {
     card.append(header, title, description, footer);
     card.addEventListener('click', () => void openUrl(source.url));
     card.addEventListener('keydown', (event) => {
+        if (event.target !== card) return;
         if (event.key === 'Enter') void openUrl(source.url);
     });
     return card;
@@ -96,12 +102,13 @@ function renderSources() {
     const empty = document.getElementById('guides-empty');
     const count = document.getElementById('guides-source-count');
     const sources = getVisibleSources();
+    const renderId = ++sourceCountRenderId;
     grid.replaceChildren(...sources.map(createSourceCard));
     empty.classList.toggle('hidden', sources.length !== 0);
     window.i18n.translate('main.guide_source_count', {
         count: sources.length,
         total: guideGame?.sources?.length || 0
-    }).then(label => { count.textContent = label; });
+    }).then((label) => { if (renderId === sourceCountRenderId) count.textContent = label; });
     void updateTranslations(grid);
 }
 
@@ -113,6 +120,7 @@ function renderCategoryFilters() {
         button.type = 'button';
         button.className = 'library-filter-button';
         button.classList.toggle('active', activeCategory === categoryId);
+        button.setAttribute('aria-pressed', String(activeCategory === categoryId));
         button.dataset.i18n = categoryKeys[categoryId] || categoryKeys.wiki;
         button.textContent = categoryId;
         button.addEventListener('click', () => {
@@ -131,13 +139,18 @@ function gameMonogram(gameTitle) {
 }
 
 function renderHero() {
+    const renderId = ++heroRenderId;
     const gameTitle = localize(guideGame, 'title') || guideGame?.title || '';
     document.getElementById('guides-game-title').textContent = gameTitle;
     document.getElementById('guides-hero-mark').textContent = gameMonogram(guideGame?.title);
     window.i18n.translate('main.guide_for_game_title', { game: gameTitle })
-        .then(label => { document.getElementById('guides-hero-title').textContent = label; });
+        .then((label) => {
+            if (renderId === heroRenderId) document.getElementById('guides-hero-title').textContent = label;
+        });
     window.i18n.translate('main.guide_for_game_description')
-        .then(label => { document.getElementById('guides-hero-description').textContent = label; });
+        .then((label) => {
+            if (renderId === heroRenderId) document.getElementById('guides-hero-description').textContent = label;
+        });
 }
 
 function selectGuideGame(game) {
@@ -149,14 +162,26 @@ function selectGuideGame(game) {
     renderSources();
 }
 
-function hideSearchResults() {
-    document.getElementById('guides-game-results')?.classList.add('hidden');
+function setSearchResultsExpanded(expanded) {
+    document.getElementById('guides-game-results')?.classList.toggle('hidden', !expanded);
+    document.getElementById('guides-search')?.setAttribute('aria-expanded', String(expanded));
+}
+
+function hideSearchResults({ invalidate = true, restoreFocus = false } = {}) {
+    clearTimeout(searchTimer);
+    if (invalidate) searchRequestId += 1;
+    const results = document.getElementById('guides-game-results');
+    results?.setAttribute('aria-busy', 'false');
+    setSearchResultsExpanded(false);
+    if (restoreFocus) document.getElementById('guides-search')?.focus();
 }
 
 function createGameResult(game) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'guide-game-result';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', 'false');
     const copy = document.createElement('span');
     const title = document.createElement('strong');
     title.textContent = localize(game, 'title') || game.title;
@@ -172,7 +197,7 @@ function createGameResult(game) {
     button.addEventListener('click', () => {
         selectGuideGame(game);
         document.getElementById('guides-search').value = localize(game, 'title') || game.title;
-        hideSearchResults();
+        hideSearchResults({ restoreFocus: true });
     });
     return button;
 }
@@ -185,11 +210,13 @@ async function renderSearchResults(games, query, requestId) {
         const empty = document.createElement('p');
         empty.className = 'guide-game-results-empty';
         empty.textContent = await window.i18n.translate('main.no_guide_games_found', { query });
+        if (requestId !== searchRequestId) return;
         results.appendChild(empty);
     } else {
         results.append(...games.map(createGameResult));
     }
-    results.classList.remove('hidden');
+    results.setAttribute('aria-busy', 'false');
+    setSearchResultsExpanded(true);
     void updateTranslations(results);
 }
 
@@ -201,12 +228,15 @@ function searchGames() {
         hideSearchResults();
         return;
     }
+    setSearchResultsExpanded(false);
+    document.getElementById('guides-game-results')?.setAttribute('aria-busy', 'true');
     searchTimer = setTimeout(async () => {
         try {
             const games = await window.api.invoke('search-game-guides', query);
             await renderSearchResults(Array.isArray(games) ? games : [], query, requestId);
         } catch (error) {
             console.error('Could not search game guides:', error);
+            if (requestId === searchRequestId) hideSearchResults();
         }
     }, 180);
 }
@@ -217,6 +247,7 @@ async function selectGuideByWikiId(wikiPageId) {
         if (game) {
             selectGuideGame(game);
             document.getElementById('guides-search').value = localize(game, 'title') || game.title;
+            hideSearchResults();
         }
     } catch (error) {
         console.error('Could not select game guide:', error);
@@ -227,6 +258,7 @@ async function selectGuideByWikiId(wikiPageId) {
 async function loadGuides() {
     const loading = document.getElementById('guides-loading');
     const content = document.getElementById('guides-content');
+    document.getElementById('guides')?.setAttribute('aria-busy', 'true');
     loading.classList.remove('hidden');
     content.classList.add('hidden');
     try {
@@ -246,7 +278,9 @@ async function loadGuides() {
     } catch (error) {
         console.error('Could not load game guides:', error);
         showAlert('error', await window.i18n.translate('alert.guide_catalog_failed'));
+        content.classList.toggle('hidden', !guideGame);
     } finally {
+        document.getElementById('guides')?.setAttribute('aria-busy', 'false');
         loading.classList.add('hidden');
     }
 }
@@ -254,7 +288,40 @@ async function loadGuides() {
 function initializeGuides() {
     if (initialized) return;
     initialized = true;
-    document.getElementById('guides-search')?.addEventListener('input', searchGames);
+    const search = document.getElementById('guides-search');
+    const searchContainer = document.querySelector('.guides-game-search');
+    search?.addEventListener('input', searchGames);
+    search?.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            hideSearchResults();
+            return;
+        }
+        if (event.key !== 'ArrowDown') return;
+        const firstResult = document.querySelector('#guides-game-results .guide-game-result');
+        if (firstResult) {
+            event.preventDefault();
+            firstResult.focus();
+        }
+    });
+    document.getElementById('guides-game-results')?.addEventListener('keydown', (event) => {
+        const options = [...document.querySelectorAll('#guides-game-results .guide-game-result')];
+        const index = options.indexOf(event.target.closest?.('.guide-game-result'));
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            hideSearchResults({ restoreFocus: true });
+        } else if (index >= 0 && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const nextIndex = event.key === 'Home' ? 0
+                : event.key === 'End' ? options.length - 1
+                    : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+            options[nextIndex]?.focus();
+        }
+    });
+    searchContainer?.addEventListener('focusout', () => {
+        setTimeout(() => {
+            if (!searchContainer.contains(document.activeElement)) hideSearchResults();
+        }, 0);
+    });
     document.getElementById('guides-database-repo')?.addEventListener('click', () => (
         void openUrl(PCGAMINGWIKI_API_REPOSITORY)
     ));
