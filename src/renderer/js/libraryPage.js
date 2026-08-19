@@ -6,17 +6,23 @@ const PLATFORM_BRAND_COLORS = Object.freeze({
     GOG: '#b36cff',
     Blizzard: '#00aeff'
 });
+const ART_LOAD_CONCURRENCY = 4;
 
 let libraryInitialized = false;
+let libraryElements;
 let games = [];
 let iconMap = {};
 let activePlatform = 'All';
 let selectedGameId = null;
 let currentView = 'grid';
 let artObserver;
+let activeArtLoads = 0;
+let searchRenderFrame;
+const pendingArtLoads = [];
 
 function getElements() {
-    return {
+    if (libraryElements) return libraryElements;
+    libraryElements = {
         count: document.getElementById('library-count'),
         controls: document.getElementById('library-controls'),
         empty: document.getElementById('library-empty'),
@@ -34,6 +40,7 @@ function getElements() {
         refresh: document.getElementById('library-refresh'),
         search: document.getElementById('library-search')
     };
+    return libraryElements;
 }
 
 function platformLabel(platform) {
@@ -132,9 +139,8 @@ async function showGameMenu(game, button) {
     window.activeMenuTrigger = button;
 }
 
-async function loadArt(gameId, artType, image, expectedGameId = gameId) {
-    if (!image || image.dataset.artLoaded === `${gameId}:${artType}`) return;
-    image.dataset.artLoaded = `${gameId}:${artType}`;
+async function executeArtLoad({ gameId, artType, image, expectedGameId }) {
+    if (!image?.isConnected || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) return;
     try {
         const dataUrl = await window.api.invoke('get-library-game-art', gameId, artType);
         if (!dataUrl || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) return;
@@ -155,6 +161,29 @@ async function loadArt(gameId, artType, image, expectedGameId = gameId) {
     }
 }
 
+function pumpArtLoads() {
+    while (activeArtLoads < ART_LOAD_CONCURRENCY && pendingArtLoads.length) {
+        const request = pendingArtLoads.shift();
+        activeArtLoads += 1;
+        void executeArtLoad(request).finally(() => {
+            activeArtLoads -= 1;
+            request.resolve();
+            pumpArtLoads();
+        });
+    }
+}
+
+function loadArt(gameId, artType, image, expectedGameId = gameId) {
+    if (!image || image.dataset.artLoaded === `${gameId}:${artType}`) return Promise.resolve();
+    image.dataset.artLoaded = `${gameId}:${artType}`;
+    return new Promise((resolve) => {
+        const request = { gameId, artType, image, expectedGameId, resolve };
+        if (artType === 'hero') pendingArtLoads.unshift(request);
+        else pendingArtLoads.push(request);
+        pumpArtLoads();
+    });
+}
+
 function createCard(game) {
     const card = document.createElement('article');
     card.className = 'library-card';
@@ -166,6 +195,9 @@ function createCard(game) {
     const image = document.createElement('img');
     image.className = 'library-cover-image is-pending';
     image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.fetchPriority = 'low';
     artwork.appendChild(image);
     const monogram = document.createElement('span');
     monogram.className = 'library-card-monogram';
@@ -219,7 +251,9 @@ function createCard(game) {
     copy.className = 'library-card-copy';
     const title = document.createElement('h3');
     title.textContent = game.title;
-    copy.append(title);
+    const provider = document.createElement('p');
+    provider.textContent = platformLabel(game.platform);
+    copy.append(title, provider);
     card.append(artwork, copy, manageButton);
 
     card.addEventListener('click', () => selectGame(game));
@@ -241,7 +275,7 @@ function filteredGames() {
     const query = getElements().search?.value.trim().toLocaleLowerCase() || '';
     return games.filter(game => (
         (activePlatform === 'All' || game.platform === activePlatform)
-        && (!query || game.title.toLocaleLowerCase().includes(query))
+        && (!query || game.searchTitle.includes(query))
     ));
 }
 
@@ -328,7 +362,10 @@ async function refreshLibrary() {
             window.api.invoke('get-library-games'),
             window.api.invoke('get-icon-map')
         ]);
-        games = Array.isArray(libraryGames) ? libraryGames : [];
+        games = Array.isArray(libraryGames) ? libraryGames.map(game => ({
+            ...game,
+            searchTitle: game.title.toLocaleLowerCase()
+        })) : [];
         iconMap = platforms || {};
         if (!games.some(game => game.id === selectedGameId)) selectedGameId = games[0]?.id || null;
         renderFilters();
@@ -357,7 +394,13 @@ function initializeLibrary() {
         });
     }, { root: document.querySelector('.library-scroll'), rootMargin: '200px' });
 
-    elements.search?.addEventListener('input', renderGames);
+    elements.search?.addEventListener('input', () => {
+        if (searchRenderFrame) cancelAnimationFrame(searchRenderFrame);
+        searchRenderFrame = requestAnimationFrame(() => {
+            searchRenderFrame = null;
+            renderGames();
+        });
+    });
     elements.refresh?.addEventListener('click', () => void refreshLibrary());
     document.querySelectorAll('[data-library-view]').forEach(button => button.addEventListener('click', () => {
         currentView = button.dataset.libraryView;

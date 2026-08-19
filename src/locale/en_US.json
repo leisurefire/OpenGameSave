@@ -59,8 +59,8 @@
         "guide_notice_intro": "The guide catalog stores reviewed names, links, and original OpenGameSave summaries. It does not redistribute linked articles or media.",
         "overlab_license": "External links only. Original articles are CC BY-NC-SA 4.0; Blizzard-owned material remains Blizzard copyright.",
         "liquipedia_license": "External links only. Wiki text is CC BY-SA 3.0; media may use separate terms.",
-        "blizzard_license": "Official pages are linked, and Overwatch identification art is loaded at runtime only from NetEase's official static host; neither is bundled. Related names, images, and content remain the property of their respective owners.",
-        "steam_art_notice": "Steam store artwork is fetched at runtime only from a constrained Steam static-asset host and is not bundled; rights remain with Valve and the relevant publishers.",
+        "blizzard_license": "Official pages are linked, not redistributed. Related names, images, and content remain the property of their respective owners.",
+        "game_art_notice": "Artwork is read from trusted launcher caches first. Missing images may be fetched through size-limited, allowlisted official Steam, Epic, GOG, or Blizzard resources; artwork is not bundled and remains the property of its respective owners.",
         "database_licenses": "Database mappings are used under their MIT licenses; complete notices ship with the application.",
         "load_failed": "Failed to load",
         "update": "Download Update"

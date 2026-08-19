@@ -38,14 +38,19 @@ republish the linked articles, images, or game assets.
 
 ## Runtime game artwork
 
-For installed Steam games whose artwork is not already available in the local
-Steam library cache, OpenGameSave may fetch store artwork at runtime from the
-allowlisted `cdn.akamai.steamstatic.com` host. These images are not bundled
-with OpenGameSave. Steam, the Steam logo, and store artwork remain the property
-of Valve and/or the relevant game publishers and are used only to identify the
-user's installed games.
+For installed Steam, Epic Games Store, GOG, and Battle.net games, OpenGameSave
+first reads artwork from size-limited files in trusted local launcher caches,
+manifests, or installation directories. When local artwork is unavailable, it
+may retrieve images at runtime through audited official metadata and asset
+hosts operated for Valve, Epic Games, GOG, or Blizzard. Remote responses are
+checked for an allowlisted HTTPS host, redirect target, image MIME signature,
+timeout, and a 12 MiB maximum size before being passed to the renderer.
 
-For the supported Battle.net Overwatch entry, OpenGameSave may display an
-official Overwatch image at runtime from the allowlisted
-`ld5.res.netease.com` host. The image is not bundled. Overwatch artwork and
-related marks remain the property of Blizzard Entertainment and/or NetEase.
+The renderer does not connect to those remote hosts directly, and its Content
+Security Policy permits images only from the application itself and `data:`
+URLs. Artwork is not bundled with OpenGameSave and remains the property of the
+respective publishers and rights holders. The allowlisted services include
+`cdn.akamai.steamstatic.com`, `store-content.ak.epicgames.com`, Epic's
+`cdn1.unrealengine.com` and `cdn2.unrealengine.com`, `api.gog.com` and
+`images.gog-statics.com`, official `blizzard.com` product pages, and the
+specific Blizzard asset CDNs declared in the artwork resolver.

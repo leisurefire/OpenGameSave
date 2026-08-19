@@ -9,6 +9,7 @@ const bundledCatalog = require('../../data/gameGuides.json');
 const GUIDE_CATALOG_METADATA_KEY = 'game_guide_catalog';
 const GUIDE_SEARCH_LIMIT = 24;
 const LIBRARY_MATCH_LIMIT = 250;
+const GUIDE_CATEGORIES = new Set(['official', 'wiki', 'esports']);
 const TRUSTED_GUIDE_HOSTS = new Set([
     'github.com',
     'liquipedia.net',
@@ -17,6 +18,9 @@ const TRUSTED_GUIDE_HOSTS = new Set([
     'pcgamingwiki.com',
     'www.pcgamingwiki.com'
 ]);
+
+let databaseCatalogCache = null;
+let normalizedBundledCatalog = null;
 
 function getUserDatabasePath() {
     return path.join(app.getPath('userData'), 'OGS Database', 'database.db');
@@ -47,23 +51,35 @@ function normalizeCatalog(rawCatalog) {
             platform_ids: Object.fromEntries(Object.entries(game.platform_ids || {})
                 .slice(0, 10)
                 .map(([platform, platformId]) => [String(platform).slice(0, 40), String(platformId).slice(0, 256)])),
-            sources: Array.isArray(game.sources) ? game.sources.slice(0, 40).map(source => ({
-                id: String(source.id || '').slice(0, 80),
-                name: String(source.name || '').slice(0, 200),
-                name_zh_CN: String(source.name_zh_CN || '').slice(0, 200),
-                category: String(source.category || '').slice(0, 40),
-                language: String(source.language || '').slice(0, 20),
-                url: validateGuideUrl(source.url),
-                description: String(source.description || '').slice(0, 1000),
-                description_zh_CN: String(source.description_zh_CN || '').slice(0, 1000),
-                trust_reason: String(source.trust_reason || '').slice(0, 500),
-                trust_reason_zh_CN: String(source.trust_reason_zh_CN || '').slice(0, 500),
-                verified_at: /^\d{4}-\d{2}-\d{2}$/.test(String(source.verified_at || ''))
-                    ? String(source.verified_at)
-                    : ''
-            })) : []
+            sources: Array.isArray(game.sources) ? game.sources.slice(0, 40).map((source) => {
+                const category = String(source.category || '');
+                if (!GUIDE_CATEGORIES.has(category)) throw new Error('Guide source category is not supported');
+                return {
+                    id: String(source.id || '').slice(0, 80),
+                    name: String(source.name || '').slice(0, 200),
+                    name_zh_CN: String(source.name_zh_CN || '').slice(0, 200),
+                    category,
+                    language: String(source.language || '').slice(0, 20),
+                    url: validateGuideUrl(source.url),
+                    description: String(source.description || '').slice(0, 1000),
+                    description_zh_CN: String(source.description_zh_CN || '').slice(0, 1000),
+                    trust_reason: String(source.trust_reason || '').slice(0, 500),
+                    trust_reason_zh_CN: String(source.trust_reason_zh_CN || '').slice(0, 500),
+                    verified_at: normalizeVerifiedDate(source.verified_at)
+                };
+            }) : []
         }))
     };
+}
+
+function normalizeVerifiedDate(value) {
+    const normalized = String(value || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return '';
+    const [year, month, day] = normalized.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+        ? normalized
+        : '';
 }
 
 function normalizeWikiPageId(rawWikiPageId) {
@@ -94,10 +110,18 @@ function normalizeTitle(value) {
 }
 
 function findCuratedGame(catalog, row) {
+    const steamId = String(row.steam_id || '');
+    const gogId = String(row.gog_id || '');
+    const platformMatch = catalog.games.find(game => (
+        (steamId && String(game.platform_ids?.Steam || '') === steamId)
+        || (gogId && String(game.platform_ids?.GOG || '') === gogId)
+    ));
+    if (platformMatch) return platformMatch;
     const rowTitles = new Set([normalizeTitle(row.title), normalizeTitle(row.zh_CN)].filter(Boolean));
-    return catalog.games.find(game => (
+    const titleMatches = catalog.games.filter(game => (
         rowTitles.has(normalizeTitle(game.title)) || rowTitles.has(normalizeTitle(game.title_zh_CN))
     ));
+    return titleMatches.length === 1 ? titleMatches[0] : null;
 }
 
 function toGuideGame(row, catalog) {
@@ -120,21 +144,45 @@ function toGuideGame(row, catalog) {
 
 function openUserDatabase() {
     const databasePath = getUserDatabasePath();
-    return fs.existsSync(databasePath) ? openDb(databasePath, { readonly: true, fileMustExist: true }) : null;
+    if (!fs.existsSync(databasePath)) return null;
+    try {
+        return openDb(databasePath, { readonly: true, fileMustExist: true });
+    } catch (error) {
+        console.warn('Could not open the game database:', error.message);
+        return null;
+    }
 }
 
 async function readDatabaseCatalog() {
+    const databasePath = getUserDatabasePath();
+    let fingerprint;
+    try {
+        const stats = fs.statSync(databasePath);
+        fingerprint = `${databasePath}:${stats.size}:${stats.mtimeMs}`;
+    } catch {
+        return null;
+    }
+    if (databaseCatalogCache?.fingerprint === fingerprint) return databaseCatalogCache.catalog;
     const database = openUserDatabase();
     if (!database) return null;
     try {
         const row = dbGet(database, 'SELECT value FROM metadata WHERE key = ?', [GUIDE_CATALOG_METADATA_KEY]);
-        return row?.value ? normalizeCatalog(JSON.parse(row.value)) : null;
+        const catalog = row?.value ? normalizeCatalog(JSON.parse(row.value)) : null;
+        databaseCatalogCache = { fingerprint, catalog };
+        return catalog;
     } catch (error) {
         console.warn('Could not load guide catalog from the game database:', error.message);
         return null;
     } finally {
         closeDb(database);
     }
+}
+
+async function loadGuideCatalog() {
+    const databaseCatalog = await readDatabaseCatalog();
+    if (databaseCatalog) return databaseCatalog;
+    if (!normalizedBundledCatalog) normalizedBundledCatalog = normalizeCatalog(bundledCatalog);
+    return normalizedBundledCatalog;
 }
 
 function escapeLike(value) {
@@ -148,7 +196,8 @@ function searchDatabaseRows(query) {
     const pattern = `%${escapedQuery}%`;
     try {
         return dbAll(database, `
-            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            SELECT wiki_page_id, title, zh_CN,
+                CAST(steam_id AS TEXT) AS steam_id, CAST(gog_id AS TEXT) AS gog_id
             FROM games
             WHERE title LIKE ? ESCAPE '\\' OR COALESCE(zh_CN, '') LIKE ? ESCAPE '\\'
             ORDER BY
@@ -173,7 +222,8 @@ function findDatabaseRowsByTitles(titles) {
     const placeholders = normalizedTitles.map(() => '?').join(',');
     try {
         return dbAll(database, `
-            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            SELECT wiki_page_id, title, zh_CN,
+                CAST(steam_id AS TEXT) AS steam_id, CAST(gog_id AS TEXT) AS gog_id
             FROM games
             WHERE LOWER(title) IN (${placeholders}) OR LOWER(COALESCE(zh_CN, '')) IN (${placeholders})
         `, [...normalizedTitles.map(normalizeTitle), ...normalizedTitles.map(normalizeTitle)]);
@@ -183,7 +233,7 @@ function findDatabaseRowsByTitles(titles) {
 }
 
 async function getGameGuideCatalog() {
-    const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+    const catalog = await loadGuideCatalog();
     const titles = catalog.games.flatMap(game => [game.title, game.title_zh_CN]);
     const rows = findDatabaseRowsByTitles(titles);
     const matchedCuratedIds = new Set();
@@ -191,7 +241,7 @@ async function getGameGuideCatalog() {
         const game = toGuideGame(row, catalog);
         matchedCuratedIds.add(game.id);
         return game;
-    });
+    }).filter((game, index, games) => games.findIndex(candidate => candidate.id === game.id) === index);
     return {
         version: catalog.version,
         games: [
@@ -203,7 +253,7 @@ async function getGameGuideCatalog() {
 
 async function searchGameGuides(rawQuery) {
     const query = String(rawQuery || '').trim().slice(0, 100);
-    const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+    const catalog = await loadGuideCatalog();
     if (!query) return (await getGameGuideCatalog()).games.slice(0, GUIDE_SEARCH_LIMIT);
 
     const rows = searchDatabaseRows(query);
@@ -223,67 +273,106 @@ async function getGameGuideByWikiId(rawWikiPageId) {
     if (!database) return null;
     try {
         const row = dbGet(database, `
-            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            SELECT wiki_page_id, title, zh_CN,
+                CAST(steam_id AS TEXT) AS steam_id, CAST(gog_id AS TEXT) AS gog_id
             FROM games WHERE wiki_page_id = ?
         `, [wikiPageId]);
         if (!row) return null;
-        const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+        const catalog = await loadGuideCatalog();
         return toGuideGame(row, catalog);
     } finally {
         closeDb(database);
     }
 }
 
-function selectLibraryMatchRows(games) {
+function createLibraryMatchQuery(games) {
     const steamIds = [];
     const gogIds = [];
     const titles = [];
     for (const game of games.slice(0, LIBRARY_MATCH_LIMIT)) {
         const platformId = String(game.platformId || '').trim();
-        const numericPlatformId = Number(platformId);
-        if (game.platform === 'Steam' && Number.isSafeInteger(numericPlatformId) && numericPlatformId > 0) {
-            steamIds.push(numericPlatformId);
+        if (game.platform === 'Steam' && /^\d{1,12}$/.test(platformId) && !/^0+$/.test(platformId)) {
+            steamIds.push(platformId);
         }
-        if (game.platform === 'GOG' && Number.isSafeInteger(numericPlatformId) && numericPlatformId > 0) {
-            gogIds.push(numericPlatformId);
+        if (game.platform === 'GOG' && /^\d{1,20}$/.test(platformId) && !/^0+$/.test(platformId)) {
+            gogIds.push(platformId);
         }
         const title = String(game.title || '').trim().slice(0, 200);
         if (title) titles.push(normalizeTitle(title));
     }
     const conditions = [];
     const params = [];
-    for (const [column, values] of [['steam_id', steamIds], ['gog_id', gogIds], ['LOWER(title)', titles]]) {
+    for (const [column, values] of [['steam_id', steamIds], ['gog_id', gogIds]]) {
         const uniqueValues = [...new Set(values)];
         if (uniqueValues.length === 0) continue;
         conditions.push(`${column} IN (${uniqueValues.map(() => '?').join(',')})`);
         params.push(...uniqueValues);
     }
-    if (conditions.length === 0) return [];
+    const uniqueTitles = [...new Set(titles)];
+    if (uniqueTitles.length) {
+        const placeholders = uniqueTitles.map(() => '?').join(',');
+        conditions.push(`(LOWER(title) IN (${placeholders}) OR LOWER(COALESCE(zh_CN, '')) IN (${placeholders}))`);
+        params.push(...uniqueTitles, ...uniqueTitles);
+    }
+    if (conditions.length === 0) return null;
 
+    return {
+        sql: `
+            SELECT wiki_page_id, title, zh_CN,
+                CAST(steam_id AS TEXT) AS steam_id, CAST(gog_id AS TEXT) AS gog_id
+            FROM games WHERE ${conditions.join(' OR ')}
+            ORDER BY wiki_page_id
+        `,
+        params
+    };
+}
+
+function selectLibraryMatchRows(games) {
     const database = openUserDatabase();
     if (!database) return [];
     try {
-        return dbAll(database, `
-            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
-            FROM games WHERE ${conditions.join(' OR ')}
-        `, params);
+        const rows = [];
+        const seenWikiIds = new Set();
+        for (let start = 0; start < games.length; start += LIBRARY_MATCH_LIMIT) {
+            const query = createLibraryMatchQuery(games.slice(start, start + LIBRARY_MATCH_LIMIT));
+            if (!query) continue;
+            for (const row of dbAll(database, query.sql, query.params)) {
+                const wikiPageId = String(row.wiki_page_id);
+                if (seenWikiIds.has(wikiPageId)) continue;
+                seenWikiIds.add(wikiPageId);
+                rows.push(row);
+            }
+        }
+        return rows;
     } finally {
         closeDb(database);
     }
 }
 
-function enrichLibraryGamesWithGuides(games) {
-    if (!Array.isArray(games) || games.length === 0) return [];
-    const rows = selectLibraryMatchRows(games);
+function createUniqueTitleMap(rows) {
+    const candidates = new Map();
+    const ambiguous = new Set();
+    for (const row of rows) {
+        for (const title of [row.title, row.zh_CN].map(normalizeTitle).filter(Boolean)) {
+            const existing = candidates.get(title);
+            if (existing && String(existing.wiki_page_id) !== String(row.wiki_page_id)) ambiguous.add(title);
+            else if (!existing) candidates.set(title, row);
+        }
+    }
+    for (const title of ambiguous) candidates.delete(title);
+    return candidates;
+}
+
+function matchLibraryGamesToGuideRows(games, rows) {
     const bySteamId = new Map(rows.filter(row => row.steam_id).map(row => [String(row.steam_id), row]));
     const byGogId = new Map(rows.filter(row => row.gog_id).map(row => [String(row.gog_id), row]));
-    const byTitle = new Map(rows.map(row => [normalizeTitle(row.title), row]));
+    const byTitle = createUniqueTitleMap(rows);
     return games.map((game) => {
         const platformId = String(game.platformId || '');
         const titleMatch = byTitle.get(normalizeTitle(game.title));
         const row = game.platform === 'Steam' ? bySteamId.get(platformId) || titleMatch
             : game.platform === 'GOG' ? byGogId.get(platformId) || titleMatch
-                : byTitle.get(normalizeTitle(game.title));
+                : titleMatch;
         if (!row) return game;
         return {
             ...game,
@@ -296,6 +385,12 @@ function enrichLibraryGamesWithGuides(games) {
     });
 }
 
+function enrichLibraryGamesWithGuides(games) {
+    if (!Array.isArray(games) || games.length === 0) return [];
+    const rows = selectLibraryMatchRows(games);
+    return matchLibraryGamesToGuideRows(games, rows);
+}
+
 module.exports = {
     GUIDE_CATALOG_METADATA_KEY,
     TRUSTED_GUIDE_HOSTS,
@@ -303,7 +398,9 @@ module.exports = {
     enrichLibraryGamesWithGuides,
     getGameGuideByWikiId,
     getGameGuideCatalog,
+    matchLibraryGamesToGuideRows,
     normalizeCatalog,
+    normalizeVerifiedDate,
     searchGameGuides,
     validateGuideUrl
 };

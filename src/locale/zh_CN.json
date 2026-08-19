@@ -59,8 +59,8 @@
         "guide_notice_intro": "攻略目录仅保存经审核的名称、链接和由 OpenGameSave 编写的简介，不再分发所链接的文章或媒体内容。",
         "overlab_license": "仅提供外部链接。站内原创文章采用 CC BY-NC-SA 4.0；属于暴雪的内容版权仍归暴雪所有。",
         "liquipedia_license": "仅提供外部链接。Wiki 文本采用 CC BY-SA 3.0；媒体文件可能适用其他条款。",
-        "blizzard_license": "官方页面仅提供链接，守望先锋识别图仅在运行时从官方网易静态域加载，均不随应用分发；相关名称、图片与内容归各自权利人所有。",
-        "steam_art_notice": "Steam 商店图片仅在运行时从受控的 Steam 静态资源域获取，不随应用打包；图片权利归 Valve 及相关发行商所有。",
+        "blizzard_license": "官方页面仅提供链接，不再分发页面内容；相关名称、图片与内容归各自权利人所有。",
+        "game_art_notice": "游戏图片优先从受信任的客户端缓存读取；缺失时仅通过受大小限制和域名白名单约束的 Steam、Epic、GOG 或暴雪官方资源获取，不随应用打包，权利归各自所有者。",
         "database_licenses": "数据库映射依照各自 MIT 许可使用，完整许可文本随应用分发。",
         "load_failed": "加载失败",
         "update": "下载更新"

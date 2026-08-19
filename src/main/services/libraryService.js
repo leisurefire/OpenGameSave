@@ -7,34 +7,62 @@ const path = require('path');
 const vdf = require('vdf-parser');
 const WinReg = require('winreg');
 
-const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
-const MAX_ART_BYTES = 12 * 1024 * 1024;
+const {
+    MAX_MANIFEST_BYTES,
+    createSteamArtUrls,
+    findBattleNetLocalArt,
+    findEpicManifestArt,
+    findGogLocalArt,
+    findTrustedArtFile,
+    getGameArtwork,
+    hasOfficialArtFallback
+} = require('./libraryArtworkService');
+
 const STEAM_UTILITY_APP_IDS = new Set(['228980']);
-const ART_MIME_TYPES = Object.freeze({
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.webp': 'image/webp'
-});
 
 const BATTLE_NET_GAMES = Object.freeze([
-    { title: 'Overwatch 2', productCode: 'Pro', folders: ['Overwatch'] },
-    { title: 'Hearthstone', productCode: 'WTCG', folders: ['Hearthstone'] },
-    { title: 'World of Warcraft', productCode: 'WoW', folders: ['World of Warcraft'] },
-    { title: 'World of Warcraft Classic', productCode: 'WoWC', folders: ['World of Warcraft\\_classic_'] },
-    { title: 'Diablo IV', productCode: 'Fen', folders: ['Diablo IV'] },
-    { title: 'Diablo III', productCode: 'D3', folders: ['Diablo III'] },
-    { title: 'Diablo II: Resurrected', productCode: 'OSI', folders: ['Diablo II Resurrected'] },
-    { title: 'StarCraft II', productCode: 'S2', folders: ['StarCraft II'] },
-    { title: 'StarCraft: Remastered', productCode: 'S1', folders: ['StarCraft'] },
-    { title: 'Heroes of the Storm', productCode: 'Hero', folders: ['Heroes of the Storm'] }
+    {
+        title: 'Overwatch 2', productCode: 'Pro', folders: ['Overwatch'], artTokens: ['#OVERWATCH_'],
+        officialPage: 'https://overwatch.blizzard.com/'
+    },
+    {
+        title: 'Hearthstone', productCode: 'WTCG', folders: ['Hearthstone'], artTokens: ['#HS_'],
+        officialPage: 'https://hearthstone.blizzard.com/'
+    },
+    {
+        title: 'World of Warcraft', productCode: 'WoW', folders: ['World of Warcraft'],
+        artTokens: ['#WOW_'], rejectArtTokens: ['#WOW_CLASSIC_'],
+        officialPage: 'https://worldofwarcraft.blizzard.com/'
+    },
+    {
+        title: 'World of Warcraft Classic', productCode: 'WoWC', folders: ['World of Warcraft\\_classic_'],
+        artTokens: ['#WOW_CLASSIC_'], officialPage: 'https://wowclassic.blizzard.com/'
+    },
+    {
+        title: 'Diablo IV', productCode: 'Fen', folders: ['Diablo IV'], artTokens: ['#FENRIS_'],
+        officialPage: 'https://diablo4.blizzard.com/'
+    },
+    {
+        title: 'Diablo III', productCode: 'D3', folders: ['Diablo III'], artTokens: ['#D3_'],
+        officialPage: 'https://us.diablo3.blizzard.com/'
+    },
+    {
+        title: 'Diablo II: Resurrected', productCode: 'OSI', folders: ['Diablo II Resurrected'], artTokens: ['#OSI_'],
+        officialPage: 'https://diablo2.blizzard.com/'
+    },
+    {
+        title: 'StarCraft II', productCode: 'S2', folders: ['StarCraft II'], artTokens: ['#S2_'],
+        officialPage: 'https://starcraft2.blizzard.com/'
+    },
+    {
+        title: 'StarCraft: Remastered', productCode: 'S1', folders: ['StarCraft'], artTokens: ['#S1_'],
+        officialPage: 'https://starcraft.com/'
+    },
+    {
+        title: 'Heroes of the Storm', productCode: 'Hero', folders: ['Heroes of the Storm'], artTokens: ['#HEROES_'],
+        officialPage: 'https://heroesofthestorm.blizzard.com/'
+    }
 ]);
-const BATTLE_NET_ART = Object.freeze({
-    Pro: Object.freeze({
-        cover: 'https://ld5.res.netease.com/images/20250707/1751860761227_0cfb00f220.jpg',
-        hero: 'https://ld5.res.netease.com/images/20250707/1751860761227_0cfb00f220.jpg'
-    })
-});
 
 let scannedGames = new Map();
 
@@ -68,14 +96,6 @@ function createSteamLaunchUri(appId) {
     return `steam://rungameid/${normalizedAppId}`;
 }
 
-function createSteamArtUrls(appId, artType) {
-    const normalizedAppId = normalizeSteamAppId(appId);
-    const baseUrl = `https://cdn.akamai.steamstatic.com/steam/apps/${normalizedAppId}`;
-    if (artType === 'cover') return [`${baseUrl}/library_600x900_2x.jpg`, `${baseUrl}/library_600x900.jpg`];
-    if (artType === 'hero') return [`${baseUrl}/library_hero.jpg`];
-    throw new Error('Invalid Steam artwork type');
-}
-
 function createEpicLaunchUri(appName) {
     const normalizedAppName = String(appName || '').trim();
     if (!/^[A-Za-z0-9._-]{1,256}$/.test(normalizedAppName)) throw new Error('Invalid Epic app name');
@@ -86,8 +106,18 @@ function makeLibraryId(platform, platformId) {
     return `${platform.toLowerCase()}:${String(platformId).trim()}`;
 }
 
-function findFirstExistingFile(candidates) {
-    return candidates.find(candidate => isReadableFile(candidate, MAX_ART_BYTES)) || null;
+function resolveSteamInstallPath(steamAppsRoot, rawDirectoryName) {
+    const directoryName = String(rawDirectoryName || '').trim();
+    if (!directoryName || directoryName.length > 260 || path.isAbsolute(directoryName)) return null;
+    const commonRoot = path.resolve(steamAppsRoot, 'common');
+    const installPath = path.resolve(commonRoot, directoryName);
+    const relative = path.relative(commonRoot, installPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+    try {
+        return fs.statSync(installPath).isDirectory() ? installPath : null;
+    } catch {
+        return null;
+    }
 }
 
 function findSteamArt(steamRoot, appId) {
@@ -137,8 +167,9 @@ function findSteamArt(steamRoot, appId) {
     }
 
     return {
-        cover: findFirstExistingFile(coverCandidates),
-        hero: findFirstExistingFile(heroCandidates)
+        cover: findTrustedArtFile(coverCandidates, [cacheRoot]),
+        hero: findTrustedArtFile(heroCandidates, [cacheRoot]),
+        roots: [cacheRoot]
     };
 }
 
@@ -202,9 +233,10 @@ function scanSteamGames() {
                 try {
                     const appState = vdf.parse(fs.readFileSync(manifestPath, 'utf8')).AppState;
                     const appId = String(appState?.appid || '').trim();
-                    const title = String(appState?.name || '').trim();
-                    if (!appId || !title || STEAM_UTILITY_APP_IDS.has(appId) || appState?.type === 'Tool') continue;
-                    const installPath = path.join(steamAppsRoot, 'common', String(appState.installdir || ''));
+                    const title = String(appState?.name || '').trim().slice(0, 200);
+                    const installPath = resolveSteamInstallPath(steamAppsRoot, appState?.installdir);
+                    if (!/^\d{1,12}$/.test(appId) || !title || !installPath
+                        || STEAM_UTILITY_APP_IDS.has(appId) || appState?.type === 'Tool') continue;
                     const art = findSteamArt(steamRoot, appId);
                     games.push({
                         id: makeLibraryId('Steam', appId),
@@ -214,7 +246,8 @@ function scanSteamGames() {
                         installPath,
                         launchType: 'steam',
                         coverPath: art.cover,
-                        heroPath: art.hero
+                        heroPath: art.hero,
+                        artRoots: art.roots
                     });
                 } catch (error) {
                     console.warn(`Could not parse Steam app manifest ${manifestPath}:`, error.message);
@@ -240,18 +273,26 @@ function scanEpicGames() {
     }
 
     return entries.flatMap((entry) => {
-        const manifest = readJsonFile(path.join(manifestRoot, entry.name));
+        const manifestPath = path.join(manifestRoot, entry.name);
+        const manifest = readJsonFile(manifestPath);
         const appName = String(manifest?.AppName || '').trim();
         const title = String(manifest?.DisplayName || '').trim();
         const installPath = String(manifest?.InstallLocation || '').trim();
         if (!appName || !title || !installPath || !fs.existsSync(installPath)) return [];
+        const normalizedInstallPath = path.normalize(installPath);
+        const art = findEpicManifestArt(manifest, manifestPath, normalizedInstallPath);
+        const namespace = String(manifest?.CatalogNamespace || manifest?.MainGameCatalogNamespace || '').trim();
         return [{
             id: makeLibraryId('Epic', appName),
             title,
             platform: 'Epic',
             platformId: appName,
-            installPath: path.normalize(installPath),
-            launchType: 'epic'
+            installPath: normalizedInstallPath,
+            launchType: 'epic',
+            coverPath: art.coverPath,
+            heroPath: art.heroPath,
+            artRoots: art.artRoots,
+            artMetadata: { namespace, appName }
         }];
     });
 }
@@ -268,6 +309,13 @@ function registryValues(registryKey) {
     });
 }
 
+function getGogCacheRoots() {
+    if (process.platform !== 'win32') return [];
+    const galaxyRoot = path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'GOG.com', 'Galaxy');
+    return [galaxyRoot, path.join(galaxyRoot, 'webcache'), path.join(galaxyRoot, 'storage')]
+        .filter(candidate => fs.existsSync(candidate));
+}
+
 async function scanGogGames() {
     if (process.platform !== 'win32') return [];
     const roots = [
@@ -275,6 +323,7 @@ async function scanGogGames() {
         new WinReg({ hive: WinReg.HKLM, key: '\\SOFTWARE\\GOG.com\\Games' })
     ];
     const games = [];
+    const cacheRoots = getGogCacheRoots();
 
     for (const root of roots) {
         for (const gameKey of await registryKeys(root)) {
@@ -285,14 +334,19 @@ async function scanGogGames() {
             const installPath = String(registryData.path || '').trim();
             const executable = String(registryData.exe || '').trim();
             if (!title || !installPath || !fs.existsSync(installPath)) continue;
+            const normalizedInstallPath = path.normalize(installPath);
+            const art = findGogLocalArt(registryData, platformId, normalizedInstallPath, cacheRoots);
             games.push({
                 id: makeLibraryId('GOG', platformId),
                 title,
                 platform: 'GOG',
                 platformId,
-                installPath: path.normalize(installPath),
+                installPath: normalizedInstallPath,
                 launchType: 'gog',
-                executable: executable && fs.existsSync(executable) ? path.normalize(executable) : null
+                executable: executable && fs.existsSync(executable) ? path.normalize(executable) : null,
+                coverPath: art.coverPath,
+                heroPath: art.heroPath,
+                artRoots: art.artRoots
             });
         }
     }
@@ -307,18 +361,32 @@ function findBattleNetLauncher() {
     ].find(candidate => isReadableFile(candidate, 500 * 1024 * 1024)) || null;
 }
 
+function getBattleNetArtLocale() {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || '';
+    const [language, region] = locale.replace('_', '-').split('-');
+    return language && region ? `${language.toLowerCase()}${region.toUpperCase()}` : 'default';
+}
+
 function scanBattleNetGames() {
     if (process.platform !== 'win32') return [];
     const configPath = path.join(process.env.APPDATA || '', 'Battle.net', 'Battle.net.config');
     const defaultInstallPath = String(readJsonFile(configPath)?.Client?.Install?.DefaultInstallPath || '').trim();
     if (!defaultInstallPath || !fs.existsSync(defaultInstallPath)) return [];
     const launcherPath = findBattleNetLauncher();
+    const cacheRoot = path.join(process.env.LOCALAPPDATA || '', 'Battle.net', 'Cache');
+    const artLocale = getBattleNetArtLocale();
 
     return BATTLE_NET_GAMES.flatMap((definition) => {
         const installPath = definition.folders
             .map(folder => path.join(defaultInstallPath, folder))
             .find(candidate => fs.existsSync(candidate));
         if (!installPath) return [];
+        const art = findBattleNetLocalArt(
+            cacheRoot,
+            definition.artTokens,
+            definition.rejectArtTokens || [],
+            artLocale
+        );
         return [{
             id: makeLibraryId('Blizzard', definition.productCode),
             title: definition.title,
@@ -326,22 +394,25 @@ function scanBattleNetGames() {
             platformId: definition.productCode,
             installPath: path.normalize(installPath),
             launchType: 'battlenet',
-            launcherPath
+            launcherPath,
+            coverPath: art.coverPath,
+            heroPath: art.heroPath,
+            artRoots: art.artRoots,
+            artMetadata: { officialPage: definition.officialPage }
         }];
     });
 }
 
 function toRendererGame(game) {
-    const hasSteamArtFallback = game.platform === 'Steam';
-    const battleNetArt = game.platform === 'Blizzard' ? BATTLE_NET_ART[game.platformId] : null;
+    const hasFallback = hasOfficialArtFallback(game);
     return {
         id: game.id,
         title: game.title,
         platform: game.platform,
         platformId: game.platformId,
         installPath: game.installPath,
-        hasCover: Boolean(game.coverPath) || hasSteamArtFallback || Boolean(battleNetArt?.cover),
-        hasHero: Boolean(game.heroPath) || hasSteamArtFallback || Boolean(battleNetArt?.hero)
+        hasCover: Boolean(game.coverPath) || hasFallback,
+        hasHero: Boolean(game.heroPath) || hasFallback
     };
 }
 
@@ -360,17 +431,8 @@ async function scanLibraryGames() {
 
 async function getLibraryGameArt(gameId, artType) {
     const game = scannedGames.get(String(gameId));
-    const artPath = artType === 'hero' ? game?.heroPath : artType === 'cover' ? game?.coverPath : null;
-    if (artPath && isReadableFile(artPath, MAX_ART_BYTES)) {
-        const mimeType = ART_MIME_TYPES[path.extname(artPath).toLowerCase()];
-        if (mimeType) {
-            const contents = await fs.promises.readFile(artPath);
-            return `data:${mimeType};base64,${contents.toString('base64')}`;
-        }
-    }
-    if (game?.platform === 'Steam') return createSteamArtUrls(game.platformId, artType)[0];
-    if (game?.platform === 'Blizzard') return BATTLE_NET_ART[game.platformId]?.[artType] || null;
-    return null;
+    if (!game) return null;
+    return await getGameArtwork(game, artType);
 }
 
 async function launchLibraryGame(gameId) {
@@ -419,5 +481,6 @@ module.exports = {
     getLibraryGameArt,
     launchLibraryGame,
     openLibraryGameDirectory,
+    resolveSteamInstallPath,
     scanLibraryGames
 };

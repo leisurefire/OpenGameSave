@@ -195,12 +195,12 @@ async function renderSearchResults(games, query, requestId) {
 
 function searchGames() {
     clearTimeout(searchTimer);
+    const requestId = ++searchRequestId;
     const query = document.getElementById('guides-search')?.value.trim() || '';
     if (!query) {
         hideSearchResults();
         return;
     }
-    const requestId = ++searchRequestId;
     searchTimer = setTimeout(async () => {
         try {
             const games = await window.api.invoke('search-game-guides', query);
