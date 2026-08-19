@@ -60,6 +60,7 @@ test('library and guide interactions expose keyboard and assistive-technology st
     const indexHtml = readProjectFile('src/renderer/index.html');
     const libraryPage = readProjectFile('src/renderer/js/libraryPage.js');
     const guidesPage = readProjectFile('src/renderer/js/guidesPage.js');
+    const mainCss = readProjectFile('src/renderer/css/main.css');
 
     assert.match(indexHtml, /id="guides-search"[^>]*role="combobox"[^>]*aria-expanded="false"/);
     assert.match(indexHtml, /id="library-count"[^>]*aria-live="polite"/);
@@ -68,4 +69,7 @@ test('library and guide interactions expose keyboard and assistive-technology st
     assert.match(libraryPage, /activeGameActions\.has\(actionKey\)/);
     assert.match(guidesPage, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
     assert.match(guidesPage, /setSearchResultsExpanded/);
+    assert.match(mainCss, /@media \(prefers-reduced-motion: reduce\)/);
+    assert.match(mainCss, /@media \(forced-colors: active\)/);
+    assert.match(mainCss, /\.guide-open-button:focus-visible/);
 });

@@ -370,7 +370,7 @@
 
 .library-count {
     margin-top: 1px;
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.56);
     font-size: 10px;
     line-height: 12px;
 }
@@ -422,7 +422,7 @@
 }
 
 .library-search .search-input::placeholder {
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.55);
 }
 
 .library-search .search-input::-webkit-search-cancel-button {
@@ -454,7 +454,7 @@
     align-items: center;
     justify-content: center;
     gap: 9px;
-    color: rgba(255, 255, 255, 0.46);
+    color: rgba(255, 255, 255, 0.62);
     font-size: 12px;
 }
 
@@ -869,7 +869,7 @@
 
 .library-card-copy p {
     margin-top: 2px;
-    color: rgba(255, 255, 255, 0.36);
+    color: rgba(255, 255, 255, 0.58);
     font-size: 10px;
 }
 
@@ -931,7 +931,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.58);
     text-align: center;
 }
 
@@ -1038,8 +1038,8 @@
 
 .guide-game-result small,
 .guide-game-results-empty {
-    color: rgba(255, 255, 255, 0.34);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
 }
 
 .guide-game-result > .lucide-icon {
@@ -1198,8 +1198,8 @@
 .guides-data-note p {
     max-width: 760px;
     margin-top: 3px;
-    color: rgba(255, 255, 255, 0.38);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
     line-height: 1.45;
 }
 
@@ -1213,7 +1213,7 @@
     background: rgba(255, 255, 255, 0.055);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 7px;
-    font-size: 9px;
+    font-size: 10px;
     white-space: nowrap;
 }
 
@@ -1253,7 +1253,7 @@
 
 .guides-toolbar p {
     margin-top: 2px;
-    color: rgba(255, 255, 255, 0.34);
+    color: rgba(255, 255, 255, 0.58);
     font-size: 10px;
 }
 
@@ -1298,7 +1298,7 @@
     color: rgba(255, 255, 255, 0.64);
     background: rgba(255, 255, 255, 0.06);
     border-radius: 999px;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 620;
     letter-spacing: 0.035em;
 }
@@ -1338,7 +1338,7 @@
     display: -webkit-box;
     margin-top: 6px;
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.46);
+    color: rgba(255, 255, 255, 0.62);
     font-size: 11px;
     line-height: 1.5;
     -webkit-box-orient: vertical;
@@ -1348,8 +1348,8 @@
 .guide-source-card-footer {
     margin-top: auto;
     padding-top: 12px;
-    color: rgba(255, 255, 255, 0.28);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
 }
 
 .guide-source-metadata {
@@ -1383,6 +1383,21 @@
 .guide-open-button:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
+}
+
+.library-refresh:focus-visible,
+.library-play-button:focus-visible,
+.library-secondary-button:focus-visible,
+.library-filter-button:focus-visible,
+.library-view-button:focus-visible,
+.library-card-play:focus-visible,
+.library-card-guide:focus-visible,
+.library-card-manage:focus-visible,
+.guide-game-result:focus-visible,
+.guide-data-repo-button:focus-visible,
+.guide-open-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--system-accent) 78%, white);
+    outline-offset: 2px;
 }
 
 .page-heading {
@@ -2385,5 +2400,22 @@ input[type="text"].search-input::placeholder {
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
+    }
+}
+
+@media (forced-colors: active) {
+    .library-card-art,
+    .library-filter-button,
+    .library-view-button,
+    .guide-source-card,
+    .guide-game-result {
+        border: 1px solid ButtonText;
+    }
+
+    .library-filter-button.active,
+    .library-view-button.active,
+    .library-card.selected .library-card-art {
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
     }
 }
