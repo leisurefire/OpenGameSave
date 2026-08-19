@@ -14,7 +14,6 @@ let activePlatform = 'All';
 let selectedGameId = null;
 let currentView = 'grid';
 let artObserver;
-let guideSupportedGameIds = new Set();
 
 function getElements() {
     return {
@@ -86,7 +85,12 @@ async function runGameAction(game, action, button) {
     }
 }
 
-function navigateToGuides() {
+function navigateToGuides(game) {
+    if (game?.guide?.wikiPageId) {
+        document.dispatchEvent(new CustomEvent('ogs:select-game-guide', {
+            detail: { wikiPageId: game.guide.wikiPageId }
+        }));
+    }
     document.dispatchEvent(new CustomEvent('ogs:navigate-request', { detail: { route: 'guides' } }));
 }
 
@@ -110,12 +114,12 @@ async function showGameMenu(game, button) {
             data: { id: game.id, title: game.title }
         }
     ];
-    if (guideSupportedGameIds.has(game.id)) {
+    if (game.guide) {
         menuItems.push({
             label: await translate('main.view_game_guides'),
             icon: 'book-open',
             action: 'open-game-guide',
-            data: game.id
+            data: { wikiPageId: game.guide.wikiPageId }
         });
     }
     const rect = button.getBoundingClientRect();
@@ -126,15 +130,6 @@ async function showGameMenu(game, button) {
         direction: 'down'
     });
     window.activeMenuTrigger = button;
-}
-
-function updateGuideSupport(catalog) {
-    guideSupportedGameIds = new Set();
-    for (const guideGame of catalog?.games || []) {
-        for (const [platform, platformId] of Object.entries(guideGame.platform_ids || {})) {
-            guideSupportedGameIds.add(`${platform.toLocaleLowerCase()}:${platformId}`);
-        }
-    }
 }
 
 async function loadArt(gameId, artType, image, expectedGameId = gameId) {
@@ -196,7 +191,7 @@ function createCard(game) {
     appendPlatformBadge(platformMark, game.platform, false);
     artwork.appendChild(platformMark);
 
-    if (guideSupportedGameIds.has(game.id)) {
+    if (game.guide) {
         const guideButton = document.createElement('button');
         guideButton.className = 'library-card-guide';
         guideButton.type = 'button';
@@ -205,7 +200,7 @@ function createCard(game) {
         guideButton.setAttribute('data-lucide-icon', 'book-open');
         guideButton.addEventListener('click', (event) => {
             event.stopPropagation();
-            navigateToGuides();
+            navigateToGuides(game);
         });
         artwork.appendChild(guideButton);
     }
@@ -311,8 +306,8 @@ function selectGame(game) {
     appendPlatformBadge(elements.heroPlatform, game.platform);
     elements.heroPlay.onclick = () => void runGameAction(game, 'launch-library-game', elements.heroPlay);
     elements.heroFolder.onclick = () => void runGameAction(game, 'open-library-game-directory', elements.heroFolder);
-    elements.heroGuide.classList.toggle('hidden', !guideSupportedGameIds.has(game.id));
-    elements.heroGuide.onclick = guideSupportedGameIds.has(game.id) ? navigateToGuides : null;
+    elements.heroGuide.classList.toggle('hidden', !game.guide);
+    elements.heroGuide.onclick = game.guide ? () => navigateToGuides(game) : null;
     elements.heroImage.classList.add('hidden');
     elements.heroImage.removeAttribute('src');
     delete elements.heroImage.dataset.artLoaded;
@@ -329,14 +324,12 @@ async function refreshLibrary() {
     elements.refresh.disabled = true;
     elements.refresh.querySelector('.lucide-icon')?.classList.add('is-spinning');
     try {
-        const [libraryGames, platforms, guideCatalog] = await Promise.all([
+        const [libraryGames, platforms] = await Promise.all([
             window.api.invoke('get-library-games'),
-            window.api.invoke('get-icon-map'),
-            window.api.invoke('get-game-guide-catalog').catch(() => null)
+            window.api.invoke('get-icon-map')
         ]);
         games = Array.isArray(libraryGames) ? libraryGames : [];
         iconMap = platforms || {};
-        updateGuideSupport(guideCatalog);
         if (!games.some(game => game.id === selectedGameId)) selectedGameId = games[0]?.id || null;
         renderFilters();
         renderGames();

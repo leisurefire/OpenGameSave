@@ -2,12 +2,21 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const { closeDb, dbGet, openDb } = require('../sqliteUtils');
+const { closeDb, dbAll, dbGet, openDb } = require('../sqliteUtils');
 
 const bundledCatalog = require('../../data/gameGuides.json');
 
 const GUIDE_CATALOG_METADATA_KEY = 'game_guide_catalog';
-const TRUSTED_GUIDE_HOSTS = new Set(['liquipedia.net', 'overlab.cn', 'ow.blizzard.cn']);
+const GUIDE_SEARCH_LIMIT = 24;
+const LIBRARY_MATCH_LIMIT = 250;
+const TRUSTED_GUIDE_HOSTS = new Set([
+    'github.com',
+    'liquipedia.net',
+    'overlab.cn',
+    'ow.blizzard.cn',
+    'pcgamingwiki.com',
+    'www.pcgamingwiki.com'
+]);
 
 function getUserDatabasePath() {
     return path.join(app.getPath('userData'), 'OGS Database', 'database.db');
@@ -15,7 +24,11 @@ function getUserDatabasePath() {
 
 function validateGuideUrl(rawUrl) {
     const guideUrl = new URL(String(rawUrl || ''));
-    if (guideUrl.protocol !== 'https:' || !TRUSTED_GUIDE_HOSTS.has(guideUrl.hostname.toLowerCase())) {
+    if (guideUrl.protocol !== 'https:'
+        || guideUrl.username
+        || guideUrl.password
+        || (guideUrl.port && guideUrl.port !== '443')
+        || !TRUSTED_GUIDE_HOSTS.has(guideUrl.hostname.toLowerCase())) {
         throw new Error('Guide source is not trusted');
     }
     return guideUrl.toString();
@@ -42,34 +55,255 @@ function normalizeCatalog(rawCatalog) {
                 language: String(source.language || '').slice(0, 20),
                 url: validateGuideUrl(source.url),
                 description: String(source.description || '').slice(0, 1000),
-                description_zh_CN: String(source.description_zh_CN || '').slice(0, 1000)
+                description_zh_CN: String(source.description_zh_CN || '').slice(0, 1000),
+                trust_reason: String(source.trust_reason || '').slice(0, 500),
+                trust_reason_zh_CN: String(source.trust_reason_zh_CN || '').slice(0, 500),
+                verified_at: /^\d{4}-\d{2}-\d{2}$/.test(String(source.verified_at || ''))
+                    ? String(source.verified_at)
+                    : ''
             })) : []
         }))
     };
 }
 
-async function readDatabaseCatalog() {
+function normalizeWikiPageId(rawWikiPageId) {
+    const wikiPageId = Number(rawWikiPageId);
+    if (!Number.isSafeInteger(wikiPageId) || wikiPageId <= 0) throw new Error('Invalid wiki page id');
+    return wikiPageId;
+}
+
+function createPcGamingWikiSource(rawWikiPageId) {
+    const wikiPageId = normalizeWikiPageId(rawWikiPageId);
+    return {
+        id: 'pcgamingwiki',
+        name: 'PCGamingWiki',
+        name_zh_CN: 'PCGamingWiki 技术百科',
+        category: 'wiki',
+        language: 'en',
+        url: validateGuideUrl(`https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}`),
+        description: 'Game-specific fixes, save locations, configuration details, known issues, and PC compatibility notes.',
+        description_zh_CN: '面向该游戏的故障修复、存档位置、配置说明、已知问题与 PC 兼容性资料。',
+        trust_reason: 'Matched by the stable PCGamingWiki page ID stored in the OpenGameSave database.',
+        trust_reason_zh_CN: '通过 OpenGameSave 数据库保存的 PCGamingWiki 稳定页面 ID 精确匹配。',
+        verified_at: '2026-08-20'
+    };
+}
+
+function normalizeTitle(value) {
+    return String(value || '').trim().toLocaleLowerCase();
+}
+
+function findCuratedGame(catalog, row) {
+    const rowTitles = new Set([normalizeTitle(row.title), normalizeTitle(row.zh_CN)].filter(Boolean));
+    return catalog.games.find(game => (
+        rowTitles.has(normalizeTitle(game.title)) || rowTitles.has(normalizeTitle(game.title_zh_CN))
+    ));
+}
+
+function toGuideGame(row, catalog) {
+    const wikiPageId = normalizeWikiPageId(row.wiki_page_id);
+    const curated = findCuratedGame(catalog, row);
+    const sources = [createPcGamingWikiSource(wikiPageId), ...(curated?.sources || [])]
+        .filter((source, index, all) => all.findIndex(candidate => candidate.url === source.url) === index);
+    return {
+        id: curated?.id || `pcgamingwiki-${wikiPageId}`,
+        title: curated?.title || String(row.title || '').slice(0, 200),
+        title_zh_CN: curated?.title_zh_CN || String(row.zh_CN || '').slice(0, 200),
+        wiki_page_id: String(wikiPageId),
+        platform_ids: curated?.platform_ids || Object.fromEntries([
+            row.steam_id ? ['Steam', String(row.steam_id)] : null,
+            row.gog_id ? ['GOG', String(row.gog_id)] : null
+        ].filter(Boolean)),
+        sources
+    };
+}
+
+function openUserDatabase() {
     const databasePath = getUserDatabasePath();
-    if (!fs.existsSync(databasePath)) return null;
-    const database = await openDb(databasePath, { readonly: true, fileMustExist: true });
+    return fs.existsSync(databasePath) ? openDb(databasePath, { readonly: true, fileMustExist: true }) : null;
+}
+
+async function readDatabaseCatalog() {
+    const database = openUserDatabase();
+    if (!database) return null;
     try {
-        const row = await dbGet(database, 'SELECT value FROM metadata WHERE key = ?', [GUIDE_CATALOG_METADATA_KEY]);
+        const row = dbGet(database, 'SELECT value FROM metadata WHERE key = ?', [GUIDE_CATALOG_METADATA_KEY]);
         return row?.value ? normalizeCatalog(JSON.parse(row.value)) : null;
     } catch (error) {
         console.warn('Could not load guide catalog from the game database:', error.message);
         return null;
     } finally {
-        await closeDb(database);
+        closeDb(database);
+    }
+}
+
+function escapeLike(value) {
+    return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+}
+
+function searchDatabaseRows(query) {
+    const database = openUserDatabase();
+    if (!database) return [];
+    const escapedQuery = escapeLike(query);
+    const pattern = `%${escapedQuery}%`;
+    try {
+        return dbAll(database, `
+            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            FROM games
+            WHERE title LIKE ? ESCAPE '\\' OR COALESCE(zh_CN, '') LIKE ? ESCAPE '\\'
+            ORDER BY
+                CASE
+                    WHEN LOWER(title) = LOWER(?) OR LOWER(COALESCE(zh_CN, '')) = LOWER(?) THEN 0
+                    WHEN title LIKE ? ESCAPE '\\' OR COALESCE(zh_CN, '') LIKE ? ESCAPE '\\' THEN 1
+                    ELSE 2
+                END,
+                title COLLATE NOCASE
+            LIMIT ?
+        `, [pattern, pattern, query, query, `${escapedQuery}%`, `${escapedQuery}%`, GUIDE_SEARCH_LIMIT]);
+    } finally {
+        closeDb(database);
+    }
+}
+
+function findDatabaseRowsByTitles(titles) {
+    const normalizedTitles = [...new Set(titles.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 200);
+    if (normalizedTitles.length === 0) return [];
+    const database = openUserDatabase();
+    if (!database) return [];
+    const placeholders = normalizedTitles.map(() => '?').join(',');
+    try {
+        return dbAll(database, `
+            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            FROM games
+            WHERE LOWER(title) IN (${placeholders}) OR LOWER(COALESCE(zh_CN, '')) IN (${placeholders})
+        `, [...normalizedTitles.map(normalizeTitle), ...normalizedTitles.map(normalizeTitle)]);
+    } finally {
+        closeDb(database);
     }
 }
 
 async function getGameGuideCatalog() {
-    return await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+    const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+    const titles = catalog.games.flatMap(game => [game.title, game.title_zh_CN]);
+    const rows = findDatabaseRowsByTitles(titles);
+    const matchedCuratedIds = new Set();
+    const enrichedGames = rows.map((row) => {
+        const game = toGuideGame(row, catalog);
+        matchedCuratedIds.add(game.id);
+        return game;
+    });
+    return {
+        version: catalog.version,
+        games: [
+            ...enrichedGames,
+            ...catalog.games.filter(game => !matchedCuratedIds.has(game.id))
+        ]
+    };
+}
+
+async function searchGameGuides(rawQuery) {
+    const query = String(rawQuery || '').trim().slice(0, 100);
+    const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+    if (!query) return (await getGameGuideCatalog()).games.slice(0, GUIDE_SEARCH_LIMIT);
+
+    const rows = searchDatabaseRows(query);
+    const games = rows.map(row => toGuideGame(row, catalog));
+    const normalizedQuery = normalizeTitle(query);
+    for (const curated of catalog.games) {
+        const searchable = `${curated.title} ${curated.title_zh_CN}`.toLocaleLowerCase();
+        if (!searchable.includes(normalizedQuery) || games.some(game => game.id === curated.id)) continue;
+        games.push(curated);
+    }
+    return games.slice(0, GUIDE_SEARCH_LIMIT);
+}
+
+async function getGameGuideByWikiId(rawWikiPageId) {
+    const wikiPageId = normalizeWikiPageId(rawWikiPageId);
+    const database = openUserDatabase();
+    if (!database) return null;
+    try {
+        const row = dbGet(database, `
+            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            FROM games WHERE wiki_page_id = ?
+        `, [wikiPageId]);
+        if (!row) return null;
+        const catalog = await readDatabaseCatalog() || normalizeCatalog(bundledCatalog);
+        return toGuideGame(row, catalog);
+    } finally {
+        closeDb(database);
+    }
+}
+
+function selectLibraryMatchRows(games) {
+    const steamIds = [];
+    const gogIds = [];
+    const titles = [];
+    for (const game of games.slice(0, LIBRARY_MATCH_LIMIT)) {
+        const platformId = String(game.platformId || '').trim();
+        const numericPlatformId = Number(platformId);
+        if (game.platform === 'Steam' && Number.isSafeInteger(numericPlatformId) && numericPlatformId > 0) {
+            steamIds.push(numericPlatformId);
+        }
+        if (game.platform === 'GOG' && Number.isSafeInteger(numericPlatformId) && numericPlatformId > 0) {
+            gogIds.push(numericPlatformId);
+        }
+        const title = String(game.title || '').trim().slice(0, 200);
+        if (title) titles.push(normalizeTitle(title));
+    }
+    const conditions = [];
+    const params = [];
+    for (const [column, values] of [['steam_id', steamIds], ['gog_id', gogIds], ['LOWER(title)', titles]]) {
+        const uniqueValues = [...new Set(values)];
+        if (uniqueValues.length === 0) continue;
+        conditions.push(`${column} IN (${uniqueValues.map(() => '?').join(',')})`);
+        params.push(...uniqueValues);
+    }
+    if (conditions.length === 0) return [];
+
+    const database = openUserDatabase();
+    if (!database) return [];
+    try {
+        return dbAll(database, `
+            SELECT wiki_page_id, title, zh_CN, steam_id, gog_id
+            FROM games WHERE ${conditions.join(' OR ')}
+        `, params);
+    } finally {
+        closeDb(database);
+    }
+}
+
+function enrichLibraryGamesWithGuides(games) {
+    if (!Array.isArray(games) || games.length === 0) return [];
+    const rows = selectLibraryMatchRows(games);
+    const bySteamId = new Map(rows.filter(row => row.steam_id).map(row => [String(row.steam_id), row]));
+    const byGogId = new Map(rows.filter(row => row.gog_id).map(row => [String(row.gog_id), row]));
+    const byTitle = new Map(rows.map(row => [normalizeTitle(row.title), row]));
+    return games.map((game) => {
+        const platformId = String(game.platformId || '');
+        const titleMatch = byTitle.get(normalizeTitle(game.title));
+        const row = game.platform === 'Steam' ? bySteamId.get(platformId) || titleMatch
+            : game.platform === 'GOG' ? byGogId.get(platformId) || titleMatch
+                : byTitle.get(normalizeTitle(game.title));
+        if (!row) return game;
+        return {
+            ...game,
+            guide: {
+                wikiPageId: String(row.wiki_page_id),
+                title: String(row.title || ''),
+                titleZhCN: String(row.zh_CN || '')
+            }
+        };
+    });
 }
 
 module.exports = {
     GUIDE_CATALOG_METADATA_KEY,
+    TRUSTED_GUIDE_HOSTS,
+    createPcGamingWikiSource,
+    enrichLibraryGamesWithGuides,
+    getGameGuideByWikiId,
     getGameGuideCatalog,
     normalizeCatalog,
+    searchGameGuides,
     validateGuideUrl
 };

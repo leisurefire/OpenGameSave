@@ -162,10 +162,11 @@
                             <p class="library-count" data-i18n="main.guides_curated">Curated sources</p>
                         </div>
                     </div>
-                    <label class="library-search search-field">
+                    <div class="library-search search-field guides-game-search">
                         <span data-lucide-icon="search" class="search-field-icon"></span>
-                        <input id="guides-search" class="search-input" type="search" data-i18n-placeholder="main.search_guides">
-                    </label>
+                        <input id="guides-search" class="search-input" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="guides-game-results" data-i18n-placeholder="main.search_guide_games" data-i18n-aria-label="main.search_guide_games">
+                        <div id="guides-game-results" class="guide-game-results hidden" role="listbox"></div>
+                    </div>
                 </header>
 
                 <div class="guides-scroll">
@@ -181,12 +182,24 @@
                                     <span data-lucide-icon="shield-check"></span>
                                     <span data-i18n="main.trusted_sources">Trusted sources</span>
                                 </div>
-                                <p class="guides-eyebrow">OVERWATCH 2</p>
-                                <h2 data-i18n="main.overwatch_guide_title">A reliable starting point for every match</h2>
-                                <p data-i18n="main.overwatch_guide_description">Official updates, Chinese mechanics references, hero data, and competitive records in one place.</p>
+                                <p id="guides-game-title" class="guides-eyebrow">OVERWATCH 2</p>
+                                <h2 id="guides-hero-title">Reliable references for Overwatch 2</h2>
+                                <p id="guides-hero-description">Open the reviewed technical wiki and any curated sources available for this game.</p>
                             </div>
-                            <div class="guides-hero-mark">OW</div>
+                            <div id="guides-hero-mark" class="guides-hero-mark">OW</div>
                         </section>
+
+                        <aside class="guides-data-note">
+                            <span class="guides-data-note-icon" data-lucide-icon="database"></span>
+                            <div>
+                                <h3 data-i18n="main.guide_database_title">Database-backed coverage</h3>
+                                <p data-i18n="main.guide_database_description">Every matched game opens its exact PCGamingWiki page using the stable page ID in OpenGameSave's database. GitHub hosts PCGamingWiki's official redirect API; general game databases provide metadata, not reviewed walkthroughs.</p>
+                            </div>
+                            <button id="guides-database-repo" type="button" class="guide-data-repo-button">
+                                <span data-lucide-icon="git-compare-arrows"></span>
+                                <span data-i18n="main.view_database_project">View GitHub project</span>
+                            </button>
+                        </aside>
 
                         <div class="guides-toolbar">
                             <div>

@@ -692,6 +692,11 @@ window.api.receive('execute-menu-action', async (action, data) => {
             showAlert('error', await window.i18n.translate(messageKey, { game: gameTitle }));
         }
     } else if (action === 'open-game-guide') {
+        if (data?.wikiPageId) {
+            document.dispatchEvent(new CustomEvent('ogs:select-game-guide', {
+                detail: { wikiPageId: data.wikiPageId }
+            }));
+        }
         document.dispatchEvent(new CustomEvent('ogs:navigate-request', { detail: { route: 'guides' } }));
     }
 });

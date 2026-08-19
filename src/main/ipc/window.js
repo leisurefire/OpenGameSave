@@ -10,9 +10,10 @@ const { getAllUserIds } = require('../gameData');
 const { getMainWin, getSettings } = require('../global');
 const { normalizeWikiId } = require('../validation');
 const { getCachedIconMap } = require('../services/iconService');
+const { TRUSTED_GUIDE_HOSTS } = require('../services/guideService');
 const { getSavePlatformKey } = require('../services/platformService');
 
-const ALLOWED_EXTERNAL_HOSTS = new Set(['github.com', 'www.pcgamingwiki.com']);
+const ALLOWED_EXTERNAL_HOSTS = new Set([...TRUSTED_GUIDE_HOSTS, 'www.gnu.org']);
 
 function isAllowedExternalUrl(url) {
     try {
@@ -125,4 +126,4 @@ function registerWindowIpc({ ensureGameDataReady }) {
     ipcMain.handle('get-main-selected-wiki-ids', (event, tableId) => requestSelectedWikiIds(tableId));
 }
 
-module.exports = { registerWindowIpc };
+module.exports = { isAllowedExternalUrl, registerWindowIpc };

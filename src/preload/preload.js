@@ -50,6 +50,8 @@ const ALLOWED_INVOKE = new Set([
     'get-library-games',
     'get-library-game-art',
     'get-game-guide-catalog',
+    'search-game-guides',
+    'get-game-guide',
     'launch-library-game',
     'open-library-game-directory',
     'get-table-view-model',

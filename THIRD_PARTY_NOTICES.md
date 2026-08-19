@@ -20,6 +20,10 @@ OpenGameSave's guide catalog contains reviewed source names, external URLs, and
 short descriptions written for OpenGameSave. It does not bundle, scrape, or
 republish the linked articles, images, or game assets.
 
+- [PCGamingWiki](https://www.pcgamingwiki.com/) is linked as an external
+  technical reference by the stable page IDs already present in OpenGameSave's
+  game database. Its [official redirect API](https://github.com/PCGamingWiki/api)
+  is referenced for provenance; OpenGameSave does not copy wiki articles.
 - [OverLab / 春语实验室](https://overlab.cn/) is linked as an external Chinese
   Overwatch knowledge base. Its original articles are offered under
   CC BY-NC-SA 4.0; Blizzard-owned content remains Blizzard copyright. See the
