@@ -36,7 +36,45 @@
             <span class="opacity-40" data-i18n="about.former_developers">Former developers</span>
             <span class="text-content">Yongcan Yang</span>
         </p>
+        <p class="text-sm flex justify-between">
+            <span class="opacity-40" data-i18n="about.license">License</span>
+            <button id="app-license-link" class="about-link-button">GPL-3.0-only</button>
+        </p>
+        <p class="text-sm flex justify-between">
+            <span class="opacity-40" data-i18n="about.third_party">Third-party & data sources</span>
+            <button id="notices-toggle" class="about-link-button" data-i18n="about.view_notices">View notices</button>
+        </p>
     </div>
+
+    <section id="about-notices" class="about-notices surface-effect hidden" aria-labelledby="about-notices-title">
+        <div class="about-notices-header">
+            <h2 id="about-notices-title" data-i18n="about.notices_title">Licenses and source notices</h2>
+            <span data-i18n="about.links_only_badge">Source details</span>
+        </div>
+        <p data-i18n="about.guide_notice_intro">The guide catalog stores reviewed names, links, and original summaries. It does not redistribute linked articles or media.</p>
+        <ul>
+            <li>
+                <button class="about-source-link" data-external-url="https://overlab.cn/about/creative-commons">春语实验室 / OverLab</button>
+                <span data-i18n="about.overlab_license">External links only. Original articles are CC BY-NC-SA 4.0; Blizzard-owned material remains Blizzard copyright.</span>
+            </li>
+            <li>
+                <button class="about-source-link" data-external-url="https://liquipedia.net/commons/Liquipedia:Copyrights">Liquipedia</button>
+                <span data-i18n="about.liquipedia_license">External links only. Wiki text is CC BY-SA 3.0; media may use separate terms.</span>
+            </li>
+            <li>
+                <button class="about-source-link" data-external-url="https://ow.blizzard.cn/">Blizzard / NetEase</button>
+                <span data-i18n="about.blizzard_license">Official pages are linked, not redistributed. Their names and content remain the property of their respective owners.</span>
+            </li>
+            <li>
+                <button class="about-source-link" data-external-url="https://store.steampowered.com/">Steam Store artwork</button>
+                <span data-i18n="about.steam_art_notice">Steam store artwork is fetched at runtime only from a constrained Steam static-asset host and is not bundled; rights remain with Valve and the relevant publishers.</span>
+            </li>
+            <li>
+                <span class="about-source-name">Ludusavi Manifest / XgpSaveTools</span>
+                <span data-i18n="about.database_licenses">Database mappings are used under their MIT licenses; complete notices ship with the application.</span>
+            </li>
+        </ul>
+    </section>
 
     <footer class="about-footer text-[10px] opacity-30 font-medium uppercase">
         <span>By Gamers. For Gamers.</span>

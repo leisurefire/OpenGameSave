@@ -35,8 +35,59 @@ window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
 
 document.addEventListener('DOMContentLoaded', () => {
     setupHomeActions();
+    setupTitlebarMenus();
     setupAppUpdateButton();
 });
+
+async function getTitlebarMenuItems(menuName) {
+    const item = async (key, icon, action, data) => ({
+        label: await window.i18n.translate(key),
+        icon,
+        action,
+        data
+    });
+    if (menuName === 'view') {
+        return await Promise.all([
+            item('main.library', 'library-big', 'navigate', 'library'),
+            item('main.guides', 'book-open', 'navigate', 'guides'),
+            item('main.saves', 'save', 'navigate', 'backup'),
+            item('main.sync', 'cloud', 'navigate', 'sync'),
+            item('main.collapse_sidebar', 'panel-left-close', 'toggle-sidebar'),
+            item('main.view_account_ids', 'user-round-cog', 'view-account-ids')
+        ]);
+    }
+    if (menuName === 'games') {
+        return await Promise.all([
+            item('main.import', 'download', 'import'),
+            item('main.export', 'upload', 'export'),
+            item('main.scan_full', 'scan-search', 'scan-full'),
+            item('main.refresh_library', 'refresh-cw', 'refresh-library')
+        ]);
+    }
+    return await Promise.all([
+        item('settings.title', 'settings', 'settings'),
+        item('about.title', 'info', 'about')
+    ]);
+}
+
+function setupTitlebarMenus() {
+    document.querySelectorAll('[data-titlebar-menu]').forEach(button => button.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (button === window.activeMenuTrigger) {
+            window.api.send('hide-popup-menu');
+            window.activeMenuTrigger = null;
+            return;
+        }
+        const rect = button.getBoundingClientRect();
+        window.api.send('show-popup-menu', {
+            items: await getTitlebarMenuItems(button.dataset.titlebarMenu),
+            x: rect.left,
+            y: rect.bottom + 3,
+            direction: 'down'
+        });
+        window.activeMenuTrigger = button;
+    }));
+}
 
 async function applyAppUpdateState(state) {
     const updateButton = document.getElementById('app-update-download');
@@ -102,59 +153,12 @@ function setupAppUpdateButton() {
 
 function setupHomeActions() {
     const optionsButton = document.getElementById('home-options-button');
-    const importButton = document.getElementById('home-import-button');
-    const exportButton = document.getElementById('home-export-button');
 
     if (optionsButton) {
-        optionsButton.addEventListener('click', async (event) => {
+        optionsButton.addEventListener('click', (event) => {
             event.stopPropagation();
-
-            if (optionsButton === window.activeMenuTrigger) {
-                window.api.send('hide-popup-menu');
-                window.activeMenuTrigger = null;
-                return;
-            }
-
-            const menuItems = [
-                {
-                    label: await window.i18n.translate('main.scan_full'),
-                    icon: 'scan-search',
-                    action: 'scan-full'
-                },
-                {
-                    label: await window.i18n.translate('main.view_account_ids'),
-                    icon: 'user-round-cog',
-                    action: 'view-account-ids'
-                },
-                {
-                    label: await window.i18n.translate('about.title'),
-                    icon: 'info',
-                    action: 'about'
-                },
-                {
-                    label: await window.i18n.translate('settings.title'),
-                    icon: 'settings',
-                    action: 'settings'
-                }
-            ];
-
-            const rect = optionsButton.getBoundingClientRect();
-            window.api.send('show-popup-menu', {
-                items: menuItems,
-                x: rect.left - 16,
-                y: rect.top + 32,
-                direction: 'up'
-            });
-            window.activeMenuTrigger = optionsButton;
+            window.api.send('open-settings-window');
         });
-    }
-
-    if (importButton) {
-        importButton.addEventListener('click', () => showImportModal(''));
-    }
-
-    if (exportButton) {
-        exportButton.addEventListener('click', () => showExportModal());
     }
 }
 
@@ -214,11 +218,11 @@ export function showAlert(type, message, modalContent) {
 
 
 // Standalone modal windows
-function showExportModal() {
+export function showExportModal() {
     window.api.send('open-modal-window', 'export');
 }
 
-function showImportModal(gsmPath = '') {
+export function showImportModal(gsmPath = '') {
     window.api.send('open-modal-window', 'import', { gsmPath });
 }
 
@@ -332,7 +336,10 @@ export async function operationStartCheck(operation) {
 
 // Global click listener to dismiss popup menu when clicking outside any trigger
 document.addEventListener('click', (event) => {
-    const isMenuTrigger = event.target.closest('.dropdown-menu-button') || event.target.closest('#home-options-button');
+    const isMenuTrigger = event.target.closest('.dropdown-menu-button')
+        || event.target.closest('.library-card-manage')
+        || event.target.closest('#home-options-button')
+        || event.target.closest('[data-titlebar-menu]');
     if (!isMenuTrigger) {
         window.activeMenuTrigger = null;
         window.api.send('hide-popup-menu');

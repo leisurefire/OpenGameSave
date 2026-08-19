@@ -22,6 +22,21 @@ const windowVisualEffect = isWindows ? {
     backgroundColor: '#00000000'
 } : {};
 
+// Keep the operating system's window controls while letting the renderer draw
+// the rest of the title bar. This retains native minimize/maximize/close
+// behavior and accessibility instead of duplicating those controls over IPC.
+/** @type {import('electron').BrowserWindowConstructorOptions} */
+const mainWindowTitleBar = process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset' }
+    : {
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+            color: '#0b0d11',
+            symbolColor: '#f5f7fb',
+            height: 46
+        }
+    };
+
 const applyWindowsMicaEffect = (browserWindow) => {
     if (!isWindows || !browserWindow || browserWindow.isDestroyed()) {
         return;
@@ -48,10 +63,10 @@ const modalWindowDefinitions = {
     about: {
         file: 'about.html',
         width: 620,
-        height: 380,
+        height: 520,
         minWidth: 620,
-        minHeight: 250,
-        resizable: false,
+        minHeight: 380,
+        resizable: true,
         icon: 'logo.ico'
     },
     export: {
@@ -412,6 +427,7 @@ const createMainWindow = async () => {
         minWidth: 780,
         minHeight: 540,
         icon: path.join(__dirname, '../assets/logo.ico'),
+        ...mainWindowTitleBar,
         ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),

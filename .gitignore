@@ -6,6 +6,7 @@ __pycache__
 /scripts/*
 !/scripts/sync-ludusavi-manifest.js
 !/scripts/sync-xgp-save-tools.js
+!/scripts/sync-guide-catalog.js
 !/scripts/build-db-release.js
 !/scripts/rebuild-electron-native.js
 !/scripts/resolve-release-version.js

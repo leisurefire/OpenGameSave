@@ -1,5 +1,8 @@
 /* About modal window styles. */
 .about-container {
+    width: 100%;
+    height: 100vh;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -7,7 +10,7 @@
     text-align: center;
     padding: 24px;
     gap: 16px;
-    overflow: hidden !important;
+    overflow: hidden auto !important;
 }
 
 .about-hero {
@@ -29,6 +32,83 @@
     padding: 14px !important;
     background: rgba(255, 255, 255, 0.04);
     border-radius: 14px;
+}
+
+.about-link-button,
+.about-source-link {
+    padding: 0;
+    color: var(--color-theme-accent-bright);
+    background: transparent;
+    border: 0;
+    font-size: inherit;
+}
+
+.about-link-button:hover,
+.about-source-link:hover {
+    text-decoration: underline;
+}
+
+.about-notices {
+    width: 100%;
+    max-width: 520px;
+    padding: 14px;
+    color: rgba(255, 255, 255, 0.52);
+    background: rgba(255, 255, 255, 0.035);
+    text-align: left;
+}
+
+.about-notices.hidden {
+    display: none;
+}
+
+.about-notices-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.about-notices-header h2 {
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.about-notices-header > span {
+    padding: 2px 7px;
+    color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.055);
+    border-radius: 999px;
+    font-size: 8px;
+    text-transform: uppercase;
+}
+
+.about-notices > p {
+    margin-top: 7px;
+    font-size: 9px;
+    line-height: 1.45;
+}
+
+.about-notices ul {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.about-notices li {
+    display: grid;
+    gap: 2px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+    font-size: 9px;
+    line-height: 1.42;
+}
+
+.about-source-link,
+.about-source-name {
+    width: fit-content;
+    color: rgba(255, 255, 255, 0.82);
+    font-weight: 620;
 }
 
 .about-footer {

@@ -1,0 +1,56 @@
+{
+    "version": 1,
+    "games": [
+        {
+            "id": "overwatch",
+            "title": "Overwatch 2",
+            "title_zh_CN": "守望先锋 2",
+            "platform_ids": {
+                "Blizzard": "Pro",
+                "Steam": "2357570"
+            },
+            "sources": [
+                {
+                    "id": "overlab",
+                    "name": "OverLab",
+                    "name_zh_CN": "春语实验室",
+                    "category": "wiki",
+                    "language": "zh_CN",
+                    "url": "https://overlab.cn/",
+                    "description": "A maintained Chinese Overwatch knowledge base for heroes, mechanics, maps, patches, and community guides.",
+                    "description_zh_CN": "持续维护的中文守望先锋百科，覆盖英雄数据、游戏机制、地图、补丁和社区攻略。"
+                },
+                {
+                    "id": "blizzard-heroes-cn",
+                    "name": "Official Overwatch Heroes",
+                    "name_zh_CN": "守望先锋官方网站 · 英雄",
+                    "category": "official",
+                    "language": "zh_CN",
+                    "url": "https://ow.blizzard.cn/heroes/",
+                    "description": "Official hero roster, roles, abilities, and background information from Blizzard and NetEase.",
+                    "description_zh_CN": "由暴雪与网易维护的官方英雄阵容、职责、技能和背景资料。"
+                },
+                {
+                    "id": "blizzard-patches-cn",
+                    "name": "Official Patch Notes",
+                    "name_zh_CN": "守望先锋官方网站 · 补丁说明",
+                    "category": "official",
+                    "language": "zh_CN",
+                    "url": "https://ow.blizzard.cn/news/patch-notes/",
+                    "description": "Official live balance changes and game update notes.",
+                    "description_zh_CN": "官方正式服平衡改动与游戏更新说明。"
+                },
+                {
+                    "id": "liquipedia-overwatch",
+                    "name": "Liquipedia Overwatch Wiki",
+                    "name_zh_CN": "Liquipedia 守望先锋 Wiki",
+                    "category": "esports",
+                    "language": "en",
+                    "url": "https://liquipedia.net/overwatch/Main_Page",
+                    "description": "Established competitive Overwatch reference for tournaments, teams, players, match results, and patches.",
+                    "description_zh_CN": "成熟的守望先锋赛事资料库，覆盖赛事、队伍、选手、赛果与补丁。"
+                }
+            ]
+        }
+    ]
+}

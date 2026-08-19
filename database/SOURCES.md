@@ -2,6 +2,12 @@
 
 OpenGameSave's primary database is based on PCGamingWiki. The scheduled incremental sync also consumes the MIT-licensed [Ludusavi Manifest](https://github.com/mtkennerly/ludusavi-manifest), which is itself primarily compiled from PCGamingWiki and store metadata.
 
+## Curated guide catalog
+
+The `game_guide_catalog` metadata record is a small, reviewed directory of external guide sources. Its maintained source is `src/data/gameGuides.json`; `npm run db:sync:guides` synchronizes that catalog into the tracked SQLite database without embedding or republishing third-party article content.
+
+The first supported game is Overwatch. Sources are restricted to HTTPS pages on an explicit host allowlist and currently include the official Chinese Overwatch hero and patch pages, the Chinese community knowledge base OverLab (春语实验室), and Liquipedia's established competitive Overwatch wiki. The application opens these sources in the system browser instead of embedding remote pages.
+
 ## Xbox formats
 
 - **WGS / XGameSave** stores container-and-blob data under `%LOCALAPPDATA%\Packages\<package>\SystemAppData\wgs`. Microsoft documents the container/blob model and the PC path in the [XGameSave overview](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/game-save/xgamesave).

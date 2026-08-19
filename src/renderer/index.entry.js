@@ -6,6 +6,8 @@ import './js/utility.js';
 import { runWhenDomReady } from './js/commonTabs.js';
 
 const tabModuleLoaders = {
+    library: () => import(/* webpackChunkName: "tab-library" */ './js/libraryPage.js'),
+    guides: () => import(/* webpackChunkName: "tab-guides" */ './js/guidesPage.js'),
     backup: () => import(/* webpackChunkName: "tab-backup" */ './js/backupTab.js'),
     restore: () => import(/* webpackChunkName: "tab-restore" */ './js/restoreTab.js'),
     sync: () => import(/* webpackChunkName: "tab-sync" */ './js/syncTab.js')
@@ -21,13 +23,9 @@ function loadTabModule(tabName) {
 }
 
 runWhenDomReady(() => {
-    loadTabModule('backup');
-
-    document.getElementById('restore-tab')?.addEventListener('click', () => {
-        loadTabModule('restore');
-    }, { once: true });
-
-    document.getElementById('sync-tab')?.addEventListener('click', () => {
-        loadTabModule('sync');
-    }, { once: true });
+    loadTabModule('library');
+    document.addEventListener('ogs:navigate', (event) => {
+        const route = event.detail?.route;
+        if (tabModuleLoaders[route]) loadTabModule(route);
+    });
 });

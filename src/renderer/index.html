@@ -5,11 +5,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://cdn.akamai.steamstatic.com https://ld5.res.netease.com; connect-src 'self'">
     <title class="text-content" data-i18n="main.title">OpenGameSave</title>
 </head>
 
 <body class="mica-effect h-screen overflow-hidden">
+    <header class="app-titlebar">
+        <div class="titlebar-drag-region" aria-hidden="true"></div>
+        <div class="titlebar-navigation">
+            <button id="sidebar-toggle" class="titlebar-button" type="button" data-i18n-title="main.collapse_sidebar" data-i18n-aria-label="main.collapse_sidebar">
+                <span class="sidebar-collapse-icon" data-lucide-icon="panel-left-close"></span>
+                <span class="sidebar-expand-icon" data-lucide-icon="panel-left-open"></span>
+            </button>
+            <span class="titlebar-separator"></span>
+            <button id="nav-back" class="titlebar-button" type="button" disabled data-i18n-title="main.go_back" data-i18n-aria-label="main.go_back">
+                <span data-lucide-icon="arrow-left"></span>
+            </button>
+            <button id="nav-forward" class="titlebar-button" type="button" disabled data-i18n-title="main.go_forward" data-i18n-aria-label="main.go_forward">
+                <span data-lucide-icon="arrow-right"></span>
+            </button>
+            <div class="titlebar-menu-strip">
+                <button class="titlebar-menu-button" type="button" data-titlebar-menu="view" data-i18n="main.menu_view">View</button>
+                <button class="titlebar-menu-button" type="button" data-titlebar-menu="games" data-i18n="main.menu_games">Games</button>
+                <button class="titlebar-menu-button" type="button" data-titlebar-menu="help" data-i18n="main.menu_help">Help</button>
+            </div>
+        </div>
+    </header>
+
     <!-- Top right alerts and progresses -->
     <div class="notification-region">
         <div id="progress-container"></div>
@@ -18,35 +40,34 @@
 
     <div class="app-shell">
         <aside class="app-sidebar">
-            <nav class="sidebar-nav" id="main-tab" role="tablist">
-                <button id="backup-tab" data-tabs-target="#backup" role="tab" aria-controls="backup" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.backup">
-                    <span data-lucide-icon="shield-check"></span>
-                    <span class="text-content">Backup</span>
+            <div class="sidebar-brand">
+                <img src="../assets/logo.png" alt="">
+                <span class="text-content">OpenGameSave</span>
+            </div>
+            <nav class="sidebar-nav" id="main-tab" aria-label="Primary navigation">
+                <button id="library-tab" data-nav-target="library" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
+                    <span data-lucide-icon="library-big"></span>
+                    <span class="text-content" data-i18n="main.library">Library</span>
                 </button>
-                <button id="restore-tab" data-tabs-target="#restore" role="tab" aria-controls="restore" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.restore">
-                    <span data-lucide-icon="rotate-ccw-clock"></span>
-                    <span class="text-content">Restore</span>
+                <button id="guides-tab" data-nav-target="guides" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
+                    <span data-lucide-icon="book-open"></span>
+                    <span class="text-content" data-i18n="main.guides">Guides</span>
                 </button>
-                <button id="sync-tab" data-tabs-target="#sync" role="tab" aria-controls="sync" class="sidebar-nav-button font-semibold transition-all opacity-60 active:opacity-100 flex items-center gap-3" data-i18n="main.sync">
+                <button id="saves-tab" data-nav-target="backup" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
+                    <span data-lucide-icon="save"></span>
+                    <span class="text-content" data-i18n="main.saves">Saves</span>
+                </button>
+                <button id="sync-tab" data-nav-target="sync" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
                     <span data-lucide-icon="cloud"></span>
                     <span class="text-content">Sync</span>
                 </button>
             </nav>
 
             <div class="sidebar-actions">
-                <button id="home-import-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <span data-lucide-icon="download"></span>
-                    <span data-i18n="main.import">Import</span>
-                </button>
-                <button id="home-export-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
-                    <span data-lucide-icon="upload"></span>
-                    <span data-i18n="main.export">Export</span>
-                </button>
                 <div class="sidebar-options-row">
                     <button id="home-options-button" class="home-action-button sidebar-action-button text-sm font-semibold flex items-center gap-3">
                         <span data-lucide-icon="sliders-horizontal"></span>
                         <span data-i18n="main.options">Options</span>
-                        <span data-lucide-icon="chevron-up" class="text-[10px] ml-auto"></span>
                     </button>
                     <button id="app-update-download" type="button" class="home-action-button sidebar-update-button hidden"
                         data-i18n-title="settings.app_update_download" data-i18n-aria-label="settings.app_update_download">
@@ -58,7 +79,133 @@
 
     <!-- Main Content -->
     <main id="main-tab-content" class="app-content">
-        <!-- Tab 1: Backup -->
+        <!-- Unified game library -->
+        <section id="library" class="hidden" aria-labelledby="library-title">
+            <div class="library-layout">
+                <header class="page-header library-page-header">
+                    <div class="page-heading">
+                        <span class="page-heading-icon" data-lucide-icon="library-big"></span>
+                        <div class="min-w-0">
+                            <h1 id="library-title" class="page-title text-content" data-i18n="main.library">Library</h1>
+                            <p id="library-count" class="library-count"></p>
+                        </div>
+                    </div>
+                    <div class="library-header-actions">
+                        <label class="library-search search-field">
+                            <span data-lucide-icon="search" class="search-field-icon"></span>
+                            <input id="library-search" class="search-input" type="search" data-i18n-placeholder="main.search_library">
+                        </label>
+                        <button id="library-refresh" class="titlebar-button library-refresh" type="button" data-i18n-title="main.refresh_library" data-i18n-aria-label="main.refresh_library">
+                            <span data-lucide-icon="refresh-cw"></span>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="library-scroll">
+                    <div id="library-loading" class="library-state">
+                        <span class="is-spinning" data-lucide-icon="loader-circle"></span>
+                        <span data-i18n="main.scanning_library">Scanning installed games…</span>
+                    </div>
+
+                    <section id="library-hero" class="library-hero hidden" aria-labelledby="library-hero-title">
+                        <img id="library-hero-image" class="library-hero-image hidden" alt="">
+                        <div class="library-hero-backdrop"></div>
+                        <div class="library-hero-content">
+                            <div id="library-hero-platform" class="library-platform-pill"></div>
+                            <h2 id="library-hero-title"></h2>
+                            <p id="library-hero-path" class="library-hero-path"></p>
+                            <div class="library-hero-actions">
+                                <button id="library-hero-play" class="library-play-button" type="button">
+                                    <span data-lucide-icon="play"></span>
+                                    <span data-i18n="main.play">Play</span>
+                                </button>
+                                <button id="library-hero-folder" class="library-secondary-button" type="button" data-i18n-title="main.open_install_directory" data-i18n-aria-label="main.open_install_directory">
+                                    <span data-lucide-icon="folder-open"></span>
+                                </button>
+                                <button id="library-hero-guide" class="library-secondary-button hidden" type="button" data-i18n-title="main.view_game_guides" data-i18n-aria-label="main.view_game_guides">
+                                    <span data-lucide-icon="book-open"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div id="library-controls" class="library-controls hidden">
+                        <div id="library-platform-filters" class="library-platform-filters" role="group" data-i18n-aria-label="main.filter_platform"></div>
+                        <div class="library-view-options" role="group" data-i18n-aria-label="main.library_view">
+                            <button class="library-view-button active" type="button" data-library-view="grid" data-i18n-title="main.grid_view" data-i18n-aria-label="main.grid_view">
+                                <span data-lucide-icon="layout-grid"></span>
+                            </button>
+                            <button class="library-view-button" type="button" data-library-view="list" data-i18n-title="main.list_view" data-i18n-aria-label="main.list_view">
+                                <span data-lucide-icon="rows-3"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="library-grid" class="library-grid"></div>
+                    <div id="library-empty" class="library-empty hidden">
+                        <span data-lucide-icon="gamepad-2"></span>
+                        <h2 data-i18n="main.library_empty_title">No installed games found</h2>
+                        <p data-i18n="main.library_empty_hint">Install a game with Steam, Epic, GOG or Battle.net, then refresh the library.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Curated game guides -->
+        <section id="guides" class="hidden" aria-labelledby="guides-title">
+            <div class="guides-layout">
+                <header class="page-header guides-page-header">
+                    <div class="page-heading">
+                        <span class="page-heading-icon" data-lucide-icon="book-open"></span>
+                        <div class="min-w-0">
+                            <h1 id="guides-title" class="page-title text-content" data-i18n="main.guides">Guides</h1>
+                            <p class="library-count" data-i18n="main.guides_curated">Curated sources</p>
+                        </div>
+                    </div>
+                    <label class="library-search search-field">
+                        <span data-lucide-icon="search" class="search-field-icon"></span>
+                        <input id="guides-search" class="search-input" type="search" data-i18n-placeholder="main.search_guides">
+                    </label>
+                </header>
+
+                <div class="guides-scroll">
+                    <div id="guides-loading" class="library-state">
+                        <span class="is-spinning" data-lucide-icon="loader-circle"></span>
+                        <span data-i18n="main.loading_guides">Loading guide catalog…</span>
+                    </div>
+
+                    <div id="guides-content" class="hidden">
+                        <section class="guides-hero">
+                            <div class="guides-hero-copy">
+                                <div class="guides-trust-pill">
+                                    <span data-lucide-icon="shield-check"></span>
+                                    <span data-i18n="main.trusted_sources">Trusted sources</span>
+                                </div>
+                                <p class="guides-eyebrow">OVERWATCH 2</p>
+                                <h2 data-i18n="main.overwatch_guide_title">A reliable starting point for every match</h2>
+                                <p data-i18n="main.overwatch_guide_description">Official updates, Chinese mechanics references, hero data, and competitive records in one place.</p>
+                            </div>
+                            <div class="guides-hero-mark">OW</div>
+                        </section>
+
+                        <div class="guides-toolbar">
+                            <div>
+                                <h2 data-i18n="main.guide_sources">Sources</h2>
+                                <p id="guides-source-count"></p>
+                            </div>
+                            <div id="guides-category-filters" class="library-platform-filters"></div>
+                        </div>
+                        <div id="guides-source-grid" class="guides-source-grid"></div>
+                        <div id="guides-empty" class="library-empty hidden">
+                            <span data-lucide-icon="book-open"></span>
+                            <h2 data-i18n="main.no_guides_found">No matching guides found</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Save management: Backup -->
         <section id="backup" role="tabpanel" class="hidden">
             <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
             
@@ -84,6 +231,10 @@
                         <div class="min-w-0">
                             <h1 class="page-title text-content" data-i18n="main.backup">Backup</h1>
                         </div>
+                    </div>
+                    <div class="save-view-switch" role="tablist" data-i18n-aria-label="main.saves">
+                        <button type="button" class="save-view-button active" data-save-target="backup" role="tab" aria-selected="true" data-i18n="main.backup">Backup</button>
+                        <button type="button" class="save-view-button" data-save-target="restore" role="tab" aria-selected="false" data-i18n="main.restore">Restore</button>
                     </div>
                 </header>
                 <div class="content-topbar">
@@ -151,7 +302,7 @@
             </div>
         </section>
 
-        <!-- Tab 2: Restore -->
+        <!-- Save management: Restore -->
         <section id="restore" role="tabpanel" class="hidden">
             <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
             
@@ -177,6 +328,10 @@
                         <div class="min-w-0">
                             <h1 class="page-title text-content" data-i18n="main.restore">Restore</h1>
                         </div>
+                    </div>
+                    <div class="save-view-switch" role="tablist" data-i18n-aria-label="main.saves">
+                        <button type="button" class="save-view-button" data-save-target="backup" role="tab" aria-selected="false" data-i18n="main.backup">Backup</button>
+                        <button type="button" class="save-view-button active" data-save-target="restore" role="tab" aria-selected="true" data-i18n="main.restore">Restore</button>
                     </div>
                 </header>
                 <div class="content-topbar">

@@ -1,4 +1,4 @@
-import { showAlert, updateTranslations } from './utility.js';
+import { showAlert, showExportModal, showImportModal, updateTranslations } from './utility.js';
 import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { getSortedFavoriteGroups, sortGamesForDisplay } from './tableDisplay.js';
 import { initializeTabs } from './tabNavigation.js';
@@ -116,6 +116,10 @@ runWhenDomReady(() => {
     setupSearchFilter('backup');
     setupSearchFilter('restore');
     setDropDownAction();
+});
+
+document.addEventListener('ogs:update-translations', () => {
+    void updateTranslations(document);
 });
 
 window.api.receive('apply-language', () => {
@@ -659,12 +663,36 @@ window.api.receive('execute-menu-action', async (action, data) => {
         window.api.send('open-modal-window', 'auto-backup', { wikiId: data });
     } else if (action === 'settings') {
         window.api.send('open-settings-window');
+    } else if (action === 'import') {
+        showImportModal('');
+    } else if (action === 'export') {
+        showExportModal();
     } else if (action === 'view-account-ids') {
         window.api.send('view-account-ids');
     } else if (action === 'scan-full') {
         window.api.send('scan-full');
     } else if (action === 'about') {
         window.api.send('open-about-window');
+    } else if (action === 'navigate') {
+        document.dispatchEvent(new CustomEvent('ogs:navigate-request', { detail: { route: data } }));
+    } else if (action === 'toggle-sidebar') {
+        document.getElementById('sidebar-toggle')?.click();
+    } else if (action === 'refresh-library') {
+        document.getElementById('library-refresh')?.click();
+    } else if (action === 'launch-library-game' || action === 'open-library-game-directory') {
+        const gameId = typeof data === 'object' && data ? data.id : data;
+        const gameTitle = typeof data === 'object' && data ? data.title : data;
+        try {
+            await window.api.invoke(action, gameId);
+        } catch (error) {
+            console.error(`Library action ${action} failed:`, error);
+            const messageKey = action === 'launch-library-game'
+                ? 'alert.game_launch_failed'
+                : 'alert.open_install_directory_failed';
+            showAlert('error', await window.i18n.translate(messageKey, { game: gameTitle }));
+        }
+    } else if (action === 'open-game-guide') {
+        document.dispatchEvent(new CustomEvent('ogs:navigate-request', { detail: { route: 'guides' } }));
     }
 });
 
