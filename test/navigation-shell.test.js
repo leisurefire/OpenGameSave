@@ -43,7 +43,17 @@ test('library artwork remains lazy, bounded, and renderer-network independent', 
     assert.match(libraryPage, /requestAnimationFrame/);
     assert.match(artworkService, /MAX_ART_BYTES = 12 \* 1024 \* 1024/);
     assert.match(artworkService, /redirect: 'manual'/);
+    assert.match(artworkService, /Buffer\.byteLength\(dataUrl, 'utf8'\)/);
+    assert.match(artworkService, /await response\.body\?\.cancel\(\)/);
     assert.doesNotMatch(indexHtml, /connect-src[^;]*https:/);
+});
+
+test('library scans are coalesced, provider-isolated, and surface detached launch errors', () => {
+    const libraryService = readProjectFile('src/main/services/libraryService.js');
+    assert.match(libraryService, /if \(libraryScanPromise\) return libraryScanPromise/);
+    assert.match(libraryService, /Could not scan the \$\{provider\} library/);
+    assert.match(libraryService, /child\.once\('error', reject\)/);
+    assert.match(libraryService, /isExistingDirectory\(game\.installPath\)/);
 });
 
 test('library and guide interactions expose keyboard and assistive-technology state', () => {

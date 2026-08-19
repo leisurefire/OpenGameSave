@@ -109,9 +109,15 @@ function normalizeTitle(value) {
     return String(value || '').trim().toLocaleLowerCase();
 }
 
+function normalizeDatabasePlatformId(platform, value) {
+    const normalized = String(value || '').trim();
+    const pattern = platform === 'Steam' ? /^\d{1,12}$/ : platform === 'GOG' ? /^\d{1,20}$/ : null;
+    return pattern?.test(normalized) && !/^0+$/.test(normalized) ? normalized : null;
+}
+
 function findCuratedGame(catalog, row) {
-    const steamId = String(row.steam_id || '');
-    const gogId = String(row.gog_id || '');
+    const steamId = normalizeDatabasePlatformId('Steam', row.steam_id);
+    const gogId = normalizeDatabasePlatformId('GOG', row.gog_id);
     const platformMatch = catalog.games.find(game => (
         (steamId && String(game.platform_ids?.Steam || '') === steamId)
         || (gogId && String(game.platform_ids?.GOG || '') === gogId)
@@ -127,6 +133,8 @@ function findCuratedGame(catalog, row) {
 function toGuideGame(row, catalog) {
     const wikiPageId = normalizeWikiPageId(row.wiki_page_id);
     const curated = findCuratedGame(catalog, row);
+    const steamId = normalizeDatabasePlatformId('Steam', row.steam_id);
+    const gogId = normalizeDatabasePlatformId('GOG', row.gog_id);
     const sources = [createPcGamingWikiSource(wikiPageId), ...(curated?.sources || [])]
         .filter((source, index, all) => all.findIndex(candidate => candidate.url === source.url) === index);
     return {
@@ -135,8 +143,8 @@ function toGuideGame(row, catalog) {
         title_zh_CN: curated?.title_zh_CN || String(row.zh_CN || '').slice(0, 200),
         wiki_page_id: String(wikiPageId),
         platform_ids: curated?.platform_ids || Object.fromEntries([
-            row.steam_id ? ['Steam', String(row.steam_id)] : null,
-            row.gog_id ? ['GOG', String(row.gog_id)] : null
+            steamId ? ['Steam', steamId] : null,
+            gogId ? ['GOG', gogId] : null
         ].filter(Boolean)),
         sources
     };
@@ -363,15 +371,37 @@ function createUniqueTitleMap(rows) {
     return candidates;
 }
 
+function createPlatformCandidateMap(rows, platform) {
+    const candidates = new Map();
+    for (const row of rows) {
+        const platformId = normalizeDatabasePlatformId(platform, platform === 'Steam' ? row.steam_id : row.gog_id);
+        if (!platformId) continue;
+        const entries = candidates.get(platformId) || [];
+        entries.push(row);
+        candidates.set(platformId, entries);
+    }
+    return candidates;
+}
+
+function choosePlatformCandidate(candidates, gameTitle) {
+    if (!candidates?.length) return null;
+    if (candidates.length === 1) return candidates[0];
+    const normalizedGameTitle = normalizeTitle(gameTitle);
+    const titleMatches = candidates.filter(row => (
+        normalizeTitle(row.title) === normalizedGameTitle || normalizeTitle(row.zh_CN) === normalizedGameTitle
+    ));
+    return titleMatches.length === 1 ? titleMatches[0] : null;
+}
+
 function matchLibraryGamesToGuideRows(games, rows) {
-    const bySteamId = new Map(rows.filter(row => row.steam_id).map(row => [String(row.steam_id), row]));
-    const byGogId = new Map(rows.filter(row => row.gog_id).map(row => [String(row.gog_id), row]));
+    const bySteamId = createPlatformCandidateMap(rows, 'Steam');
+    const byGogId = createPlatformCandidateMap(rows, 'GOG');
     const byTitle = createUniqueTitleMap(rows);
     return games.map((game) => {
         const platformId = String(game.platformId || '');
         const titleMatch = byTitle.get(normalizeTitle(game.title));
-        const row = game.platform === 'Steam' ? bySteamId.get(platformId) || titleMatch
-            : game.platform === 'GOG' ? byGogId.get(platformId) || titleMatch
+        const row = game.platform === 'Steam' ? choosePlatformCandidate(bySteamId.get(platformId), game.title) || titleMatch
+            : game.platform === 'GOG' ? choosePlatformCandidate(byGogId.get(platformId), game.title) || titleMatch
                 : titleMatch;
         if (!row) return game;
         return {
@@ -400,6 +430,7 @@ module.exports = {
     getGameGuideCatalog,
     matchLibraryGamesToGuideRows,
     normalizeCatalog,
+    normalizeDatabasePlatformId,
     normalizeVerifiedDate,
     searchGameGuides,
     validateGuideUrl

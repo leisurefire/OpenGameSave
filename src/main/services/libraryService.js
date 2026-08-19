@@ -65,12 +65,31 @@ const BATTLE_NET_GAMES = Object.freeze([
 ]);
 
 let scannedGames = new Map();
+let libraryScanPromise = null;
 
 function isReadableFile(filePath, maximumBytes = MAX_MANIFEST_BYTES) {
     if (!filePath) return false;
     try {
         const stats = fs.statSync(filePath);
         return stats.isFile() && stats.size > 0 && stats.size <= maximumBytes;
+    } catch {
+        return false;
+    }
+}
+
+function isExistingDirectory(directoryPath) {
+    if (!directoryPath) return false;
+    try {
+        return fs.statSync(directoryPath).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+function isExistingFile(filePath) {
+    if (!filePath) return false;
+    try {
+        return fs.statSync(filePath).isFile();
     } catch {
         return false;
     }
@@ -114,7 +133,7 @@ function resolveSteamInstallPath(steamAppsRoot, rawDirectoryName) {
     const relative = path.relative(commonRoot, installPath);
     if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
     try {
-        return fs.statSync(installPath).isDirectory() ? installPath : null;
+        return isExistingDirectory(installPath) ? installPath : null;
     } catch {
         return null;
     }
@@ -276,9 +295,10 @@ function scanEpicGames() {
         const manifestPath = path.join(manifestRoot, entry.name);
         const manifest = readJsonFile(manifestPath);
         const appName = String(manifest?.AppName || '').trim();
-        const title = String(manifest?.DisplayName || '').trim();
+        const title = String(manifest?.DisplayName || '').trim().slice(0, 200);
         const installPath = String(manifest?.InstallLocation || '').trim();
-        if (!appName || !title || !installPath || !fs.existsSync(installPath)) return [];
+        if (!/^[A-Za-z0-9._-]{1,256}$/.test(appName) || !title || installPath.length > 4096
+            || !isExistingDirectory(installPath)) return [];
         const normalizedInstallPath = path.normalize(installPath);
         const art = findEpicManifestArt(manifest, manifestPath, normalizedInstallPath);
         const namespace = String(manifest?.CatalogNamespace || manifest?.MainGameCatalogNamespace || '').trim();
@@ -313,7 +333,7 @@ function getGogCacheRoots() {
     if (process.platform !== 'win32') return [];
     const galaxyRoot = path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'GOG.com', 'Galaxy');
     return [galaxyRoot, path.join(galaxyRoot, 'webcache'), path.join(galaxyRoot, 'storage')]
-        .filter(candidate => fs.existsSync(candidate));
+        .filter(isExistingDirectory);
 }
 
 async function scanGogGames() {
@@ -330,10 +350,11 @@ async function scanGogGames() {
             const values = await registryValues(gameKey);
             const registryData = Object.fromEntries(values.map(value => [value.name.toLowerCase(), value.value]));
             const platformId = path.basename(gameKey.key);
-            const title = String(registryData.gamename || registryData.gameid || '').trim();
+            const title = String(registryData.gamename || registryData.gameid || '').trim().slice(0, 200);
             const installPath = String(registryData.path || '').trim();
             const executable = String(registryData.exe || '').trim();
-            if (!title || !installPath || !fs.existsSync(installPath)) continue;
+            if (!/^\d{1,20}$/.test(platformId) || !title || installPath.length > 4096
+                || !isExistingDirectory(installPath)) continue;
             const normalizedInstallPath = path.normalize(installPath);
             const art = findGogLocalArt(registryData, platformId, normalizedInstallPath, cacheRoots);
             games.push({
@@ -343,7 +364,7 @@ async function scanGogGames() {
                 platformId,
                 installPath: normalizedInstallPath,
                 launchType: 'gog',
-                executable: executable && fs.existsSync(executable) ? path.normalize(executable) : null,
+                executable: isExistingFile(executable) ? path.normalize(executable) : null,
                 coverPath: art.coverPath,
                 heroPath: art.heroPath,
                 artRoots: art.artRoots
@@ -371,7 +392,7 @@ function scanBattleNetGames() {
     if (process.platform !== 'win32') return [];
     const configPath = path.join(process.env.APPDATA || '', 'Battle.net', 'Battle.net.config');
     const defaultInstallPath = String(readJsonFile(configPath)?.Client?.Install?.DefaultInstallPath || '').trim();
-    if (!defaultInstallPath || !fs.existsSync(defaultInstallPath)) return [];
+    if (!defaultInstallPath || !isExistingDirectory(defaultInstallPath)) return [];
     const launcherPath = findBattleNetLauncher();
     const cacheRoot = path.join(process.env.LOCALAPPDATA || '', 'Battle.net', 'Cache');
     const artLocale = getBattleNetArtLocale();
@@ -379,7 +400,7 @@ function scanBattleNetGames() {
     return BATTLE_NET_GAMES.flatMap((definition) => {
         const installPath = definition.folders
             .map(folder => path.join(defaultInstallPath, folder))
-            .find(candidate => fs.existsSync(candidate));
+            .find(isExistingDirectory);
         if (!installPath) return [];
         const art = findBattleNetLocalArt(
             cacheRoot,
@@ -416,17 +437,48 @@ function toRendererGame(game) {
     };
 }
 
-async function scanLibraryGames() {
-    const scanned = [
-        ...scanSteamGames(),
-        ...scanEpicGames(),
-        ...await scanGogGames(),
-        ...scanBattleNetGames()
+async function performLibraryScan() {
+    const providers = [
+        ['Steam', scanSteamGames],
+        ['Epic', scanEpicGames],
+        ['GOG', scanGogGames],
+        ['Battle.net', scanBattleNetGames]
     ];
+    const results = await Promise.all(providers.map(async ([provider, scan]) => {
+        try {
+            return await scan();
+        } catch (error) {
+            console.warn(`Could not scan the ${provider} library:`, error.message);
+            return [];
+        }
+    }));
+    const scanned = results.flat();
     scannedGames = new Map(scanned.map(game => [game.id, game]));
     return [...scannedGames.values()]
         .map(toRendererGame)
         .sort((left, right) => left.title.localeCompare(right.title, undefined, { numeric: true }));
+}
+
+function scanLibraryGames() {
+    if (libraryScanPromise) return libraryScanPromise;
+    libraryScanPromise = Promise.resolve().then(performLibraryScan)
+        .finally(() => { libraryScanPromise = null; });
+    return libraryScanPromise;
+}
+
+function launchDetached(executable, args) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(executable, args, {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+        });
+        child.once('error', reject);
+        child.once('spawn', () => {
+            child.unref();
+            resolve();
+        });
+    });
 }
 
 async function getLibraryGameArt(gameId, artType) {
@@ -449,12 +501,7 @@ async function launchLibraryGame(gameId) {
     } else if (game.launchType === 'gog') {
         await shell.openExternal(`goggalaxy://openGameView/${encodeURIComponent(game.platformId)}`);
     } else if (game.launchType === 'battlenet' && game.launcherPath) {
-        const child = spawn(game.launcherPath, [`--exec=launch ${game.platformId}`], {
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: true
-        });
-        child.unref();
+        await launchDetached(game.launcherPath, [`--exec=launch ${game.platformId}`]);
     } else if (game.launchType === 'battlenet') {
         await shell.openExternal(`battlenet://${encodeURIComponent(game.platformId)}`);
     } else {
@@ -466,7 +513,7 @@ async function launchLibraryGame(gameId) {
 
 async function openLibraryGameDirectory(gameId) {
     const game = scannedGames.get(String(gameId));
-    if (!game || !game.installPath || !fs.existsSync(game.installPath)) {
+    if (!game || !isExistingDirectory(game.installPath)) {
         throw new Error('Game installation directory is unavailable');
     }
     const errorMessage = await shell.openPath(game.installPath);

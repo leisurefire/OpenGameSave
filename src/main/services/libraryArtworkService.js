@@ -74,6 +74,18 @@ function existingRealPath(candidate) {
     }
 }
 
+function readFileHeader(filePath, length) {
+    let descriptor;
+    try {
+        descriptor = fs.openSync(filePath, 'r');
+        const header = Buffer.alloc(length);
+        const bytesRead = fs.readSync(descriptor, header, 0, header.length, 0);
+        return header.subarray(0, bytesRead);
+    } finally {
+        if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+}
+
 function inspectTrustedArtFile(filePath, trustedRoots) {
     if (typeof filePath !== 'string' || !filePath || filePath.length > 4096) return null;
     const resolvedPath = path.resolve(filePath);
@@ -87,11 +99,7 @@ function inspectTrustedArtFile(filePath, trustedRoots) {
             return realRoot && isPathWithin(realRoot, realPath);
         });
         if (!allowed) return null;
-        const descriptor = fs.openSync(realPath, 'r');
-        const header = Buffer.alloc(16);
-        const bytesRead = fs.readSync(descriptor, header, 0, header.length, 0);
-        fs.closeSync(descriptor);
-        const mimeType = mimeTypeFromBytes(header.subarray(0, bytesRead));
+        const mimeType = mimeTypeFromBytes(readFileHeader(realPath, 16));
         return mimeType ? { path: realPath, mimeType, size: stats.size, modified: stats.mtimeMs } : null;
     } catch {
         return null;
@@ -210,10 +218,7 @@ function buildBattleNetArtIndex(cacheRoot, locale = 'default') {
         try {
             stats = fs.statSync(filePath);
             if (!stats.isFile() || stats.size <= 2 || stats.size > MAX_MANIFEST_BYTES) continue;
-            const descriptor = fs.openSync(filePath, 'r');
-            const firstByte = Buffer.alloc(1);
-            fs.readSync(descriptor, firstByte, 0, 1, 0);
-            fs.closeSync(descriptor);
+            const firstByte = readFileHeader(filePath, 1);
             if (firstByte[0] !== 0x7b) continue;
             const catalog = JSON.parse(fs.readFileSync(filePath, 'utf8'));
             localeOrder.forEach((entry, localeRank) => {
@@ -362,8 +367,13 @@ function extractOpenGraphImageUrls(html, baseUrl) {
 }
 
 async function readResponseBounded(response, maximumBytes) {
-    const declaredLength = Number(response.headers.get('content-length') || 0);
-    if (declaredLength > maximumBytes) throw new Error('Official resource exceeds the size limit');
+    const rawLength = response.headers.get('content-length');
+    const declaredLength = Number(rawLength || 0);
+    if ((rawLength && (!Number.isSafeInteger(declaredLength) || declaredLength < 0))
+        || declaredLength > maximumBytes) {
+        await response.body?.cancel();
+        throw new Error('Official resource has an invalid or excessive size');
+    }
     const reader = response.body?.getReader();
     if (!reader) return Buffer.alloc(0);
     const chunks = [];
@@ -400,7 +410,10 @@ async function fetchBounded(initialUrl, provider, purpose, maximumBytes, accept)
                 currentUrl = new URL(location, currentUrl).toString();
                 continue;
             }
-            if (!response.ok) throw new Error(`Official resource returned HTTP ${response.status}`);
+            if (!response.ok) {
+                await response.body?.cancel();
+                throw new Error(`Official resource returned HTTP ${response.status}`);
+            }
             return {
                 buffer: await readResponseBounded(response, maximumBytes),
                 contentType: String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(),
@@ -499,7 +512,8 @@ function readCachedAsset(cacheKey) {
     return cached.dataUrl;
 }
 
-function writeCachedAsset(cacheKey, dataUrl, bytes) {
+function writeCachedAsset(cacheKey, dataUrl) {
+    const bytes = Buffer.byteLength(dataUrl, 'utf8');
     const existing = assetCache.get(cacheKey);
     if (existing) {
         assetCacheBytes -= existing.bytes;
@@ -522,11 +536,18 @@ async function loadLocalArtDataUrl(filePath, trustedRoots) {
     const cacheKey = `file:${inspected.path}:${inspected.modified}:${inspected.size}`;
     const cached = readCachedAsset(cacheKey);
     if (cached) return cached;
-    const buffer = await fs.promises.readFile(inspected.path);
-    if (buffer.length !== inspected.size || mimeTypeFromBytes(buffer) !== inspected.mimeType) return null;
-    const dataUrl = `data:${inspected.mimeType};base64,${buffer.toString('base64')}`;
-    writeCachedAsset(cacheKey, dataUrl, buffer.length);
-    return dataUrl;
+    if (inFlightAssets.has(cacheKey)) return await inFlightAssets.get(cacheKey);
+    const promise = (async () => {
+        const buffer = await fs.promises.readFile(inspected.path);
+        const current = inspectTrustedArtFile(inspected.path, trustedRoots);
+        if (!current || current.size !== inspected.size || current.modified !== inspected.modified
+            || buffer.length !== inspected.size || mimeTypeFromBytes(buffer) !== inspected.mimeType) return null;
+        const dataUrl = `data:${inspected.mimeType};base64,${buffer.toString('base64')}`;
+        writeCachedAsset(cacheKey, dataUrl);
+        return dataUrl;
+    })().finally(() => inFlightAssets.delete(cacheKey));
+    inFlightAssets.set(cacheKey, promise);
+    return await promise;
 }
 
 async function downloadOfficialArt(provider, url) {
@@ -541,7 +562,7 @@ async function downloadOfficialArt(provider, url) {
             throw new Error('Official artwork MIME type is invalid');
         }
         const dataUrl = `data:${detectedMime};base64,${response.buffer.toString('base64')}`;
-        writeCachedAsset(cacheKey, dataUrl, response.buffer.length);
+        writeCachedAsset(cacheKey, dataUrl);
         return dataUrl;
     })().finally(() => inFlightAssets.delete(cacheKey));
     inFlightAssets.set(cacheKey, promise);
@@ -552,8 +573,12 @@ async function getGameArtwork(game, artType) {
     if (!['cover', 'hero'].includes(artType)) throw new Error('Invalid artwork type');
     const localPath = artType === 'hero' ? game?.heroPath : game?.coverPath;
     if (localPath) {
-        const localArt = await loadLocalArtDataUrl(localPath, game.artRoots || []);
-        if (localArt) return localArt;
+        try {
+            const localArt = await loadLocalArtDataUrl(localPath, game.artRoots || []);
+            if (localArt) return localArt;
+        } catch (error) {
+            console.warn(`Could not load local artwork ${localPath}:`, error.message);
+        }
     }
     const official = await resolveOfficialArt(game);
     for (const url of official[artType] || []) {

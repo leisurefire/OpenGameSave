@@ -9,6 +9,7 @@ const {
     createPcGamingWikiSource,
     matchLibraryGamesToGuideRows,
     normalizeCatalog,
+    normalizeDatabasePlatformId,
     normalizeVerifiedDate,
     validateGuideUrl
 } = require('../src/main/services/guideService');
@@ -42,6 +43,8 @@ test('curated Overwatch guides use a bounded catalog of trusted HTTPS sources', 
     assert.throws(() => createPcGamingWikiSource('../1'), /Invalid wiki page id/);
     assert.equal(normalizeVerifiedDate('2024-02-29'), '2024-02-29');
     assert.equal(normalizeVerifiedDate('2026-02-29'), '');
+    assert.equal(normalizeDatabasePlatformId('GOG', '90071992547409931234'), '90071992547409931234');
+    assert.equal(normalizeDatabasePlatformId('GOG', '2093619782 <!-- package -->'), null);
     assert.throws(() => normalizeCatalog({
         version: 1,
         games: [{ sources: [{ category: 'unknown', url: 'https://overlab.cn/' }] }]
@@ -52,17 +55,21 @@ test('library guide matching preserves large numeric IDs and refuses ambiguous t
     const games = [
         { id: 'gog:1', platform: 'GOG', platformId: '90071992547409931234', title: 'Stable ID wins' },
         { id: 'epic:1', platform: 'Epic', platformId: 'epic-one', title: 'Shared title' },
-        { id: 'steam:1', platform: 'Steam', platformId: '42', title: 'Shared title' }
+        { id: 'steam:1', platform: 'Steam', platformId: '42', title: 'Shared title' },
+        { id: 'steam:2', platform: 'Steam', platformId: '10100', title: 'Correct edition' }
     ];
     const rows = [
         { wiki_page_id: 10, title: 'Different title', zh_CN: '', steam_id: null, gog_id: '90071992547409931234' },
         { wiki_page_id: 11, title: 'Shared title', zh_CN: '', steam_id: '42', gog_id: null },
-        { wiki_page_id: 12, title: 'Shared title', zh_CN: '', steam_id: null, gog_id: null }
+        { wiki_page_id: 12, title: 'Shared title', zh_CN: '', steam_id: null, gog_id: null },
+        { wiki_page_id: 13, title: 'Other edition', zh_CN: '', steam_id: '10100', gog_id: null },
+        { wiki_page_id: 14, title: 'Correct edition', zh_CN: '', steam_id: '10100', gog_id: null }
     ];
     const matched = matchLibraryGamesToGuideRows(games, rows);
     assert.equal(matched[0].guide.wikiPageId, '10');
     assert.equal(matched[1].guide, undefined);
     assert.equal(matched[2].guide.wikiPageId, '11');
+    assert.equal(matched[3].guide.wikiPageId, '14');
 });
 
 test('guide UI searches the local game database and exposes source provenance', () => {
