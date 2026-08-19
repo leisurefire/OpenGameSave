@@ -15,6 +15,7 @@ window.api.receive('update-progress', (progressId, progressTitle, percentage) =>
 });
 
 window.api.receive('menu-hidden', () => {
+    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
     window.activeMenuTrigger = null;
 });
 

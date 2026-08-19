@@ -18,7 +18,10 @@
                     "language": "zh_CN",
                     "url": "https://overlab.cn/",
                     "description": "A maintained Chinese Overwatch knowledge base for heroes, mechanics, maps, patches, and community guides.",
-                    "description_zh_CN": "持续维护的中文守望先锋百科，覆盖英雄数据、游戏机制、地图、补丁和社区攻略。"
+                    "description_zh_CN": "持续维护的中文守望先锋百科，覆盖英雄数据、游戏机制、地图、补丁和社区攻略。",
+                    "trust_reason": "A focused Chinese community wiki with an editorial team, source notices, and visible update history.",
+                    "trust_reason_zh_CN": "由专门编辑团队维护的中文社区百科，公开标注资料来源并保留更新记录。",
+                    "verified_at": "2026-08-20"
                 },
                 {
                     "id": "blizzard-heroes-cn",
@@ -28,7 +31,10 @@
                     "language": "zh_CN",
                     "url": "https://ow.blizzard.cn/heroes/",
                     "description": "Official hero roster, roles, abilities, and background information from Blizzard and NetEase.",
-                    "description_zh_CN": "由暴雪与网易维护的官方英雄阵容、职责、技能和背景资料。"
+                    "description_zh_CN": "由暴雪与网易维护的官方英雄阵容、职责、技能和背景资料。",
+                    "trust_reason": "First-party information published on the official Chinese Overwatch site.",
+                    "trust_reason_zh_CN": "发布于守望先锋国服官方网站的第一方资料。",
+                    "verified_at": "2026-08-20"
                 },
                 {
                     "id": "blizzard-patches-cn",
@@ -38,7 +44,10 @@
                     "language": "zh_CN",
                     "url": "https://ow.blizzard.cn/news/patch-notes/",
                     "description": "Official live balance changes and game update notes.",
-                    "description_zh_CN": "官方正式服平衡改动与游戏更新说明。"
+                    "description_zh_CN": "官方正式服平衡改动与游戏更新说明。",
+                    "trust_reason": "First-party patch information published by the game's Chinese operator.",
+                    "trust_reason_zh_CN": "由游戏国服运营方发布的第一方补丁信息。",
+                    "verified_at": "2026-08-20"
                 },
                 {
                     "id": "liquipedia-overwatch",
@@ -48,7 +57,10 @@
                     "language": "en",
                     "url": "https://liquipedia.net/overwatch/Main_Page",
                     "description": "Established competitive Overwatch reference for tournaments, teams, players, match results, and patches.",
-                    "description_zh_CN": "成熟的守望先锋赛事资料库，覆盖赛事、队伍、选手、赛果与补丁。"
+                    "description_zh_CN": "成熟的守望先锋赛事资料库，覆盖赛事、队伍、选手、赛果与补丁。",
+                    "trust_reason": "An established, moderated esports wiki with citations and revision history.",
+                    "trust_reason_zh_CN": "成熟且有审核机制的电竞百科，条目提供引用与修订历史。",
+                    "verified_at": "2026-08-20"
                 }
             ]
         }

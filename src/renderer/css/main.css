@@ -370,7 +370,7 @@
 
 .library-count {
     margin-top: 1px;
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.56);
     font-size: 10px;
     line-height: 12px;
 }
@@ -422,7 +422,7 @@
 }
 
 .library-search .search-input::placeholder {
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.55);
 }
 
 .library-search .search-input::-webkit-search-cancel-button {
@@ -454,7 +454,7 @@
     align-items: center;
     justify-content: center;
     gap: 9px;
-    color: rgba(255, 255, 255, 0.46);
+    color: rgba(255, 255, 255, 0.62);
     font-size: 12px;
 }
 
@@ -869,7 +869,7 @@
 
 .library-card-copy p {
     margin-top: 2px;
-    color: rgba(255, 255, 255, 0.36);
+    color: rgba(255, 255, 255, 0.58);
     font-size: 10px;
 }
 
@@ -931,7 +931,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.38);
+    color: rgba(255, 255, 255, 0.58);
     text-align: center;
 }
 
@@ -978,6 +978,79 @@
 .guides-page-header .library-search {
     width: min(280px, 38vw);
     flex: 0 1 280px;
+}
+
+.guide-game-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    width: min(390px, 75vw);
+    max-height: min(430px, 62vh);
+    padding: 5px;
+    overflow-y: auto;
+    background: rgba(17, 20, 27, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+    backdrop-filter: blur(24px);
+}
+
+.guide-game-results.hidden {
+    display: none;
+}
+
+.guide-game-result {
+    width: 100%;
+    min-height: 49px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 9px;
+    color: rgba(255, 255, 255, 0.76);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    text-align: left;
+}
+
+.guide-game-result:hover,
+.guide-game-result:focus-visible {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.065);
+}
+
+.guide-game-result > span:first-child {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.guide-game-result strong {
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 620;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.guide-game-result small,
+.guide-game-results-empty {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
+}
+
+.guide-game-result > .lucide-icon {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 13px;
+}
+
+.guide-game-results-empty {
+    padding: 14px 10px;
+    text-align: center;
 }
 
 .guides-scroll {
@@ -1088,6 +1161,72 @@
     line-height: 1;
 }
 
+.guides-data-note {
+    min-height: 70px;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    margin-top: 10px;
+    padding: 11px 12px;
+    background: color-mix(in srgb, var(--system-accent) 5%, rgba(255, 255, 255, 0.025));
+    border: 1px solid color-mix(in srgb, var(--system-accent) 14%, rgba(255, 255, 255, 0.07));
+    border-radius: 10px;
+}
+
+.guides-data-note-icon {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--system-accent) 72%, white);
+    background: color-mix(in srgb, var(--system-accent) 10%, transparent);
+    border-radius: 8px;
+}
+
+.guides-data-note-icon .lucide-icon {
+    width: 15px;
+    height: 15px;
+}
+
+.guides-data-note h3 {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 11px;
+    font-weight: 640;
+}
+
+.guides-data-note p {
+    max-width: 760px;
+    margin-top: 3px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.guide-data-repo-button {
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    color: rgba(255, 255, 255, 0.68);
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.guide-data-repo-button:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.guide-data-repo-button .lucide-icon {
+    width: 13px;
+    height: 13px;
+}
+
 .guides-toolbar {
     min-height: 68px;
     display: flex;
@@ -1114,7 +1253,7 @@
 
 .guides-toolbar p {
     margin-top: 2px;
-    color: rgba(255, 255, 255, 0.34);
+    color: rgba(255, 255, 255, 0.58);
     font-size: 10px;
 }
 
@@ -1159,7 +1298,7 @@
     color: rgba(255, 255, 255, 0.64);
     background: rgba(255, 255, 255, 0.06);
     border-radius: 999px;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 620;
     letter-spacing: 0.035em;
 }
@@ -1199,7 +1338,7 @@
     display: -webkit-box;
     margin-top: 6px;
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.46);
+    color: rgba(255, 255, 255, 0.62);
     font-size: 11px;
     line-height: 1.5;
     -webkit-box-orient: vertical;
@@ -1209,8 +1348,25 @@
 .guide-source-card-footer {
     margin-top: auto;
     padding-top: 12px;
-    color: rgba(255, 255, 255, 0.28);
-    font-size: 9px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
+}
+
+.guide-source-metadata {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.guide-source-metadata > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.guide-source-verified {
+    color: color-mix(in srgb, var(--system-accent) 56%, rgba(255, 255, 255, 0.3));
 }
 
 .guide-open-button {
@@ -1227,6 +1383,21 @@
 .guide-open-button:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
+}
+
+.library-refresh:focus-visible,
+.library-play-button:focus-visible,
+.library-secondary-button:focus-visible,
+.library-filter-button:focus-visible,
+.library-view-button:focus-visible,
+.library-card-play:focus-visible,
+.library-card-guide:focus-visible,
+.library-card-manage:focus-visible,
+.guide-game-result:focus-visible,
+.guide-data-repo-button:focus-visible,
+.guide-open-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--system-accent) 78%, white);
+    outline-offset: 2px;
 }
 
 .page-heading {
@@ -2174,6 +2345,15 @@ input[type="text"].search-input::placeholder {
         justify-content: flex-start;
     }
 
+    .guides-data-note {
+        grid-template-columns: 30px minmax(0, 1fr);
+    }
+
+    .guide-data-repo-button {
+        grid-column: 1 / -1;
+        justify-content: center;
+    }
+
     .library-view-options {
         display: none;
     }
@@ -2220,5 +2400,22 @@ input[type="text"].search-input::placeholder {
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
+    }
+}
+
+@media (forced-colors: active) {
+    .library-card-art,
+    .library-filter-button,
+    .library-view-button,
+    .guide-source-card,
+    .guide-game-result {
+        border: 1px solid ButtonText;
+    }
+
+    .library-filter-button.active,
+    .library-view-button.active,
+    .library-card.selected .library-card-art {
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
     }
 }

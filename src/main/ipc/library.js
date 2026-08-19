@@ -6,11 +6,12 @@ const {
     openLibraryGameDirectory,
     scanLibraryGames
 } = require('../services/libraryService');
+const { enrichLibraryGamesWithGuides } = require('../services/guideService');
 
 function registerLibraryIpc({ ensureGameDataReady }) {
     ipcMain.handle('get-library-games', async () => {
         await ensureGameDataReady();
-        return await scanLibraryGames();
+        return enrichLibraryGamesWithGuides(await scanLibraryGames());
     });
     ipcMain.handle('get-library-game-art', (event, gameId, artType) => (
         getLibraryGameArt(gameId, artType)

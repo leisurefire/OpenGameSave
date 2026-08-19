@@ -6,7 +6,9 @@ OpenGameSave's primary database is based on PCGamingWiki. The scheduled incremen
 
 The `game_guide_catalog` metadata record is a small, reviewed directory of external guide sources. Its maintained source is `src/data/gameGuides.json`; `npm run db:sync:guides` synchronizes that catalog into the tracked SQLite database without embedding or republishing third-party article content.
 
-The first supported game is Overwatch. Sources are restricted to HTTPS pages on an explicit host allowlist and currently include the official Chinese Overwatch hero and patch pages, the Chinese community knowledge base OverLab (春语实验室), and Liquipedia's established competitive Overwatch wiki. The application opens these sources in the system browser instead of embedding remote pages.
+Every database row with a valid PCGamingWiki `wiki_page_id` can expose its exact PCGamingWiki technical reference. Search results and installed-library matches use stable Steam/GOG identifiers where available, then exact normalized titles; generated links use the stored page ID and never guess a wiki slug. Overwatch additionally has reviewed official, Chinese community, and esports sources from the curated catalog.
+
+GitHub research found useful general metadata projects, but not a maintained repository that can establish the quality of game walkthroughs at this scale. OpenGameSave therefore does not label arbitrary GitHub guide lists as trusted. It relies on PCGamingWiki's MediaWiki/Cargo data and documents the project's [official GitHub redirect API](https://github.com/PCGamingWiki/api), while keeping game-specific editorial sources behind manual review. Sources are restricted to HTTPS pages on an explicit host allowlist and open in the system browser instead of being embedded.
 
 ## Xbox formats
 

@@ -6,7 +6,11 @@ const test = require('node:test');
 const catalog = require('../src/data/gameGuides.json');
 const {
     GUIDE_CATALOG_METADATA_KEY,
+    createPcGamingWikiSource,
+    matchLibraryGamesToGuideRows,
     normalizeCatalog,
+    normalizeDatabasePlatformId,
+    normalizeVerifiedDate,
     validateGuideUrl
 } = require('../src/main/services/guideService');
 
@@ -18,9 +22,72 @@ test('curated Overwatch guides use a bounded catalog of trusted HTTPS sources', 
     assert.ok(overwatch.sources.some(source => source.url === 'https://overlab.cn/'));
     assert.ok(overwatch.sources.some(source => source.url.startsWith('https://ow.blizzard.cn/')));
     assert.ok(overwatch.sources.some(source => source.url.startsWith('https://liquipedia.net/overwatch/')));
+    assert.ok(overwatch.sources.every(source => source.verified_at === '2026-08-20'));
+    assert.ok(overwatch.sources.every(source => source.trust_reason && source.trust_reason_zh_CN));
+    assert.deepEqual(createPcGamingWikiSource(151795), {
+        id: 'pcgamingwiki',
+        name: 'PCGamingWiki',
+        name_zh_CN: 'PCGamingWiki 技术百科',
+        category: 'wiki',
+        language: 'en',
+        url: 'https://www.pcgamingwiki.com/wiki/index.php?curid=151795',
+        description: 'Game-specific fixes, save locations, configuration details, known issues, and PC compatibility notes.',
+        description_zh_CN: '面向该游戏的故障修复、存档位置、配置说明、已知问题与 PC 兼容性资料。',
+        trust_reason: 'Matched by the stable PCGamingWiki page ID stored in the OpenGameSave database.',
+        trust_reason_zh_CN: '通过 OpenGameSave 数据库保存的 PCGamingWiki 稳定页面 ID 精确匹配。',
+        verified_at: '2026-08-20'
+    });
     assert.equal(GUIDE_CATALOG_METADATA_KEY, 'game_guide_catalog');
     assert.throws(() => validateGuideUrl('http://overlab.cn/'), /not trusted/);
     assert.throws(() => validateGuideUrl('https://overlab.cn.example.com/'), /not trusted/);
+    assert.throws(() => createPcGamingWikiSource('../1'), /Invalid wiki page id/);
+    assert.equal(normalizeVerifiedDate('2024-02-29'), '2024-02-29');
+    assert.equal(normalizeVerifiedDate('2026-02-29'), '');
+    assert.equal(normalizeDatabasePlatformId('GOG', '90071992547409931234'), '90071992547409931234');
+    assert.equal(normalizeDatabasePlatformId('GOG', '2093619782 <!-- package -->'), null);
+    assert.throws(() => normalizeCatalog({
+        version: 1,
+        games: [{ sources: [{ category: 'unknown', url: 'https://overlab.cn/' }] }]
+    }), /category is not supported/);
+});
+
+test('library guide matching preserves large numeric IDs and refuses ambiguous title fallbacks', () => {
+    const games = [
+        { id: 'gog:1', platform: 'GOG', platformId: '90071992547409931234', title: 'Stable ID wins' },
+        { id: 'epic:1', platform: 'Epic', platformId: 'epic-one', title: 'Shared title' },
+        { id: 'steam:1', platform: 'Steam', platformId: '42', title: 'Shared title' },
+        { id: 'steam:2', platform: 'Steam', platformId: '10100', title: 'Correct edition' }
+    ];
+    const rows = [
+        { wiki_page_id: 10, title: 'Different title', zh_CN: '', steam_id: null, gog_id: '90071992547409931234' },
+        { wiki_page_id: 11, title: 'Shared title', zh_CN: '', steam_id: '42', gog_id: null },
+        { wiki_page_id: 12, title: 'Shared title', zh_CN: '', steam_id: null, gog_id: null },
+        { wiki_page_id: 13, title: 'Other edition', zh_CN: '', steam_id: '10100', gog_id: null },
+        { wiki_page_id: 14, title: 'Correct edition', zh_CN: '', steam_id: '10100', gog_id: null }
+    ];
+    const matched = matchLibraryGamesToGuideRows(games, rows);
+    assert.equal(matched[0].guide.wikiPageId, '10');
+    assert.equal(matched[1].guide, undefined);
+    assert.equal(matched[2].guide.wikiPageId, '11');
+    assert.equal(matched[3].guide.wikiPageId, '14');
+});
+
+test('guide UI searches the local game database and exposes source provenance', () => {
+    const indexHtml = fs.readFileSync(path.join(__dirname, '../src/renderer/index.html'), 'utf8');
+    const guidePage = fs.readFileSync(path.join(__dirname, '../src/renderer/js/guidesPage.js'), 'utf8');
+    const guideService = fs.readFileSync(path.join(__dirname, '../src/main/services/guideService.js'), 'utf8');
+    const guideIpc = fs.readFileSync(path.join(__dirname, '../src/main/ipc/guides.js'), 'utf8');
+    const libraryIpc = fs.readFileSync(path.join(__dirname, '../src/main/ipc/library.js'), 'utf8');
+
+    assert.match(indexHtml, /id="guides-game-results"/);
+    assert.match(indexHtml, /id="guides-database-repo"/);
+    assert.match(guidePage, /search-game-guides/);
+    assert.match(guidePage, /get-game-guide/);
+    assert.match(guidePage, /const requestId = \+\+searchRequestId;[\s\S]*if \(!query\)/);
+    assert.match(guideService, /databaseCatalogCache/);
+    assert.match(guideService, /LOWER\(COALESCE\(zh_CN/);
+    assert.match(guideIpc, /ipcMain\.handle\('search-game-guides'/);
+    assert.match(libraryIpc, /enrichLibraryGamesWithGuides/);
 });
 
 test('about page and shipped notices disclose licenses for curated references', () => {
@@ -31,10 +98,12 @@ test('about page and shipped notices disclose licenses for curated references', 
     assert.match(aboutHtml, /id="about-notices"/);
     assert.match(aboutHtml, /https:\/\/overlab\.cn\/about\/creative-commons/);
     assert.match(aboutHtml, /https:\/\/liquipedia\.net\/commons\/Liquipedia:Copyrights/);
-    assert.match(aboutHtml, /Steam Store artwork/);
+    assert.match(aboutHtml, /Installed game artwork/);
     assert.match(notices, /CC BY-NC-SA 4\.0/);
     assert.match(notices, /CC BY-SA 3\.0/);
     assert.match(notices, /cdn\.akamai\.steamstatic\.com/);
-    assert.match(notices, /ld5\.res\.netease\.com/);
+    assert.match(notices, /store-content\.ak\.epicgames\.com/);
+    assert.match(notices, /images\.gog-statics\.com/);
+    assert.doesNotMatch(notices, /ld5\.res\.netease\.com/);
     assert.match(notices, /does not redistribute|does not bundle/i);
 });
