@@ -9,6 +9,7 @@ const {
     normalizeBackupDate,
     normalizeRegistryKeyPath,
     normalizeSyncProvider,
+    normalizeVisibleSidebarItems,
     normalizeWebDAVRemotePath,
     normalizeWebDAVUrl,
     normalizeWebDAVUsername,
@@ -86,6 +87,12 @@ test('sync provider and WebDAV settings reject unsafe or ambiguous values', () =
     assert.throws(() => normalizeWebDAVUrl('https://example.com/dav?token=secret'));
     assert.throws(() => normalizeWebDAVRemotePath('/'));
     assert.throws(() => normalizeWebDAVRemotePath('/OpenGameSave/../other'));
+});
+
+test('sidebar visibility keeps supported items in navigation order', () => {
+    assert.deepEqual(normalizeVisibleSidebarItems(['sync', 'library', 'unknown', 'sync']), ['library', 'sync']);
+    assert.deepEqual(normalizeVisibleSidebarItems(null), ['library', 'guides', 'backup', 'sync']);
+    assert.deepEqual(sanitizeSettingValue('visibleSidebarItems', [], ['library']), []);
 });
 
 test('backup metadata and archive paths reject traversal or forged folder names', () => {

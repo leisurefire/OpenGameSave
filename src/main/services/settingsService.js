@@ -105,6 +105,7 @@ const loadSettings = () => {
         webdavUrl: '',
         webdavUsername: '',
         webdavRemotePath: '/OpenGameSave',
+        visibleSidebarItems: ['library', 'guides', 'backup', 'sync'],
         maxBackups: 5,
         launchAtStartup: false,
         autoAppUpdate: true,

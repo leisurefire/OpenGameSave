@@ -41,6 +41,12 @@
         "save_uninstalled_games_hint": "扫描并显示已卸载游戏遗留的现有存档",
         "sync_accent_color": "使用系统主题色",
         "sync_accent_color_hint": "使用 Windows 系统强调色",
+        "sidebar": "侧栏",
+        "sidebar_hint": "选择要在主窗口左侧栏中显示的页面入口",
+        "show_library_in_sidebar": "在侧栏中显示游戏库",
+        "show_guides_in_sidebar": "在侧栏中显示攻略",
+        "show_saves_in_sidebar": "在侧栏中显示存档",
+        "show_sync_in_sidebar": "在侧栏中显示同步",
         "backup_scope_hint": "如需设置备份范围，请前往“选项”>“查看账户 ID”"
     },
     "about": {

@@ -3,6 +3,7 @@ const { normalizeDatabaseVariant } = require('./databaseManifest');
 
 const SUPPORTED_LANGUAGES = new Set(['en_US', 'zh_CN']);
 const SUPPORTED_SYNC_PROVIDERS = new Set(['github', 'webdav']);
+const SUPPORTED_SIDEBAR_ITEMS = ['library', 'guides', 'backup', 'sync'];
 const AUTO_BACKUP_MODES = new Set(['interval', 'watcher']);
 const BACKUP_PATH_TYPES = new Set(['file', 'folder', 'reg']);
 const WIKI_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -40,6 +41,7 @@ const ALLOWED_SETTING_KEYS = new Set([
     'webdavUrl',
     'webdavUsername',
     'webdavRemotePath',
+    'visibleSidebarItems',
     'maxBackups',
     ...BOOLEAN_SETTING_KEYS,
     'gameInstalls',
@@ -53,6 +55,12 @@ function normalizeLanguage(language) {
 
 function normalizeSyncProvider(provider, fallback = 'github') {
     return SUPPORTED_SYNC_PROVIDERS.has(provider) ? provider : fallback;
+}
+
+function normalizeVisibleSidebarItems(value, fallback = SUPPORTED_SIDEBAR_ITEMS) {
+    if (!Array.isArray(value)) return [...fallback];
+    const selectedItems = new Set(value);
+    return SUPPORTED_SIDEBAR_ITEMS.filter(item => selectedItems.has(item));
 }
 
 function normalizeWebDAVUrl(value, {
@@ -335,6 +343,7 @@ function sanitizeSettingValue(key, value, fallback) {
     if (key === 'webdavUrl') return normalizeWebDAVUrl(value, { allowEmpty: true, fallback });
     if (key === 'webdavUsername') return normalizeWebDAVUsername(value, fallback);
     if (key === 'webdavRemotePath') return normalizeWebDAVRemotePath(value, fallback);
+    if (key === 'visibleSidebarItems') return normalizeVisibleSidebarItems(value, fallback);
     if (key === 'maxBackups') return normalizeBoundedInteger(value, 1, 1000, fallback);
     if (BOOLEAN_SETTING_KEYS.has(key)) return normalizeBoolean(value, fallback);
     if (WIKI_ID_ARRAY_SETTING_KEYS.has(key)) return normalizeWikiIdArray(value, fallback);
@@ -558,6 +567,7 @@ module.exports = {
     normalizeDatabaseVariant,
     normalizeLanguage,
     normalizeSyncProvider,
+    normalizeVisibleSidebarItems,
     normalizeWebDAVRemotePath,
     normalizeWebDAVUrl,
     normalizeWebDAVUsername,

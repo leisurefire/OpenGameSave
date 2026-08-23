@@ -112,6 +112,46 @@
             </div>
         </section>
 
+        <section class="settings-section" aria-labelledby="settings-sidebar-heading">
+            <div>
+                <h2 id="settings-sidebar-heading" class="settings-section-title" data-i18n="settings.sidebar">Sidebar</h2>
+                <p class="settings-section-description" data-i18n="settings.sidebar_hint">Choose which destinations appear in the main window sidebar</p>
+            </div>
+            <div class="settings-card settings-list-card">
+                <div class="settings-row settings-toggle-row">
+                    <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="main.library">Library</div>
+                        <p class="settings-row-description" data-i18n="settings.show_library_in_sidebar">Show Library in the sidebar</p>
+                    </div>
+                    <toggle-switch id="sidebar-library" aria-label="Show Library in the sidebar" data-i18n-aria-label="settings.show_library_in_sidebar"></toggle-switch>
+                </div>
+
+                <div class="settings-row settings-toggle-row">
+                    <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="main.guides">Guides</div>
+                        <p class="settings-row-description" data-i18n="settings.show_guides_in_sidebar">Show Guides in the sidebar</p>
+                    </div>
+                    <toggle-switch id="sidebar-guides" aria-label="Show Guides in the sidebar" data-i18n-aria-label="settings.show_guides_in_sidebar"></toggle-switch>
+                </div>
+
+                <div class="settings-row settings-toggle-row">
+                    <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="main.saves">Saves</div>
+                        <p class="settings-row-description" data-i18n="settings.show_saves_in_sidebar">Show Saves in the sidebar</p>
+                    </div>
+                    <toggle-switch id="sidebar-saves" aria-label="Show Saves in the sidebar" data-i18n-aria-label="settings.show_saves_in_sidebar"></toggle-switch>
+                </div>
+
+                <div class="settings-row settings-toggle-row">
+                    <div class="settings-row-copy">
+                        <div class="settings-row-title" data-i18n="main.sync">Sync</div>
+                        <p class="settings-row-description" data-i18n="settings.show_sync_in_sidebar">Show Sync in the sidebar</p>
+                    </div>
+                    <toggle-switch id="sidebar-sync" aria-label="Show Sync in the sidebar" data-i18n-aria-label="settings.show_sync_in_sidebar"></toggle-switch>
+                </div>
+            </div>
+        </section>
+
         <section class="settings-section" aria-labelledby="settings-paths-heading">
             <div class="settings-section-heading-row">
                 <div>

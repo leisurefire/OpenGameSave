@@ -1,5 +1,15 @@
 const ROUTES = new Set(['library', 'guides', 'backup', 'restore', 'sync']);
 
+/**
+ * @typedef {object} RendererApi
+ * @property {(channel: string, callback: (value: unknown) => void) => () => void} receive
+ * @property {(channel: string) => Promise<{ visibleSidebarItems?: unknown }>} invoke
+ */
+
+const rendererApi = /** @type {RendererApi} */ (
+    (/** @type {Window & { api: unknown }} */ (/** @type {unknown} */ (window))).api
+);
+
 function getSidebarRoute(route) {
     return route === 'backup' || route === 'restore' ? 'backup' : route;
 }
@@ -17,6 +27,20 @@ export function initializeTabs() {
     const forwardButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('nav-forward'));
     const sidebarToggle = /** @type {HTMLButtonElement | null} */ (document.getElementById('sidebar-toggle'));
     if (sections.length === 0) return;
+
+    const applySidebarVisibility = (visibleItems) => {
+        const normalizedItems = Array.isArray(visibleItems)
+            ? new Set(visibleItems)
+            : new Set(navigationButtons.map(button => button.dataset.navTarget));
+        navigationButtons.forEach((button) => {
+            button.classList.toggle('hidden', !normalizedItems.has(button.dataset.navTarget));
+        });
+    };
+
+    rendererApi.receive('sidebar-visibility-changed', applySidebarVisibility);
+    rendererApi.invoke('get-settings')
+        .then(settings => applySidebarVisibility(settings?.visibleSidebarItems))
+        .catch(error => console.error('Failed to load sidebar visibility:', error));
 
     let history = ['library'];
     let historyIndex = 0;

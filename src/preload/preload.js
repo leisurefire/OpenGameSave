@@ -102,6 +102,7 @@ const ALLOWED_RECEIVE = new Set([
     'collect-selected-wiki-ids',
     'update-progress',
     'apply-language',
+    'sidebar-visibility-changed',
     'auto-backup-started',
     'auto-backup-stopped',
     'auto-backup-performed',

@@ -70,6 +70,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const databaseVariantSelect = document.getElementById('database-variant');
     const saveUninstalledCheckbox = document.getElementById('save-uninstalled-games');
     const syncAccentColorCheckbox = document.getElementById('sync-accent-color');
+    const sidebarItemToggles = [
+        ['library', document.getElementById('sidebar-library')],
+        ['guides', document.getElementById('sidebar-guides')],
+        ['backup', document.getElementById('sidebar-saves')],
+        ['sync', document.getElementById('sidebar-sync')]
+    ];
     const updateDatabaseButton = document.getElementById('update-database');
     const updateDatabaseIcon = document.getElementById('update-database-icon');
     const updateDatabaseText = document.getElementById('update-database-text');
@@ -93,6 +99,10 @@ document.addEventListener('DOMContentLoaded', () => {
             databaseVariantSelect.value = settings.databaseVariant ?? 'standard';
             saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
             syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
+            const visibleSidebarItems = new Set(settings.visibleSidebarItems ?? sidebarItemToggles.map(([item]) => item));
+            sidebarItemToggles.forEach(([item, toggle]) => {
+                toggle.checked = visibleSidebarItems.has(item);
+            });
             // ToggleSwitch uses the same .checked property, so no extra logic needed.
 
             if (settings.gameInstalls && settings.gameInstalls.length > 0) {
@@ -169,6 +179,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 updates.databaseVariant = databaseVariantSelect.value;
             }
 
+            const visibleSidebarItems = sidebarItemToggles
+                .filter(([, toggle]) => toggle.checked)
+                .map(([item]) => item);
+            if (!areArraysEqual(previousSettings.visibleSidebarItems, visibleSidebarItems)) {
+                updates.visibleSidebarItems = visibleSidebarItems;
+            }
+
             if (Object.keys(updates).length > 0) {
                 try {
                     await window.api.invoke('save-settings', updates);
@@ -205,7 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     [maxBackupsInput, launchAtStartupCheckbox, autoAppUpdateCheckbox, appUpdatePrereleaseCheckbox,
-        autoDbUpdateCheckbox, databaseVariantSelect, saveUninstalledCheckbox, syncAccentColorCheckbox].forEach(el => {
+        autoDbUpdateCheckbox, databaseVariantSelect, saveUninstalledCheckbox, syncAccentColorCheckbox,
+        ...sidebarItemToggles.map(([, toggle]) => toggle)].forEach(el => {
         el.addEventListener('change', autoSave);
     });
 

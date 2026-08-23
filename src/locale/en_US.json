@@ -41,6 +41,12 @@
         "save_uninstalled_games_hint": "Scan for existing saves from games that are no longer installed",
         "sync_accent_color": "Sync theme color with system accent color",
         "sync_accent_color_hint": "Use the Windows system accent color",
+        "sidebar": "Sidebar",
+        "sidebar_hint": "Choose which destinations appear in the main window sidebar",
+        "show_library_in_sidebar": "Show Library in the sidebar",
+        "show_guides_in_sidebar": "Show Guides in the sidebar",
+        "show_saves_in_sidebar": "Show Saves in the sidebar",
+        "show_sync_in_sidebar": "Show Sync in the sidebar",
         "backup_scope_hint": "To configure backup scope, go to Options → View Account IDs"
     },
     "about": {

@@ -26,6 +26,12 @@ function broadcastAccentColor(color) {
 
 async function persistRendererSettings(keyOrUpdates, value) {
     const changedKeys = await saveSettings(keyOrUpdates, value);
+    if (changedKeys.includes('visibleSidebarItems')) {
+        const mainWindow = getMainWin();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('sidebar-visibility-changed', getSettings().visibleSidebarItems);
+        }
+    }
     const watcherFailures = changedKeys.includes('backupAllAccounts')
         ? await refreshAutoBackupWatchers()
         : [];
