@@ -73,6 +73,9 @@ jobs:
       - name: Rebuild native test dependency
         run: npm rebuild better-sqlite3
 
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
+
       - name: Resolve next version and channel
         id: version
         shell: bash
