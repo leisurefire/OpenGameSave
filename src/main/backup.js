@@ -16,6 +16,7 @@ const { getGameData, getAllUserIds } = require('./gameData');
 const { dbRun, dbGet, dbAll, openDb, closeDb } = require('./sqliteUtils');
 const { acquireGameOperation } = require('./gameOperationLock');
 const { acquireDatabaseWrite, runWithDatabaseRead } = require('./databaseOperationLock');
+const { WorkerTaskPool } = require('./services/workerTaskPool');
 const { validateDatabasePatch } = require('./validation');
 const {
     atomicInstallDatabase,
@@ -38,8 +39,15 @@ const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSav
 const DATABASE_READ_WORKER_TASKS = new Set([
     'getGameDataFromDB',
     'getAllGameDataFromDB',
-    'getGameDataForRestore'
+    'getGameDataForRestore',
+    'getTrustedRestoreDefinition'
 ]);
+const backupWorkerPool = new WorkerTaskPool({
+    createWorker: () => new Worker(path.join(__dirname, 'backupWorker.js')),
+    maxWorkers: 2,
+    maxQueue: 64,
+    name: 'Backup worker'
+});
 
 function getInstalledDatabasePath() {
     return app.isPackaged
@@ -84,44 +92,15 @@ function createBackupWorkerContext() {
 }
 
 function runBackupWorkerTask(task, payload = {}, onMessage = null) {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker(path.join(__dirname, 'backupWorker.js'));
-        let settled = false;
+    return backupWorkerPool.run({
+        task,
+        payload,
+        context: createBackupWorkerContext()
+    }, onMessage);
+}
 
-        const finish = (callback, value) => {
-            if (settled) return;
-            settled = true;
-            worker.terminate().catch(() => { });
-            callback(value);
-        };
-
-        worker.once('error', (error) => {
-            finish(reject, error);
-        });
-        worker.once('exit', (code) => {
-            if (!settled) {
-                finish(reject, new Error(`Backup worker stopped before returning a result (exit code ${code})`));
-            }
-        });
-
-        worker.on('message', (message) => {
-            if (message.type === 'done') {
-                finish(resolve, message.result);
-            } else if (message.type === 'error') {
-                const error = new Error(message.error?.message || 'Backup worker failed');
-                error.stack = message.error?.stack || error.stack;
-                finish(reject, error);
-            } else if (typeof onMessage === 'function') {
-                onMessage(message);
-            }
-        });
-
-        worker.postMessage({
-            task,
-            payload,
-            context: createBackupWorkerContext()
-        });
-    });
+function shutdownBackupWorkers() {
+    return backupWorkerPool.shutdown();
 }
 
 /**
@@ -335,7 +314,14 @@ function sendDatabaseUpdateEvent(targetWebContents, channel, ...args) {
         ? targetWebContents
         : fallbackWebContents;
     if (webContents && !webContents.isDestroyed()) {
-        webContents.send(channel, ...args);
+        try {
+            webContents.send(channel, ...args);
+        } catch (error) {
+            // Progress delivery is observational. A renderer can disappear
+            // between the liveness check and send while the download stream
+            // must remain under pipeline error handling.
+            console.warn(`Could not deliver database update event ${channel}:`, error.message);
+        }
     }
 }
 
@@ -596,5 +582,6 @@ module.exports = {
     backupGame: backupGameWorkerBacked,
     initializeDatabaseStorage,
     updateDatabase,
-    runWorkerTask
+    runWorkerTask,
+    shutdownBackupWorkers
 };

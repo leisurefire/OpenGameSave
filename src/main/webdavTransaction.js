@@ -5,6 +5,8 @@ const path = require('path');
 const {
     assertNoSymlinkAncestors,
     isPathInside,
+    normalizeBackupDate,
+    normalizeWikiId,
     resolveInside
 } = require('./validation');
 const { normalizeManifestPath } = require('./webdavManifest');
@@ -69,11 +71,26 @@ function getStagedPath(transaction, relativePath) {
 }
 
 function getPreviousPath(transaction, relativePath) {
-    const normalizedPath = normalizeManifestPath(relativePath);
+    const normalizedPath = normalizeTransactionPath(relativePath);
     return resolveInside(transaction.transactionRoot, 'previous', ...normalizedPath.split('/'));
 }
 
-async function beginWebDAVTransaction(syncRoot, files) {
+function getStagedTreePath(transaction, relativePath) {
+    const normalizedPath = normalizeTransactionPath(relativePath);
+    if (normalizedPath.split('/').length !== 2) throw new Error('Invalid WebDAV replacement tree');
+    return resolveInside(transaction.transactionRoot, 'staged', ...normalizedPath.split('/'));
+}
+
+function normalizeTransactionPath(relativePath) {
+    if (typeof relativePath !== 'string') throw new Error('Invalid WebDAV transaction path');
+    const segments = relativePath.split('/');
+    if (segments.length === 2) {
+        return `${normalizeWikiId(segments[0])}/${normalizeBackupDate(segments[1])}`;
+    }
+    return normalizeManifestPath(relativePath);
+}
+
+async function beginWebDAVTransaction(syncRoot, files, { replaceTreePaths = [] } = {}) {
     const resolvedRoot = path.resolve(syncRoot);
     const transactionBase = getTransactionBase(resolvedRoot);
     await recoverWebDAVTransactions(resolvedRoot);
@@ -84,16 +101,29 @@ async function beginWebDAVTransaction(syncRoot, files) {
     await ensureRegularDirectory(transactionRoot);
     await ensureRegularDirectory(path.join(transactionRoot, 'staged'));
     await ensureRegularDirectory(path.join(transactionRoot, 'previous'));
+    const normalizedTreePaths = new Set(replaceTreePaths.map((relativePath) => {
+        const normalizedPath = normalizeTransactionPath(relativePath);
+        if (normalizedPath.split('/').length !== 2) throw new Error('Invalid WebDAV replacement tree');
+        return normalizedPath;
+    }));
     const transaction = {
         transactionRoot,
         syncRoot: resolvedRoot,
         state: 'downloading',
-        entries: files.map(file => ({
-            path: normalizeManifestPath(file.path),
-            mtimeMs: file.mtimeMs,
-            state: 'pending',
-            hadOriginal: null
-        }))
+        entries: files.filter(file => !normalizedTreePaths.has(file.path.split('/').slice(0, 2).join('/')))
+            .map(file => ({
+                path: normalizeManifestPath(file.path),
+                mtimeMs: file.mtimeMs,
+                operation: 'replace',
+                state: 'pending',
+                hadOriginal: null
+            })).concat([...normalizedTreePaths].map(relativePath => ({
+                path: relativePath,
+                mtimeMs: 0,
+                operation: 'replace-tree',
+                state: 'pending',
+                hadOriginal: null
+            })))
     };
     await writeJournal(transaction);
     return transaction;
@@ -109,21 +139,32 @@ async function pathStats(filePath) {
 async function rollbackTransaction(transaction) {
     for (const entry of [...transaction.entries].reverse()) {
         const destinationPath = resolveInside(transaction.syncRoot, ...entry.path.split('/'));
-        const stagedPath = getStagedPath(transaction, entry.path);
+        const stagedPath = entry.operation === 'replace-tree'
+            ? getStagedTreePath(transaction, entry.path)
+            : getStagedPath(transaction, entry.path);
         const previousPath = getPreviousPath(transaction, entry.path);
         const previousStats = await pathStats(previousPath);
         if (previousStats) {
-            if (!previousStats.isFile() || previousStats.isSymbolicLink()) {
+            const isExpectedType = entry.operation === 'replace-tree'
+                ? previousStats.isDirectory()
+                : previousStats.isFile();
+            if (!isExpectedType || previousStats.isSymbolicLink()) {
                 throw new Error('Invalid previous file in WebDAV transaction');
             }
-            await fs.promises.rm(destinationPath, { force: true });
+            await fs.promises.rm(destinationPath, {
+                recursive: entry.operation === 'replace-tree',
+                force: true
+            });
             await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
             await fs.promises.rename(previousPath, destinationPath);
             continue;
         }
         const stagedStats = await pathStats(stagedPath);
         if (!stagedStats && entry.state !== 'pending' && entry.hadOriginal === false) {
-            await fs.promises.rm(destinationPath, { force: true });
+            await fs.promises.rm(destinationPath, {
+                recursive: entry.operation === 'replace-tree',
+                force: true
+            });
         }
     }
     await fs.promises.rm(transaction.transactionRoot, { recursive: true, force: true });
@@ -140,19 +181,13 @@ async function installWebDAVTransaction(transaction) {
 
     try {
         for (const entry of transaction.entries) {
-            const stagedPath = getStagedPath(transaction, entry.path);
             const destinationPath = resolveInside(transaction.syncRoot, ...entry.path.split('/'));
             const previousPath = getPreviousPath(transaction, entry.path);
-            const stagedStats = await fs.promises.lstat(stagedPath);
-            if (!stagedStats.isFile() || stagedStats.isSymbolicLink()) {
-                throw new Error(`Invalid staged WebDAV file: ${entry.path}`);
-            }
-
-            await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
-            await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
             await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
             const existingStats = await pathStats(destinationPath);
-            if (existingStats && (!existingStats.isFile() || existingStats.isSymbolicLink())) {
+            const isTreeReplacement = entry.operation === 'replace-tree';
+            if (existingStats && (existingStats.isSymbolicLink()
+                || (isTreeReplacement ? !existingStats.isDirectory() : !existingStats.isFile()))) {
                 throw new Error(`Refusing to replace non-file backup path: ${destinationPath}`);
             }
 
@@ -164,9 +199,31 @@ async function installWebDAVTransaction(transaction) {
                 await fs.promises.rename(destinationPath, previousPath);
                 entry.state = 'previous-moved';
                 await writeJournal(transaction);
+            }
+            if (isTreeReplacement) {
+                const stagedTreePath = getStagedTreePath(transaction, entry.path);
+                const stagedTreeStats = await fs.promises.lstat(stagedTreePath);
+                if (!stagedTreeStats.isDirectory() || stagedTreeStats.isSymbolicLink()) {
+                    throw new Error(`Invalid staged WebDAV backup tree: ${entry.path}`);
+                }
+                await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+                await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
                 entry.state = 'installing';
                 await writeJournal(transaction);
+                await fs.promises.rename(stagedTreePath, destinationPath);
+                entry.state = 'installed';
+                await writeJournal(transaction);
+                continue;
             }
+            const stagedPath = getStagedPath(transaction, entry.path);
+            const stagedStats = await fs.promises.lstat(stagedPath);
+            if (!stagedStats.isFile() || stagedStats.isSymbolicLink()) {
+                throw new Error(`Invalid staged WebDAV file: ${entry.path}`);
+            }
+            await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+            await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
+            entry.state = 'installing';
+            await writeJournal(transaction);
             await fs.promises.rename(stagedPath, destinationPath);
             await fs.promises.utimes(destinationPath, new Date(entry.mtimeMs), new Date(entry.mtimeMs));
             entry.state = 'installed';
@@ -198,7 +255,16 @@ function validateJournal(rawJournal, expectedRoot, transactionRoot) {
     }
     const seenPaths = new Set();
     const entries = rawJournal.entries.map(entry => {
-        const relativePath = normalizeManifestPath(entry.path);
+        const operation = entry.operation || 'replace';
+        if (!['replace', 'replace-tree'].includes(operation)) {
+            throw new Error('Invalid WebDAV transaction journal entry');
+        }
+        const relativePath = operation === 'replace-tree'
+            ? normalizeTransactionPath(entry.path)
+            : normalizeManifestPath(entry.path);
+        if ((operation === 'replace-tree') !== (relativePath.split('/').length === 2)) {
+            throw new Error('Invalid WebDAV transaction journal entry');
+        }
         const mtimeMs = Number(entry.mtimeMs);
         const state = String(entry.state || 'pending');
         if (seenPaths.has(relativePath) || !Number.isFinite(mtimeMs) || mtimeMs < 0
@@ -210,10 +276,18 @@ function validateJournal(rawJournal, expectedRoot, transactionRoot) {
         return {
             path: relativePath,
             mtimeMs,
+            operation,
             state,
             hadOriginal: entry.hadOriginal
         };
     });
+    const replacementTrees = entries
+        .filter(entry => entry.operation === 'replace-tree')
+        .map(entry => `${entry.path}/`);
+    if (entries.some(entry => entry.operation !== 'replace-tree'
+        && replacementTrees.some(prefix => entry.path.startsWith(prefix)))) {
+        throw new Error('Invalid overlapping WebDAV transaction journal entries');
+    }
     return {
         transactionRoot,
         syncRoot: expectedRoot,

@@ -1,4 +1,7 @@
 import { showAlert, updateTranslations } from './utility.js';
+import libraryVirtualization from '../../shared/libraryVirtualization.js';
+
+const { calculateLibraryWindow } = libraryVirtualization;
 
 const PLATFORM_BRAND_COLORS = Object.freeze({
     Steam: '#66c0f4',
@@ -6,7 +9,8 @@ const PLATFORM_BRAND_COLORS = Object.freeze({
     GOG: '#b36cff',
     Blizzard: '#00aeff'
 });
-const ART_LOAD_CONCURRENCY = 4;
+const ART_LOAD_CONCURRENCY = 2;
+const MAX_RENDERED_LIBRARY_ITEMS = 120;
 
 let libraryInitialized = false;
 let libraryElements;
@@ -19,6 +23,11 @@ let artObserver;
 let activeArtLoads = 0;
 let searchRenderFrame;
 let countRenderId = 0;
+let artRequestId = 0;
+let visibleLibraryGames = [];
+let libraryWindowFrame;
+let measuredCardStride = 0;
+let renderedWindowKey = '';
 const pendingArtLoads = [];
 const activeGameActions = new Set();
 
@@ -40,7 +49,8 @@ function getElements() {
         heroTitle: document.getElementById('library-hero-title'),
         loading: document.getElementById('library-loading'),
         refresh: document.getElementById('library-refresh'),
-        search: document.getElementById('library-search')
+        search: document.getElementById('library-search'),
+        scroll: document.querySelector('.library-scroll')
     };
     return libraryElements;
 }
@@ -147,24 +157,77 @@ async function showGameMenu(game, button) {
     window.activeMenuTrigger = button;
 }
 
+function revokeImageObjectUrl(image) {
+    const objectUrl = image?.dataset?.artObjectUrl;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    if (image?.dataset) delete image.dataset.artObjectUrl;
+}
+
+function releaseRenderedArtwork(container) {
+    container?.querySelectorAll('img[data-art-object-url]').forEach((image) => {
+        revokeImageObjectUrl(image);
+        image.onload = null;
+        image.onerror = null;
+    });
+}
+
 async function executeArtLoad({ gameId, artType, image, expectedGameId }) {
     if (!image?.isConnected || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) return;
+    const requestId = String(++artRequestId);
+    image.dataset.artRequestId = requestId;
+    let createdObjectUrl = null;
+    const isCurrentRequest = () => image.dataset.artRequestId === requestId;
+    const revokeCreatedObjectUrl = () => {
+        if (!createdObjectUrl) return;
+        URL.revokeObjectURL(createdObjectUrl);
+        if (image.dataset.artObjectUrl === createdObjectUrl) delete image.dataset.artObjectUrl;
+        createdObjectUrl = null;
+    };
     try {
-        const dataUrl = await window.api.invoke('get-library-game-art', gameId, artType);
-        if (!dataUrl || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) return;
+        const asset = await window.api.invoke('get-library-game-art', gameId, artType);
+        if (!asset || !image.isConnected || !isCurrentRequest()
+            || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) return;
+        let imageUrl;
+        if (typeof asset === 'string') {
+            imageUrl = asset;
+        } else if (/^image\/(?:jpeg|png|webp)$/.test(asset.mimeType)
+            && (asset.data instanceof Uint8Array || asset.data instanceof ArrayBuffer)) {
+            const bytes = asset.data instanceof Uint8Array ? asset.data : new Uint8Array(asset.data);
+            imageUrl = URL.createObjectURL(new Blob([bytes], { type: asset.mimeType }));
+            createdObjectUrl = imageUrl;
+        } else {
+            return;
+        }
+        revokeImageObjectUrl(image);
+        if (imageUrl.startsWith('blob:')) image.dataset.artObjectUrl = imageUrl;
         const revealArtwork = () => {
-            if (image.id === 'library-hero-image' && expectedGameId !== selectedGameId) return;
+            if (!isCurrentRequest()
+                || (image.id === 'library-hero-image' && expectedGameId !== selectedGameId)) {
+                revokeCreatedObjectUrl();
+                return;
+            }
+            image.onload = null;
+            image.onerror = null;
             image.classList.remove('hidden', 'is-pending');
             image.closest('.library-card')?.classList.add('has-art');
+            revokeCreatedObjectUrl();
         };
-        image.addEventListener('load', revealArtwork, { once: true });
-        image.addEventListener('error', () => {
+        image.onload = revealArtwork;
+        image.onerror = () => {
+            if (!isCurrentRequest()) {
+                revokeCreatedObjectUrl();
+                return;
+            }
+            image.onload = null;
+            image.onerror = null;
+            revokeCreatedObjectUrl();
             image.removeAttribute('src');
             image.classList.add('is-pending');
-        }, { once: true });
-        image.src = dataUrl;
+        };
+        image.src = imageUrl;
         if (image.complete && image.naturalWidth > 0) revealArtwork();
     } catch (error) {
+        revokeCreatedObjectUrl();
         console.warn(`Could not load ${artType} artwork for ${gameId}:`, error);
     }
 }
@@ -200,13 +263,17 @@ function discardDetachedArtLoads() {
     }
 }
 
-function createCard(game) {
+function createCard(game, position) {
     const card = document.createElement('article');
     card.className = 'library-card';
     card.tabIndex = 0;
     card.dataset.gameId = game.id;
     card.setAttribute('role', 'listitem');
     card.setAttribute('aria-label', `${game.title}, ${platformLabel(game.platform)}`);
+    card.setAttribute('aria-posinset', String(position + 1));
+    card.setAttribute('aria-setsize', String(visibleLibraryGames.length));
+    card.classList.toggle('selected', game.id === selectedGameId);
+    if (game.id === selectedGameId) card.setAttribute('aria-current', 'true');
 
     const artwork = document.createElement('div');
     artwork.className = 'library-card-art';
@@ -311,19 +378,104 @@ async function updateCount(visibleCount) {
     if (count && renderId === countRenderId) count.textContent = label;
 }
 
+function getLibraryColumnCount(grid) {
+    if (currentView === 'list') return 1;
+    const tracks = getComputedStyle(grid).gridTemplateColumns;
+    return Math.max(1, tracks.split(' ').filter(Boolean).length);
+}
+
+function estimateCardStride(grid, columnCount) {
+    if (measuredCardStride > 0) return measuredCardStride;
+    const styles = getComputedStyle(grid);
+    const rowGap = Number.parseFloat(styles.rowGap) || 0;
+    if (currentView === 'list') return 58 + rowGap;
+    const columnGap = Number.parseFloat(styles.columnGap) || 0;
+    const availableWidth = Math.max(1, grid.clientWidth - columnGap * (columnCount - 1));
+    return ((availableWidth / columnCount) * 1.5) + 38 + rowGap;
+}
+
+function getLibraryViewport(grid, scroll) {
+    const gridRect = grid.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    return {
+        viewportStart: Math.max(0, scrollRect.top - gridRect.top),
+        viewportSize: scroll.clientHeight
+    };
+}
+
+function observeRenderedArtwork(grid) {
+    grid.querySelectorAll('[data-lazy-game-id]').forEach(image => artObserver?.observe(image));
+}
+
+function renderLibraryWindow(force = false) {
+    libraryWindowFrame = null;
+    const { grid, scroll } = getElements();
+    if (!grid || !scroll || visibleLibraryGames.length === 0) return;
+    const columnCount = getLibraryColumnCount(grid);
+    const rowStride = estimateCardStride(grid, columnCount);
+    const windowRange = calculateLibraryWindow({
+        itemCount: visibleLibraryGames.length,
+        columnCount,
+        rowStride,
+        ...getLibraryViewport(grid, scroll),
+        maxRenderedItems: MAX_RENDERED_LIBRARY_ITEMS
+    });
+    const windowKey = `${currentView}:${columnCount}:${windowRange.startIndex}:${windowRange.endIndex}`;
+    if (!force && renderedWindowKey === windowKey) return;
+
+    artObserver?.disconnect();
+    releaseRenderedArtwork(grid);
+    const fragment = document.createDocumentFragment();
+    visibleLibraryGames.slice(windowRange.startIndex, windowRange.endIndex).forEach((game, index) => {
+        fragment.appendChild(createCard(game, windowRange.startIndex + index));
+    });
+    grid.style.paddingTop = `${windowRange.topPadding}px`;
+    grid.style.paddingBottom = `${windowRange.bottomPadding}px`;
+    grid.replaceChildren(fragment);
+    renderedWindowKey = windowKey;
+    discardDetachedArtLoads();
+    observeRenderedArtwork(grid);
+
+    const firstCard = grid.querySelector('.library-card');
+    const rowGap = Number.parseFloat(getComputedStyle(grid).rowGap) || 0;
+    const nextStride = firstCard ? firstCard.getBoundingClientRect().height + rowGap : rowStride;
+    if (Number.isFinite(nextStride) && Math.abs(nextStride - rowStride) > 1) {
+        measuredCardStride = nextStride;
+        scheduleLibraryWindowRender(true);
+    }
+}
+
+function scheduleLibraryWindowRender(force = false) {
+    if (force) renderedWindowKey = '';
+    if (libraryWindowFrame) return;
+    libraryWindowFrame = requestAnimationFrame(() => renderLibraryWindow(force));
+}
+
+function clearRenderedGames() {
+    const { grid } = getElements();
+    artObserver?.disconnect();
+    releaseRenderedArtwork(grid);
+    grid.replaceChildren();
+    grid.style.paddingTop = '';
+    grid.style.paddingBottom = '';
+    renderedWindowKey = '';
+    measuredCardStride = 0;
+    discardDetachedArtLoads();
+}
+
 function renderGames() {
     const elements = getElements();
-    const visibleGames = filteredGames();
-    artObserver?.disconnect();
-    elements.grid.replaceChildren(...visibleGames.map(createCard));
-    discardDetachedArtLoads();
-    elements.grid.querySelectorAll('[data-lazy-game-id]').forEach(image => artObserver?.observe(image));
+    visibleLibraryGames = filteredGames();
+    clearRenderedGames();
     elements.grid.classList.toggle('library-list', currentView === 'list');
-    elements.empty.classList.toggle('hidden', visibleGames.length !== 0);
-    void updateCount(visibleGames.length);
+    elements.empty.classList.toggle('hidden', visibleLibraryGames.length !== 0);
+    void updateCount(visibleLibraryGames.length);
 
-    if (!visibleGames.some(game => game.id === selectedGameId)) selectedGameId = visibleGames[0]?.id || null;
-    const selected = visibleGames.find(game => game.id === selectedGameId);
+    if (!visibleLibraryGames.some(game => game.id === selectedGameId)) {
+        selectedGameId = visibleLibraryGames[0]?.id || null;
+    }
+    const selected = visibleLibraryGames.find(game => game.id === selectedGameId);
+    if (visibleLibraryGames.length > 0) renderLibraryWindow(true);
     if (selected) selectGame(selected);
     else elements.hero.classList.add('hidden');
 }
@@ -371,6 +523,10 @@ function selectGame(game) {
     elements.heroFolder.onclick = () => void runGameAction(game, 'open-library-game-directory', elements.heroFolder);
     elements.heroGuide.classList.toggle('hidden', !game.guide);
     elements.heroGuide.onclick = game.guide ? () => navigateToGuides(game) : null;
+    elements.heroImage.dataset.artRequestId = String(++artRequestId);
+    elements.heroImage.onload = null;
+    elements.heroImage.onerror = null;
+    revokeImageObjectUrl(elements.heroImage);
     elements.heroImage.classList.add('hidden');
     elements.heroImage.removeAttribute('src');
     delete elements.heroImage.dataset.artLoaded;
@@ -384,7 +540,8 @@ async function refreshLibrary() {
     elements.loading.classList.remove('hidden');
     elements.empty.classList.add('hidden');
     elements.controls.classList.add('hidden');
-    elements.grid.replaceChildren();
+    visibleLibraryGames = [];
+    clearRenderedGames();
     elements.refresh.disabled = true;
     elements.refresh.querySelector('.lucide-icon')?.classList.add('is-spinning');
     try {
@@ -424,6 +581,15 @@ function initializeLibrary() {
             void loadArt(entry.target.dataset.lazyGameId, 'cover', entry.target);
         });
     }, { root: document.querySelector('.library-scroll'), rootMargin: '200px' });
+
+    elements.scroll?.addEventListener('scroll', () => scheduleLibraryWindowRender(), { passive: true });
+    if (typeof ResizeObserver === 'function' && elements.scroll) {
+        const resizeObserver = new ResizeObserver(() => {
+            measuredCardStride = 0;
+            scheduleLibraryWindowRender(true);
+        });
+        resizeObserver.observe(elements.scroll);
+    }
 
     elements.search?.addEventListener('input', () => {
         if (searchRenderFrame) cancelAnimationFrame(searchRenderFrame);

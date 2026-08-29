@@ -1,7 +1,10 @@
 const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const { isDeepStrictEqual } = require('util');
 
+const { RENDERER_ROLE_ARGUMENT_PREFIX } = require('../../shared/ipcPolicy');
 const { getMainWin } = require('../global');
+const { registerRendererWindow } = require('../ipcAuthorization');
 const { hardenBrowserWindow } = require('../windowSecurity');
 
 const MENU_MIN_WIDTH = 196;
@@ -11,6 +14,7 @@ const MENU_HIDDEN_BOUNDS = { x: -10000, y: -10000, width: 1, height: 1 };
 let menuWindow = null;
 let menuParentWindow = null;
 let isMenuOpen = false;
+let activeMenuItems = [];
 
 function detachMenuParentListeners() {
     if (!menuParentWindow || menuParentWindow.isDestroyed()) {
@@ -25,6 +29,7 @@ function detachMenuParentListeners() {
 function hideMenuWindow() {
     const wasMenuOpen = isMenuOpen;
     isMenuOpen = false;
+    activeMenuItems = [];
     detachMenuParentListeners();
     if (wasMenuOpen && menuWindow && !menuWindow.isDestroyed()) {
         menuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
@@ -45,6 +50,7 @@ function destroyMenuWindow() {
     if (menuWindow && !menuWindow.isDestroyed()) menuWindow.destroy();
     menuWindow = null;
     isMenuOpen = false;
+    activeMenuItems = [];
 }
 
 function createMenuWindow() {
@@ -64,6 +70,7 @@ function createMenuWindow() {
         focusable: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),
+            additionalArguments: [`${RENDERER_ROLE_ARGUMENT_PREFIX}menu`],
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: true,
@@ -75,7 +82,9 @@ function createMenuWindow() {
         }
     });
 
-    hardenBrowserWindow(newMenuWindow, path.join(__dirname, '../renderer'));
+    const rendererRoot = path.join(__dirname, '../renderer');
+    registerRendererWindow(newMenuWindow, 'menu', rendererRoot);
+    hardenBrowserWindow(newMenuWindow, rendererRoot);
     menuWindow = newMenuWindow;
     newMenuWindow.loadFile(path.join(__dirname, '../renderer/menu.html'));
     newMenuWindow.once('ready-to-show', () => {
@@ -110,6 +119,7 @@ function showPopupMenu(event, payload = {}) {
     menuWindow.targetScreenX = Math.round(parentContentBounds.x + x);
     menuWindow.targetScreenY = Math.round(parentContentBounds.y + y);
     menuWindow.menuDirection = direction;
+    activeMenuItems = items;
     const sendItems = () => {
         if (!menuWindow?.isDestroyed()) {
             menuWindow.webContents.send('set-menu-items', { items, direction: menuWindow.menuDirection });
@@ -145,10 +155,14 @@ function registerMenuWindowIpc() {
     ipcMain.on('resize-and-show-menu', resizeAndShowMenu);
     ipcMain.on('menu-item-click', (event, action, data) => {
         if (!menuWindow || event.sender !== menuWindow.webContents) return;
+        const authorizedItem = activeMenuItems.find(item => (
+            item?.action === action && isDeepStrictEqual(item?.data, data)
+        ));
+        if (!authorizedItem) return;
         hideMenuWindow();
         const mainWindow = getMainWin();
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('execute-menu-action', action, data);
+            mainWindow.webContents.send('execute-menu-action', authorizedItem.action, authorizedItem.data);
         }
     });
 }

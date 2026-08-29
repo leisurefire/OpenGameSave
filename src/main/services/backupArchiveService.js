@@ -10,7 +10,7 @@ const { format } = require('date-fns');
 const Seven = require('node-7z');
 const sevenBin = require('7zip-bin');
 
-const { copyFolderAsync } = require('../fileSystemUtils');
+const { copyFolderAtomically } = require('../fileSystemUtils');
 const { acquireGlobalOperation } = require('../gameOperationLock');
 const {
     normalizeAbsolutePath,
@@ -28,6 +28,24 @@ const { getMainWin } = require('./windowManager');
 
 const MAX_ARCHIVE_ENTRIES = 100000;
 const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 20 * 1024 * 1024 * 1024;
+
+function sendToMainWindow(...args) {
+    const mainWindow = getMainWin();
+    if (!mainWindow
+        || mainWindow.isDestroyed?.()
+        || !mainWindow.webContents
+        || mainWindow.webContents.isDestroyed?.()) {
+        return false;
+    }
+    try {
+        mainWindow.webContents.send(...args);
+        return true;
+    } catch (_) {
+        // Archive streams must outlive renderer teardown without throwing from
+        // EventEmitter callbacks or skipping their cleanup paths.
+        return false;
+    }
+}
 
 function getSevenZipOptions() {
     return {
@@ -57,26 +75,33 @@ async function inspectImportArchive(gsmPath) {
     let entryCount = 0;
     let totalSize = 0;
     listStream.on('data', (entry) => {
-        if (!entry?.file) return;
-        validateArchiveEntryPath(entry.file);
-        entryCount += 1;
-        if (entryCount > MAX_ARCHIVE_ENTRIES) {
-            listStream.destroy(new Error('Archive contains too many entries'));
-            return;
-        }
+        try {
+            if (!entry?.file) return;
+            validateArchiveEntryPath(entry.file);
+            entryCount += 1;
+            if (entryCount > MAX_ARCHIVE_ENTRIES) {
+                throw new Error('Archive contains too many entries');
+            }
 
-        const technicalInfo = entry.techInfo instanceof Map ? entry.techInfo : new Map();
-        const attributes = String(entry.attributes || technicalInfo.get('Attributes') || '');
-        if (/\bL\b|reparse|symbolic/i.test(attributes)
-            || technicalInfo.has('Symbolic Link')
-            || technicalInfo.has('Hard Link')) {
-            listStream.destroy(new Error('Archive contains links, which are not allowed'));
-            return;
-        }
-        const size = Number(entry.size ?? technicalInfo.get('Size') ?? 0);
-        if (Number.isFinite(size) && size > 0) totalSize += size;
-        if (totalSize > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
-            listStream.destroy(new Error('Archive expands beyond the allowed size'));
+            const technicalInfo = entry.techInfo instanceof Map ? entry.techInfo : new Map();
+            const attributes = String(entry.attributes || technicalInfo.get('Attributes') || '');
+            if (/\bL\b|reparse|symbolic/i.test(attributes)
+                || technicalInfo.has('Symbolic Link')
+                || technicalInfo.has('Hard Link')) {
+                throw new Error('Archive contains links, which are not allowed');
+            }
+            const size = Number(entry.size ?? technicalInfo.get('Size') ?? 0);
+            if (!Number.isSafeInteger(size) || size < 0) {
+                throw new Error('Archive contains an invalid entry size');
+            }
+            totalSize += size;
+            if (!Number.isSafeInteger(totalSize) || totalSize > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+                throw new Error('Archive expands beyond the allowed size');
+            }
+        } catch (error) {
+            // Exceptions thrown from EventEmitter listeners otherwise escape the
+            // import promise and can become an uncaught main-process exception.
+            listStream.destroy(error);
         }
     });
     await new Promise((resolve, reject) => {
@@ -137,6 +162,11 @@ async function collectExtractedBackups(extractRoot) {
                     throw new Error('Backup data folder is invalid');
                 }
             }
+            await fse.writeJson(
+                metadataPath,
+                validateBackupMetadata({ ...metadata, provenance: 'external' }),
+                { spaces: 4, mode: 0o600 }
+            );
             backups.push({ gameId, backupDate, sourcePath: backupPath });
         }
     }
@@ -173,7 +203,7 @@ async function exportBackups(count, exportPath, wikiIds = null) {
         const exportCount = normalizeBoundedInteger(count, 1, getSettings().maxBackups);
         const selectedWikiIds = wikiIds == null ? null : new Set(normalizeWikiIdArray(wikiIds));
 
-        getMainWin().webContents.send('update-progress', progressId, progressTitle, 'start');
+        sendToMainWindow('update-progress', progressId, progressTitle, 'start');
         progressStarted = true;
 
         const itemsToArchive = [];
@@ -247,19 +277,19 @@ async function exportBackups(count, exportPath, wikiIds = null) {
             );
         });
 
-        getMainWin().webContents.send('show-alert', 'success', i18next.t('alert.export_success'));
+        sendToMainWindow('show-alert', 'success', i18next.t('alert.export_success'));
 
     } catch (error) {
         if (finalDestPath) await fsOriginal.promises.rm(finalDestPath, { force: true }).catch(() => { });
         console.error(`An error occurred while exporting backups: ${error.message}`);
-        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.error_during_export'), error.message);
+        sendToMainWindow('show-alert', 'modal', i18next.t('alert.error_during_export'), error.message);
     } finally {
         if (archiveListDirectory) {
             await fsOriginal.promises.rm(archiveListDirectory, { recursive: true, force: true }).catch(() => { });
         }
         updateStatus('exporting', false);
         releaseOperation?.();
-        if (progressStarted) getMainWin().webContents.send('update-progress', progressId, progressTitle, 'end');
+        if (progressStarted) sendToMainWindow('update-progress', progressId, progressTitle, 'end');
     }
 }
 
@@ -285,7 +315,7 @@ async function importBackups(gsmPath) {
         if (!destinationStats.isDirectory() || destinationStats.isSymbolicLink()) {
             throw new Error('The backup destination is not a regular directory');
         }
-        getMainWin().webContents.send('update-progress', progressId, progressTitle, 'start');
+        sendToMainWindow('update-progress', progressId, progressTitle, 'start');
         progressStarted = true;
 
         tempExtractPath = await fsOriginal.promises.mkdtemp(path.join(os.tmpdir(), 'GSMImportTemp-'));
@@ -293,7 +323,7 @@ async function importBackups(gsmPath) {
 
         extractStream.on('progress', (progress) => {
             if (Number.isFinite(progress.percent)) {
-                getMainWin().webContents.send('update-progress', progressId, progressTitle, Math.floor(progress.percent * 0.5));
+                sendToMainWindow('update-progress', progressId, progressTitle, Math.floor(progress.percent * 0.5));
             }
         });
 
@@ -321,28 +351,27 @@ async function importBackups(gsmPath) {
                 throw new Error('Destination backup path is invalid');
             }
             if (!existingBackupStats) {
-                await copyFolderAsync(backup.sourcePath, destBackupPath, fsOriginal);
+                await copyFolderAtomically(backup.sourcePath, destBackupPath, fsOriginal);
             }
             processedBackups += 1;
             const movingProgress = Math.floor((processedBackups / extractedBackups.length) * 50);
-            getMainWin().webContents.send('update-progress', progressId, progressTitle, 50 + movingProgress);
+            sendToMainWindow('update-progress', progressId, progressTitle, 50 + movingProgress);
         }
 
-        getMainWin().webContents.send('show-alert', 'success', i18next.t('alert.import_success'));
+        sendToMainWindow('show-alert', 'success', i18next.t('alert.import_success'));
 
     } catch (error) {
         console.error(`An error occurred while importing backups: ${error.message}`);
-        getMainWin().webContents.send('show-alert', 'modal', i18next.t('alert.error_during_import'), error.message);
+        sendToMainWindow('show-alert', 'modal', i18next.t('alert.error_during_import'), error.message);
     } finally {
         if (tempExtractPath) {
             await fsOriginal.promises.rm(tempExtractPath, { recursive: true, force: true }).catch(() => { });
         }
         updateStatus('importing', false);
         releaseOperation?.();
-        if (progressStarted) getMainWin().webContents.send('update-progress', progressId, progressTitle, 'end');
-        getMainWin().webContents.send('update-backup-table');
-        getMainWin().webContents.send('update-restore-table');
+        if (progressStarted) sendToMainWindow('update-progress', progressId, progressTitle, 'end');
+        sendToMainWindow('update-backup-table');
+        sendToMainWindow('update-restore-table');
     }
 }
-module.exports = { exportBackups, importBackups };
-
+module.exports = { exportBackups, importBackups, inspectImportArchive };

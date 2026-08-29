@@ -2,6 +2,8 @@ const { BrowserWindow, Menu, app, ipcMain, nativeTheme } = require('electron');
 const { randomUUID } = require('crypto');
 const path = require('path');
 
+const { RENDERER_ROLE_ARGUMENT_PREFIX } = require('../../shared/ipcPolicy');
+const { registerRendererWindow } = require('../ipcAuthorization');
 const { normalizeBoundedInteger, normalizeWikiId } = require('../validation');
 const { hardenBrowserWindow } = require('../windowSecurity');
 
@@ -224,6 +226,7 @@ const loadModalWindowPage = async (browserWindow, pageName, initialData = {}) =>
     // Do not run executeJavaScript() before loadFile(). On a newly-created
     // hidden BrowserWindow, that can hang indefinitely and prevent the window
     // from ever being shown when launched via npm run dev.
+    registerRendererWindow(browserWindow, pageName, rendererRoot);
     applyModalWindowDefinition(browserWindow, definition);
     modalWindowPages.set(browserWindow, pageName);
     modalWindowData.set(browserWindow, { ...initialData, modalType: pageName });
@@ -274,6 +277,7 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
         ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),
+            additionalArguments: [`${RENDERER_ROLE_ARGUMENT_PREFIX}${pageName}`],
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: true,
@@ -284,10 +288,15 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
         }
     });
 
+    registerRendererWindow(browserWindow, pageName, rendererRoot);
     hardenBrowserWindow(browserWindow, rendererRoot);
     applyWindowsMicaEffect(browserWindow);
     browserWindow.setMenuBarVisibility(false);
-    startModalWindowLoad(browserWindow, pageName, initialData);
+    void startModalWindowLoad(browserWindow, pageName, initialData).catch(() => {
+        // A hidden modal that failed to load can never answer its request.
+        // Destroying it also resolves confirm/dialog callers through `closed`.
+        if (!browserWindow.isDestroyed()) browserWindow.destroy();
+    });
 
     browserWindow.once('ready-to-show', () => {
         if (showWhenReady) {
@@ -409,11 +418,11 @@ const requestDialogModalWindow = (dialogData = {}) => {
 };
 
 const openSettingsWindow = () => {
-    openModalWindow('settings');
+    void openModalWindow('settings').catch(error => console.error('Failed to open settings window:', error));
 };
 
 const openAboutWindow = () => {
-    openModalWindow('about');
+    void openModalWindow('about').catch(error => console.error('Failed to open about window:', error));
 };
 
 
@@ -431,6 +440,7 @@ const createMainWindow = async () => {
         ...windowVisualEffect,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),
+            additionalArguments: [`${RENDERER_ROLE_ARGUMENT_PREFIX}main`],
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: true,
@@ -441,13 +451,14 @@ const createMainWindow = async () => {
         }
     });
 
+    registerRendererWindow(win, 'main', rendererRoot);
     hardenBrowserWindow(win, rendererRoot);
     applyWindowsMicaEffect(win);
 
     if (!app.isPackaged) {
         win.webContents.openDevTools({ mode: 'detach' });
     }
-    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    await win.loadFile(path.join(__dirname, '../renderer/index.html'));
     win.setMenuBarVisibility(false);
     Menu.setApplicationMenu(null);
 
@@ -488,7 +499,8 @@ function sanitizePublicModalData(pageName, initialData) {
 ipcMain.on('open-modal-window', (event, pageName, initialData = {}) => {
     if (!PUBLIC_MODAL_PAGES.has(pageName)) return;
     try {
-        openModalWindow(pageName, sanitizePublicModalData(pageName, initialData));
+        void openModalWindow(pageName, sanitizePublicModalData(pageName, initialData))
+            .catch(error => console.error('Failed to open modal window:', error));
     } catch (error) {
         console.error('Failed to open modal window:', error);
     }
@@ -561,15 +573,16 @@ ipcMain.handle('get-modal-window-data', (event) => {
 });
 
 ipcMain.on('view-account-ids', () => {
-    openModalWindow('account');
+    void openModalWindow('account').catch(error => console.error('Failed to open account window:', error));
 });
 
 ipcMain.on('scan-full', () => {
-    openModalWindow('scan-full');
+    void openModalWindow('scan-full').catch(error => console.error('Failed to open scan window:', error));
 });
 module.exports = {
     applyWindowsMicaEffect,
     createMainWindow,
     getMainWin: () => win,
+    requestDialogModalWindow,
     windowVisualEffect
 };

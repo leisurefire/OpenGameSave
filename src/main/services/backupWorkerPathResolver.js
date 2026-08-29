@@ -15,6 +15,7 @@ const {
 const MAX_GLOB_MATCHES = 10000;
 const MAX_REGISTRY_MATCHES = 1000;
 const MAX_UID_PLACEHOLDERS = 4;
+const MAX_UID_COMBINATIONS = 256;
 
 function getWinRegHive(hive) {
     switch (hive) {
@@ -49,13 +50,21 @@ function createFinalTemplate(resolvedPath, placeholderMappings) {
     return finalTemplate;
 }
 
-function* generateUidCombinations(count, uidValues, current = []) {
+function* generateUidCombinations(
+    count,
+    uidValues,
+    current = [],
+    budget = { remaining: MAX_UID_COMBINATIONS }
+) {
+    if (budget.remaining <= 0) return;
     if (current.length === count) {
+        budget.remaining -= 1;
         yield current;
         return;
     }
     for (const uid of uidValues) {
-        yield* generateUidCombinations(count, uidValues, [...current, uid]);
+        if (budget.remaining <= 0) break;
+        yield* generateUidCombinations(count, uidValues, [...current, uid], budget);
     }
 }
 
@@ -100,6 +109,12 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
 }
 
 async function fillPathUid(templatedPath, basePath, placeholderMappings) {
+    const toResolvedPathObject = resolvedPath => ({
+        template: templatedPath,
+        finalTemplate: createFinalTemplate(resolvedPath, placeholderMappings),
+        resolved: resolvedPath
+    });
+
     function findGlobMatches(testPath) {
         const files = [];
         for (const filePath of glob.globIterateSync(testPath.replace(/\\/g, '/'), {
@@ -120,11 +135,25 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         if (files.length === 0) return null;
         return files
             .filter(filePath => fsOriginal.existsSync(filePath))
-            .map(filePath => ({
-                template: templatedPath,
-                finalTemplate: createFinalTemplate(filePath, placeholderMappings),
-                resolved: filePath
-            }));
+            .map(toResolvedPathObject);
+    }
+
+    function tryExactAndReturnPath(testPath) {
+        try {
+            fsOriginal.lstatSync(testPath);
+            return [toResolvedPathObject(testPath)];
+        } catch (error) {
+            if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;
+            throw error;
+        }
+    }
+
+    function tryPathAndReturnPaths(testPath) {
+        const normalizedPath = testPath.replace(/\\/g, '/');
+        if (!glob.hasMagic(normalizedPath, { magicalBraces: true, windowsPathsNoEscape: true })) {
+            return tryExactAndReturnPath(testPath);
+        }
+        return tryGlobAndReturnPaths(testPath);
     }
 
     if (!basePath.includes('{{p|uid}}') && !basePath.includes('{{p|xbox_uid}}')) {
@@ -136,7 +165,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
                 return subDirFiles;
             }
         }
-        return tryGlobAndReturnPaths(basePath) || [];
+        return tryPathAndReturnPaths(basePath) || [];
     }
 
     if (getSettings().backupAllAccounts) {
@@ -161,7 +190,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     contextAwarePath = applyContextReplacement(contextAwarePath, `${getGameData().ubisoftPath}/savegames/{{p|uid}}`, getGameData().currentUbisoftUserId);
 
     if (!contextAwarePath.includes('{{p|uid}}') && !contextAwarePath.includes('{{p|xbox_uid}}')) {
-        return tryGlobAndReturnPaths(contextAwarePath) || [];
+        return tryPathAndReturnPaths(contextAwarePath) || [];
     }
 
     const uidMatches = contextAwarePath.match(/\{\{p\|uid\}\}/gi);
@@ -180,7 +209,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
         testPath = testPath.replace(/\{\{p\|uid\}\}/gi, () => uidCombo[uidIndex++]);
         testPath = testPath.replace(/\{\{p\|xbox_uid\}\}/gi, () => uidCombo[uidIndex++]);
 
-        const result = tryGlobAndReturnPaths(testPath);
+        const result = tryPathAndReturnPaths(testPath);
         if (result) return result;
     }
 

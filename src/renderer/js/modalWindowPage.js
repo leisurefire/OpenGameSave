@@ -261,8 +261,22 @@ async function renderAccountModal(root) {
         const isAllAccountsSelected = document.getElementById('backup-scope-all').checked;
         confirmButton.disabled = true;
         try {
-            await window.api.invoke('save-settings', 'backupAllAccounts', isAllAccountsSelected);
+            const result = await window.api.invoke('save-settings', 'backupAllAccounts', isAllAccountsSelected);
             window.api.send('update-backup-table');
+            if (Array.isArray(result?.watcherFailures) && result.watcherFailures.length > 0) {
+                const failureDetails = result.watcherFailures.map((failure) => (
+                    `${failure.wikiId}: ${failure.error || 'Unknown error'}`
+                ));
+                await showAlert(
+                    'modal',
+                    await window.i18n.translate('settings.auto_backup_watcher_refresh_failed', {
+                        count: result.watcherFailures.length
+                    }),
+                    [failureDetails]
+                );
+                confirmButton.disabled = false;
+                return;
+            }
             closeModalWindow();
         } catch (error) {
             console.error('Failed to save backup scope:', error);
@@ -436,13 +450,31 @@ async function renderManageBackupsModal(root, initData) {
             if (!start) return;
             const backupInstance = gameData.backups.find(backup => backup.date === backupDate);
             if (!backupInstance) return;
+            button.disabled = true;
             window.api.send('update-status', 'restoring', true);
-            const { error } = await window.api.invoke('restore-game', { ...gameData, backups: [backupInstance] }, null);
-            window.api.send('update-status', 'restoring', false);
-            refreshMainTables();
-            closeModalWindow();
-            if (error) showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
-            else showMainAlert('success', await window.i18n.translate('main.restore_complete'));
+            try {
+                const { error } = await window.api.invoke(
+                    'restore-game',
+                    { ...gameData, backups: [backupInstance] },
+                    null
+                );
+                refreshMainTables();
+                closeModalWindow();
+                if (error) {
+                    showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
+                } else {
+                    showMainAlert('success', await window.i18n.translate('main.restore_complete'));
+                }
+            } catch (error) {
+                showMainAlert(
+                    'modal',
+                    await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }),
+                    error.message || String(error)
+                );
+            } finally {
+                window.api.send('update-status', 'restoring', false);
+                button.disabled = false;
+            }
         }
     });
 }

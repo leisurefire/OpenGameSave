@@ -1,5 +1,11 @@
 const { BrowserWindow, app, dialog, ipcMain, session } = require('electron');
 
+const { installIpcAuthorization } = require('./ipcAuthorization');
+
+// Install the default-deny IPC boundary before importing modules that register
+// handlers as a side effect (notably the window manager).
+installIpcAuthorization(ipcMain);
+
 const fs = require('fs');
 const path = require('path');
 
@@ -16,15 +22,17 @@ const {
     saveSettings,
     setLaunchAtStartup
 } = require('./global');
-const { initializeDatabaseStorage, updateDatabase } = require('./backup');
+const { initializeDatabaseStorage, shutdownBackupWorkers, updateDatabase } = require('./backup');
 const { restoreAutoBackups, stopAllAutoBackups } = require('./autoBackup');
 const { detectGamePaths, getGameData, initializeGameData } = require('./gameData');
+const { beginOperationShutdown, waitForOperationsToFinish } = require('./gameOperationLock');
 const { registerIpcHandlers } = require('./ipc');
 const {
     createMenuWindow,
     destroyMenuWindow,
     registerMenuWindowIpc
 } = require('./services/menuWindowService');
+const { shutdownLibraryScanner } = require('./services/libraryService');
 const { denyUnexpectedPermissions } = require('./windowSecurity');
 const { recoverWebDAVTransactions } = require('./webdavSync');
 
@@ -112,17 +120,29 @@ function reportBackgroundStartupError(error) {
 }
 
 function enqueueStartupIdleTask(name, task, delayMs = 0) {
+    if (isQuitting) return;
     startupIdleTasks.push({ name, task, delayMs });
 }
 
+async function runShutdownStep(name, task) {
+    try {
+        await task;
+    } catch (error) {
+        console.error(`Failed to shut down ${name}:`, error);
+        logFatalError(error);
+    }
+}
+
 function startStartupIdleQueue(initialDelayMs = 0) {
-    if (startupIdleQueueStarted) return;
+    if (startupIdleQueueStarted || isQuitting) return;
     startupIdleQueueStarted = true;
 
     const runNext = () => {
+        if (isQuitting) return;
         const nextTask = startupIdleTasks.shift();
         if (!nextTask) return;
         setTimeout(async () => {
+            if (isQuitting) return;
             try {
                 await nextTask.task();
             } catch (error) {
@@ -188,10 +208,23 @@ function registerApplicationLifecycle() {
         if (isQuitting) return;
         event.preventDefault();
         isQuitting = true;
+        startupIdleTasks.length = 0;
         try {
             destroyMenuWindow();
             const updateQuit = isAppUpdateQuitPending();
-            const result = await waitForShutdownTask(stopAllAutoBackups(), updateQuit ? 10000 : 30000);
+            beginOperationShutdown();
+            const shutdownTasks = (async () => {
+                await Promise.all([
+                    runShutdownStep('auto backups', stopAllAutoBackups()),
+                    runShutdownStep('library scanner', shutdownLibraryScanner())
+                ]);
+                await runShutdownStep(
+                    'game operations',
+                    waitForOperationsToFinish({ ignoreGlobal: updateQuit })
+                );
+                await runShutdownStep('backup workers', shutdownBackupWorkers());
+            })();
+            const result = await waitForShutdownTask(shutdownTasks, updateQuit ? 10000 : 30000);
             if (result === 'timeout') {
                 console.warn(`Timed out stopping background backups during ${updateQuit ? 'update' : 'normal'} exit`);
             }
@@ -217,10 +250,15 @@ async function startApplication() {
     await initializeDatabaseStorage();
     await createMainWindow();
     const mainWindow = getMainWin();
-    mainWindow.webContents.once('did-finish-load', () => queuePostRenderStartup(mainWindow));
+    // createMainWindow awaits loadFile(), so did-finish-load has already fired
+    // by the time it resolves. Queue startup work immediately after that
+    // promise instead of registering a listener that can never run.
+    queuePostRenderStartup(mainWindow);
     app.setAppUserModelId(i18next.t('main.title'));
     app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+        if (BrowserWindow.getAllWindows().length === 0) {
+            void createMainWindow().catch(logFatalError);
+        }
     });
 }
 

@@ -3,7 +3,8 @@ const { parentPort } = require('worker_threads');
 const { setWorkerContext } = require('./services/backupWorkerContext');
 const {
     getAllGameDataFromDB,
-    getGameDataFromDB
+    getGameDataFromDB,
+    getTrustedRestoreDefinition
 } = require('./services/backupWorkerDatabase');
 const {
     backupGame,
@@ -15,6 +16,7 @@ const {
 const TASK_HANDLERS = {
     getGameDataFromDB: payload => getGameDataFromDB(payload || {}),
     getAllGameDataFromDB: () => getAllGameDataFromDB(),
+    getTrustedRestoreDefinition: payload => getTrustedRestoreDefinition(payload || {}),
     backupGame: payload => backupGame(payload.gameObj),
     getGameDataForRestore: payload => getGameDataForRestore(payload || {}),
     restorePaths: payload => restorePaths(payload.pathsToRestore || []),

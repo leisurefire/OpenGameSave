@@ -10,9 +10,42 @@ const { joinRemotePath } = require('./webdavManifest');
 const METADATA_TIMEOUT_MS = 30000;
 const TRANSFER_TIMEOUT_MS = 10 * 60 * 1000;
 const IDLE_TIMEOUT_MS = 30000;
+const CAPABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CAPABILITY_CACHE_ENTRIES = 32;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const capabilityCache = new Map();
 let secureFetchInstalled = false;
+let secureFetchInstallPromise = null;
+
+function webDAVIntegrityError(message) {
+    return Object.assign(new Error(message), { code: 'WEBDAV_INTEGRITY' });
+}
+
+function isWebDAVIntegrityError(error) {
+    return error?.code === 'WEBDAV_INTEGRITY';
+}
+
+function pruneCapabilityCache(cache = capabilityCache, now = Date.now()) {
+    for (const [key, cachedAt] of cache) {
+        if (!Number.isFinite(cachedAt) || now - cachedAt >= CAPABILITY_CACHE_TTL_MS) cache.delete(key);
+    }
+    while (cache.size > MAX_CAPABILITY_CACHE_ENTRIES) {
+        cache.delete(cache.keys().next().value);
+    }
+}
+
+function cacheCapability(cacheKey, now = Date.now()) {
+    capabilityCache.delete(cacheKey);
+    capabilityCache.set(cacheKey, now);
+    pruneCapabilityCache(capabilityCache, now);
+}
+
+function createCapabilityCacheKey(config) {
+    const credentialFingerprint = createHash('sha256')
+        .update(`${config.username || ''}\0${config.password || ''}`, 'utf8')
+        .digest('hex');
+    return `${config.url}\n${config.remotePath}\n${credentialFingerprint}`;
+}
 
 function getErrorStatus(error) {
     return Number(error?.status || error?.response?.status || 0);
@@ -76,30 +109,38 @@ async function retryWebDAV(label, operation, { attempts = 3, timeoutMs = METADAT
 
 async function installSecureFetch(webdavModule) {
     if (secureFetchInstalled) return;
-    const { fetch } = await import('@buttercup/fetch');
-    const patcher = webdavModule.getPatcher();
-    patcher.patch('fetch', async (requestUrl, options = {}) => {
-        let currentUrl = new URL(requestUrl);
-        for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
-            const response = await fetch(currentUrl, { ...options, redirect: 'manual' });
-            if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-            const location = response.headers.get('location');
-            if (!location) return response;
-            const nextUrl = new URL(location, currentUrl);
-            if (nextUrl.origin !== currentUrl.origin || nextUrl.protocol !== currentUrl.protocol) {
-                response.body?.destroy();
-                throw new Error('WebDAV refused a cross-origin or protocol-changing redirect');
-            }
-            if (options.body) {
-                response.body?.destroy();
-                throw new Error('WebDAV redirected a request body and cannot replay it safely');
-            }
-            response.body?.destroy();
-            currentUrl = nextUrl;
-        }
-        throw new Error('WebDAV returned too many redirects');
-    });
-    secureFetchInstalled = true;
+    if (!secureFetchInstallPromise) {
+        secureFetchInstallPromise = (async () => {
+            const { fetch } = await import('@buttercup/fetch');
+            const patcher = webdavModule.getPatcher();
+            patcher.patch('fetch', async (requestUrl, options = {}) => {
+                let currentUrl = new URL(requestUrl);
+                for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+                    const response = await fetch(currentUrl, { ...options, redirect: 'manual' });
+                    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+                    const location = response.headers.get('location');
+                    if (!location) return response;
+                    const nextUrl = new URL(location, currentUrl);
+                    if (nextUrl.origin !== currentUrl.origin || nextUrl.protocol !== currentUrl.protocol) {
+                        response.body?.destroy();
+                        throw new Error('WebDAV refused a cross-origin or protocol-changing redirect');
+                    }
+                    if (options.body) {
+                        response.body?.destroy();
+                        throw new Error('WebDAV redirected a request body and cannot replay it safely');
+                    }
+                    response.body?.destroy();
+                    currentUrl = nextUrl;
+                }
+                throw new Error('WebDAV returned too many redirects');
+            });
+            secureFetchInstalled = true;
+        })().catch((error) => {
+            secureFetchInstallPromise = null;
+            throw error;
+        });
+    }
+    await secureFetchInstallPromise;
 }
 
 async function createHardenedWebDAVClient(config) {
@@ -198,10 +239,46 @@ function makeUploadSource(data, onActivity) {
                 callback(null, chunk);
             }
         });
-        return fs.createReadStream(data).pipe(activityTransform);
+        return fs.createReadStream(data, {
+            flags: fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
+        }).pipe(activityTransform);
     }
     if (typeof data === 'function') return data(onActivity);
     throw new Error('Unsupported WebDAV upload source');
+}
+
+async function verifyUploadSource(data, expectedSize, expectedSha256) {
+    let actualSize;
+    const hash = createHash('sha256');
+    if (Buffer.isBuffer(data)) {
+        actualSize = data.length;
+        hash.update(data);
+    } else if (typeof data === 'string') {
+        const noFollow = fs.constants.O_NOFOLLOW || 0;
+        const fileHandle = await fs.promises.open(data, fs.constants.O_RDONLY | noFollow);
+        try {
+            const before = await fileHandle.stat();
+            if (!before.isFile()) throw new Error('WebDAV upload source is not a regular file');
+            actualSize = before.size;
+            for await (const chunk of fileHandle.createReadStream({ autoClose: false })) hash.update(chunk);
+            const after = await fileHandle.stat();
+            const pathAfter = await fs.promises.lstat(data);
+            if (!pathAfter.isFile() || pathAfter.isSymbolicLink()
+                || before.dev !== after.dev || before.ino !== after.ino
+                || before.size !== after.size || before.mtimeMs !== after.mtimeMs
+                || after.dev !== pathAfter.dev || after.ino !== pathAfter.ino
+                || after.size !== pathAfter.size || after.mtimeMs !== pathAfter.mtimeMs) {
+                throw new Error('A local backup changed while it was being verified for WebDAV');
+            }
+        } finally {
+            await fileHandle.close();
+        }
+    } else {
+        throw new Error('Unsupported WebDAV upload source');
+    }
+    if (actualSize !== expectedSize || hash.digest('hex') !== expectedSha256) {
+        throw new Error('A local backup changed before its WebDAV object could be repaired; retry safely');
+    }
 }
 
 async function putImmutableResource(client, remotePath, data, size) {
@@ -267,7 +344,7 @@ class BoundedDownloadTransform extends Transform {
         if (this.received > this.expectedSize) {
             clearTimeout(this.idleTimer);
             this.controller.abort();
-            callback(new Error(`WebDAV response exceeded its declared size: ${this.remotePath}`));
+            callback(webDAVIntegrityError(`WebDAV response exceeded its declared size: ${this.remotePath}`));
             return;
         }
         this.resetIdleTimer();
@@ -277,7 +354,7 @@ class BoundedDownloadTransform extends Transform {
     _flush(callback) {
         clearTimeout(this.idleTimer);
         if (this.received !== this.expectedSize) {
-            callback(new Error(`WebDAV response size mismatch: ${this.remotePath}`));
+            callback(webDAVIntegrityError(`WebDAV response size mismatch: ${this.remotePath}`));
             return;
         }
         callback();
@@ -307,7 +384,7 @@ async function downloadResource(client, remotePath, destinationPath, expectedSiz
             const declaredLength = Number(declaredLengthHeader);
             if (!Number.isSafeInteger(declaredLength) || declaredLength !== expectedSize) {
                 response.body?.destroy();
-                throw new Error(`Invalid Content-Length for WebDAV object: ${remotePath}`);
+                throw webDAVIntegrityError(`Invalid Content-Length for WebDAV object: ${remotePath}`);
             }
         }
         const limiter = new BoundedDownloadTransform(expectedSize, controller, remotePath);
@@ -326,7 +403,7 @@ async function verifyRemoteResource(client, remotePath, expectedSize, expectedSh
         const declaredLengthHeader = response.headers.get('content-length');
         if (declaredLengthHeader !== null && Number(declaredLengthHeader) !== expectedSize) {
             response.body?.destroy();
-            throw new Error(`Invalid Content-Length for WebDAV object: ${remotePath}`);
+            throw webDAVIntegrityError(`Invalid Content-Length for WebDAV object: ${remotePath}`);
         }
         const hash = createHash('sha256');
         const sink = new Writable({
@@ -337,7 +414,7 @@ async function verifyRemoteResource(client, remotePath, expectedSize, expectedSh
         });
         await pipeline(response.body, new BoundedDownloadTransform(expectedSize, controller, remotePath), sink);
         if (hash.digest('hex') !== expectedSha256) {
-            throw new Error(`WebDAV object hash verification failed: ${remotePath}`);
+            throw webDAVIntegrityError(`WebDAV object hash verification failed: ${remotePath}`);
         }
     }, { attempts: 3, timeoutMs: TRANSFER_TIMEOUT_MS });
 }
@@ -358,9 +435,14 @@ function formatProbeEtag(rawEtag) {
 }
 
 async function probeWebDAVCapabilities(client, config) {
-    const cacheKey = `${config.url}\n${config.remotePath}`;
+    const cacheKey = createCapabilityCacheKey(config);
+    pruneCapabilityCache();
     const cachedAt = capabilityCache.get(cacheKey);
-    if (cachedAt && Date.now() - cachedAt < 5 * 60 * 1000) return;
+    if (cachedAt) {
+        capabilityCache.delete(cacheKey);
+        capabilityCache.set(cacheKey, cachedAt);
+        return;
+    }
 
     await ensureRemoteRoot(client, config.remotePath);
     await withTimeout('WebDAV OPTIONS', METADATA_TIMEOUT_MS,
@@ -391,7 +473,7 @@ async function probeWebDAVCapabilities(client, config) {
         await moveResource(client, sourcePath, movedPath);
         await statResource(client, movedPath);
         await deleteResource(client, movedPath);
-        capabilityCache.set(cacheKey, Date.now());
+        cacheCapability(cacheKey);
     } catch (error) {
         throw new Error(`WebDAV server lacks a required safe-sync capability: ${error.message}`);
     } finally {
@@ -403,12 +485,15 @@ async function probeWebDAVCapabilities(client, config) {
 
 module.exports = {
     createHardenedWebDAVClient,
+    createCapabilityCacheKey,
     deleteResource,
     downloadResource,
     ensureDirectory,
     ensureRemoteRoot,
     isNotFound,
     isPreconditionFailed,
+    isWebDAVIntegrityError,
+    pruneCapabilityCache,
     probeWebDAVCapabilities,
     putConditionalResource,
     putImmutableResource,
@@ -416,5 +501,6 @@ module.exports = {
     readRemoteResource,
     resourceExists,
     statResource,
-    verifyRemoteResource
+    verifyRemoteResource,
+    verifyUploadSource
 };

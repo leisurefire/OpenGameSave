@@ -10,23 +10,27 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   sync:
+    permissions:
+      contents: write
+      pull-requests: write
+    environment: database-sync
     if: github.repository == 'leisurefire/OpenGameSave'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Check out the default branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
@@ -59,7 +63,7 @@ jobs:
           node -e "const r=require('./dist/ludusavi-sync-report.json'); const s=r.summary; process.stdout.write(['## Ludusavi database sync','', '- Source SHA-256: `'+r.source.sha256+'`','- Matched games: '+s.matchedGames,'- Updated games: '+s.updatedGames,'- Added paths: '+s.addedPaths,'- Normalized Xbox PGS paths: '+s.normalizedXboxPgsPaths,'- Unsupported paths skipped: '+s.unsupportedPaths,'- Match conflicts: '+r.conflicts.length,''].join('\n'))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the detailed sync report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ludusavi-sync-report-${{ github.run_id }}
           path: dist/ludusavi-sync-report.json
@@ -85,6 +89,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           BRANCH="automation/ludusavi-manifest"
+          gh auth setup-git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"

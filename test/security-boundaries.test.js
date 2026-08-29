@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { acquireGameOperation, acquireGlobalOperation } = require('../src/main/gameOperationLock');
+const { GameOperationLock, acquireGameOperation, acquireGlobalOperation } = require('../src/main/gameOperationLock');
 const { acquireDatabaseRead, acquireDatabaseWrite, runWithDatabaseRead } = require('../src/main/databaseOperationLock');
 const { isRendererFileUrl } = require('../src/main/windowSecurity');
 
@@ -32,6 +32,20 @@ test('global backup-storage operations exclude per-game mutations', () => {
     const releaseGame = acquireGameOperation('123', 'backup');
     assert.throws(() => acquireGlobalOperation('migration'), /busy/);
     releaseGame();
+});
+
+test('shutdown rejects new mutations and waits for active writes to release', async () => {
+    const lock = new GameOperationLock();
+    const release = lock.acquireGame('123', 'backup');
+    lock.beginShutdown();
+    assert.throws(() => lock.acquireGame('456', 'restore'), /shutting down/);
+    let drained = false;
+    const drain = lock.waitForIdle().then(() => { drained = true; });
+    await Promise.resolve();
+    assert.equal(drained, false);
+    release();
+    await drain;
+    assert.equal(drained, true);
 });
 
 test('database writes wait for readers and do not starve behind new reads', async () => {

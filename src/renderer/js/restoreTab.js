@@ -1,15 +1,9 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
-import { showRestoreConflictDialog } from './dialog.js';
-import { showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, addOrUpdateTableRow, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createRestoreTableRow, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
 
 const restoreTableDataMap = new Map();
 window.restoreTableDataMap = restoreTableDataMap;
 let restoreTabInitialized = false;
-
-window.api.receive('restore-conflict-prompt', async (requestId, prompt) => {
-    const result = await showRestoreConflictDialog(prompt);
-    window.api.send('restore-conflict-response', requestId, result);
-});
 
 function initializeRestoreTab() {
     if (restoreTabInitialized) {
@@ -73,43 +67,22 @@ function setupRestoreButton() {
             return;
         }
 
-        await setActionButtonState({
-            button: restoreButton,
-            icon: restoreIcon,
-            text: restoreText,
-            iconName: 'rotate-ccw-clock',
-            i18nKey: 'main.restore_in_progress',
-            busy: true
-        });
-
-        await performRestore();
-        document.querySelector('#restore-summary-done').classList.remove('hidden');
-
-        await setActionButtonState({
-            button: restoreButton,
-            icon: restoreIcon,
-            text: restoreText,
-            iconName: 'rotate-ccw-clock',
-            i18nKey: 'main.restore_selected',
-            busy: false
-        });
-        window.api.send('update-status', 'restoring', false);
-
-        // Update table rows in background
-        (async () => {
+        let completed = false;
+        try {
             await setActionButtonState({
                 button: restoreButton,
                 icon: restoreIcon,
                 text: restoreText,
                 iconName: 'rotate-ccw-clock',
-                i18nKey: 'main.updating_restore',
+                i18nKey: 'main.restore_in_progress',
                 busy: true
             });
-
-            for (const wikiId of selectedGames) {
-                await addOrUpdateTableRow('backup', wikiId);
-            }
-
+            completed = await performRestore();
+            if (completed) document.querySelector('#restore-summary-done').classList.remove('hidden');
+        } catch (error) {
+            console.error('Restore operation failed:', error);
+            showAlert('error', error.message || String(error));
+        } finally {
             await setActionButtonState({
                 button: restoreButton,
                 icon: restoreIcon,
@@ -118,7 +91,12 @@ function setupRestoreButton() {
                 i18nKey: 'main.restore_selected',
                 busy: false
             });
-        })().catch(console.error);
+            window.api.send('update-status', 'restoring', false);
+        }
+        if (!completed) return;
+
+        window.api.send('update-backup-table');
+        window.api.send('update-restore-table');
     });
 }
 
@@ -129,19 +107,26 @@ async function performRestore() {
     const totalGames = selectedWikiIds.length;
 
     const start = await operationStartCheck('restore');
-    if (start) {
-        window.api.send('update-status', 'restoring', true);
-        updateProgress(restoreProgressId, restoreProgressTitle, 'start');
+    if (!start) return false;
+    window.api.send('update-status', 'restoring', true);
+    updateProgress(restoreProgressId, restoreProgressTitle, 'start');
 
-        let restoreCount = 0;
-        let restoreFailed = 0;
-        let restoreSize = 0;
-        let errors = [];
-        let globalAction = null;
+    let restoreCount = 0;
+    let restoreFailed = 0;
+    let restoreSize = 0;
+    const errors = [];
+    let globalAction = null;
 
+    try {
         for (const wikiId of selectedWikiIds) {
             const gameData = restoreTableDataMap.get(wikiId);
-            const { action: actionForAll, error: newError } = await window.api.invoke('restore-game', gameData, globalAction);
+            let actionForAll = null;
+            let newError = null;
+            try {
+                ({ action: actionForAll, error: newError } = await window.api.invoke('restore-game', gameData, globalAction));
+            } catch (error) {
+                newError = error.message || String(error);
+            }
 
             // Not counting games that are skipped
             if (newError) {
@@ -149,7 +134,7 @@ async function performRestore() {
                 restoreCount++;
                 errors.push(newError);
             } else if (actionForAll !== 'skip') {
-                restoreSize += gameData.backup_size;
+                restoreSize += gameData?.backup_size || 0;
                 restoreCount++;
             }
 
@@ -161,7 +146,10 @@ async function performRestore() {
             }
         }
 
-        updateProgress(restoreProgressId, restoreProgressTitle, 'end');
         showOperationSummary('restore', restoreCount, restoreFailed, errors, restoreSize, 'summary.total_restore_failed');
+        return true;
+    } finally {
+        updateProgress(restoreProgressId, restoreProgressTitle, 'end');
+        window.api.send('update-status', 'restoring', false);
     }
 }

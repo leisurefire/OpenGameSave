@@ -1,8 +1,10 @@
-const { shell } = require('electron');
 const { spawn } = require('child_process');
+const { isMainThread, Worker } = require('worker_threads');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+
+const { shell } = isMainThread ? require('electron') : { shell: null };
 
 const vdf = require('vdf-parser');
 const WinReg = require('winreg');
@@ -19,6 +21,10 @@ const {
 } = require('./libraryArtworkService');
 
 const STEAM_UTILITY_APP_IDS = new Set(['228980']);
+const MAX_LIBRARY_GAMES = 20000;
+const MAX_LIBRARY_ROOTS = 256;
+const MAX_PROVIDER_DIRECTORY_ENTRIES = 20000;
+const MAX_STEAM_ART_ENTRIES = 1024;
 
 const BATTLE_NET_GAMES = Object.freeze([
     {
@@ -64,8 +70,112 @@ const BATTLE_NET_GAMES = Object.freeze([
     }
 ]);
 
+class LibraryScanWorkerController {
+    constructor({ createWorker = () => new Worker(getLibraryScanWorkerPath()) } = {}) {
+        if (typeof createWorker !== 'function') throw new TypeError('createWorker must be a function');
+        this.createWorker = createWorker;
+        this.activeTask = null;
+        this.closed = false;
+        this.shutdownPromise = null;
+        this.terminations = new Set();
+    }
+
+    isClosed() {
+        return this.closed;
+    }
+
+    trackTermination(worker) {
+        let termination;
+        try {
+            termination = Promise.resolve(worker.terminate()).catch(() => undefined);
+        } catch (_) {
+            termination = Promise.resolve();
+        }
+        this.terminations.add(termination);
+        termination.then(() => this.terminations.delete(termination));
+        return termination;
+    }
+
+    run(scanContext) {
+        if (this.closed) return Promise.reject(new Error('Library scanner is shut down'));
+        if (this.activeTask) return Promise.reject(new Error('Library scan is already running'));
+
+        let worker;
+        try {
+            worker = this.createWorker();
+        } catch (error) {
+            return Promise.reject(error);
+        }
+
+        return new Promise((resolve, reject) => {
+            const task = { worker, settled: false, cancel: null };
+            const finish = (callback, value) => {
+                if (task.settled) return;
+                task.settled = true;
+                if (this.activeTask === task) this.activeTask = null;
+                this.trackTermination(worker);
+                callback(value);
+            };
+            task.cancel = error => finish(reject, error);
+            this.activeTask = task;
+
+            worker.once('error', error => finish(reject, error));
+            worker.once('exit', (code) => {
+                if (!task.settled) {
+                    finish(reject, new Error(`Library scan worker stopped before returning a result (exit code ${code})`));
+                }
+            });
+            worker.once('message', (message) => {
+                if (message?.type === 'done' && Array.isArray(message.games)) {
+                    finish(resolve, message.games);
+                    return;
+                }
+                const error = new Error(message?.error?.message || 'Library scan worker failed');
+                error.stack = message?.error?.stack || error.stack;
+                finish(reject, error);
+            });
+            try {
+                worker.postMessage({ scanContext });
+            } catch (error) {
+                finish(reject, error);
+            }
+        });
+    }
+
+    shutdown() {
+        if (this.shutdownPromise) return this.shutdownPromise;
+        this.closed = true;
+        this.activeTask?.cancel(new Error('Library scanner is shut down'));
+        this.shutdownPromise = Promise.all([...this.terminations]).then(() => undefined);
+        return this.shutdownPromise;
+    }
+}
+
 let scannedGames = new Map();
 let libraryScanPromise = null;
+const libraryScanWorkerController = new LibraryScanWorkerController();
+
+function readDirectoryEntriesBounded(directoryPath, predicate, maximumEntries) {
+    const entries = [];
+    let directory;
+    try {
+        directory = fs.opendirSync(directoryPath);
+        while (entries.length < maximumEntries) {
+            const entry = directory.readSync();
+            if (!entry) break;
+            if (predicate(entry)) entries.push(entry);
+        }
+    } catch (_) {
+        return entries;
+    } finally {
+        try {
+            directory?.closeSync();
+        } catch (_) {
+            // The provider may replace its directory during a scan.
+        }
+    }
+    return entries;
+}
 
 function isReadableFile(filePath, maximumBytes = MAX_MANIFEST_BYTES) {
     if (!filePath) return false;
@@ -158,7 +268,7 @@ function findSteamArt(steamRoot, appId) {
 
     if (fs.existsSync(appRoot)) {
         try {
-            for (const entry of fs.readdirSync(appRoot, { withFileTypes: true })) {
+            for (const entry of readDirectoryEntriesBounded(appRoot, () => true, MAX_STEAM_ART_ENTRIES)) {
                 if (entry.isFile()) {
                     if (/^library_600x900(?:_2x)?(?:_[a-z0-9-]+)?\.(?:jpe?g|png|webp)$/i.test(entry.name)) {
                         coverCandidates.push(path.join(appRoot, entry.name));
@@ -192,11 +302,18 @@ function findSteamArt(steamRoot, appId) {
     };
 }
 
-function getSteamRootCandidates() {
+function getSteamRootCandidates(scanContext = {}) {
+    if (Array.isArray(scanContext.steamRootCandidates)) {
+        const roots = new Set();
+        for (const candidate of scanContext.steamRootCandidates) {
+            if (roots.size >= MAX_LIBRARY_ROOTS) break;
+            if (candidate && fs.existsSync(candidate)) roots.add(path.normalize(candidate));
+        }
+        return [...roots];
+    }
+
     const home = os.homedir();
-    // Load gameData lazily: `original-fs` is an Electron runtime module and is
-    // unavailable when pure helpers from this service are exercised by Node tests.
-    const detectedRoot = require('../gameData').getGameData().steamPath;
+    const detectedRoot = scanContext.detectedSteamRoot;
     const candidates = process.platform === 'win32'
         ? [
             detectedRoot,
@@ -221,10 +338,12 @@ function getSteamLibraryRoots(steamRoot) {
         try {
             const parsed = vdf.parse(fs.readFileSync(manifestPath, 'utf8'));
             const folders = parsed.libraryfolders || parsed.LibraryFolders || {};
-            Object.values(folders).forEach((entry) => {
+            for (const key of Object.keys(folders).slice(0, MAX_LIBRARY_ROOTS)) {
+                const entry = folders[key];
                 const libraryPath = typeof entry === 'string' ? entry : entry?.path;
+                if (libraryRoots.size >= MAX_LIBRARY_ROOTS) break;
                 if (libraryPath && fs.existsSync(libraryPath)) libraryRoots.add(path.normalize(libraryPath));
-            });
+            }
         } catch (error) {
             console.warn(`Could not parse Steam library manifest ${manifestPath}:`, error.message);
         }
@@ -233,20 +352,23 @@ function getSteamLibraryRoots(steamRoot) {
     return [...libraryRoots];
 }
 
-function scanSteamGames() {
+function scanSteamGames(scanContext = {}) {
     const games = [];
-    for (const steamRoot of getSteamRootCandidates()) {
+    let limitReached = false;
+    for (const steamRoot of getSteamRootCandidates(scanContext)) {
         for (const libraryRoot of getSteamLibraryRoots(steamRoot)) {
             const steamAppsRoot = path.join(libraryRoot, 'steamapps');
-            let manifests = [];
-            try {
-                manifests = fs.readdirSync(steamAppsRoot, { withFileTypes: true })
-                    .filter(entry => entry.isFile() && /^appmanifest_\d+\.acf$/i.test(entry.name));
-            } catch {
-                continue;
-            }
+            const manifests = readDirectoryEntriesBounded(
+                steamAppsRoot,
+                entry => entry.isFile() && /^appmanifest_\d+\.acf$/i.test(entry.name),
+                MAX_PROVIDER_DIRECTORY_ENTRIES
+            );
 
             for (const manifest of manifests) {
+                if (games.length >= MAX_LIBRARY_GAMES) {
+                    limitReached = true;
+                    break;
+                }
                 const manifestPath = path.join(steamAppsRoot, manifest.name);
                 if (!isReadableFile(manifestPath)) continue;
                 try {
@@ -272,7 +394,9 @@ function scanSteamGames() {
                     console.warn(`Could not parse Steam app manifest ${manifestPath}:`, error.message);
                 }
             }
+            if (limitReached) break;
         }
+        if (limitReached) break;
     }
     return games;
 }
@@ -283,15 +407,13 @@ function scanEpicGames() {
         process.env.PROGRAMDATA || 'C:\\ProgramData',
         'Epic', 'EpicGamesLauncher', 'Data', 'Manifests'
     );
-    let entries = [];
-    try {
-        entries = fs.readdirSync(manifestRoot, { withFileTypes: true })
-            .filter(entry => entry.isFile() && entry.name.endsWith('.item'));
-    } catch {
-        return [];
-    }
+    const entries = readDirectoryEntriesBounded(
+        manifestRoot,
+        entry => entry.isFile() && entry.name.endsWith('.item'),
+        MAX_PROVIDER_DIRECTORY_ENTRIES
+    );
 
-    return entries.flatMap((entry) => {
+    return entries.slice(0, MAX_LIBRARY_GAMES).flatMap((entry) => {
         const manifestPath = path.join(manifestRoot, entry.name);
         const manifest = readJsonFile(manifestPath);
         const appName = String(manifest?.AppName || '').trim();
@@ -346,7 +468,8 @@ async function scanGogGames() {
     const cacheRoots = getGogCacheRoots();
 
     for (const root of roots) {
-        for (const gameKey of await registryKeys(root)) {
+        for (const gameKey of (await registryKeys(root)).slice(0, MAX_PROVIDER_DIRECTORY_ENTRIES)) {
+            if (games.length >= MAX_LIBRARY_GAMES) break;
             const values = await registryValues(gameKey);
             const registryData = Object.fromEntries(values.map(value => [value.name.toLowerCase(), value.value]));
             const platformId = path.basename(gameKey.key);
@@ -370,6 +493,7 @@ async function scanGogGames() {
                 artRoots: art.artRoots
             });
         }
+        if (games.length >= MAX_LIBRARY_GAMES) break;
     }
     return games;
 }
@@ -437,33 +561,66 @@ function toRendererGame(game) {
     };
 }
 
-async function performLibraryScan() {
+async function scanLibraryProviders(scanContext = {}) {
     const providers = [
-        ['Steam', scanSteamGames],
+        ['Steam', () => scanSteamGames(scanContext)],
         ['Epic', scanEpicGames],
         ['GOG', scanGogGames],
         ['Battle.net', scanBattleNetGames]
     ];
-    const results = await Promise.all(providers.map(async ([provider, scan]) => {
+    const requestedProviders = Array.isArray(scanContext.providerNames)
+        ? new Set(scanContext.providerNames)
+        : null;
+    const selectedProviders = requestedProviders
+        ? providers.filter(([provider]) => requestedProviders.has(provider))
+        : providers;
+    const results = await Promise.all(selectedProviders.map(async ([provider, scan]) => {
         try {
-            return await scan();
+            const games = await scan();
+            return Array.isArray(games) ? games.slice(0, MAX_LIBRARY_GAMES) : [];
         } catch (error) {
             console.warn(`Could not scan the ${provider} library:`, error.message);
             return [];
         }
     }));
-    const scanned = results.flat();
-    scannedGames = new Map(scanned.map(game => [game.id, game]));
+    return results.flat().slice(0, MAX_LIBRARY_GAMES);
+}
+
+function getLibraryScanWorkerPath() {
+    const mainDirectory = path.basename(__dirname) === 'services' ? path.dirname(__dirname) : __dirname;
+    return path.join(mainDirectory, 'libraryScanWorker.js');
+}
+
+function runLibraryScanWorker(scanContext) {
+    return libraryScanWorkerController.run(scanContext);
+}
+
+function createLibraryScanContext(overrides = {}) {
+    if (Array.isArray(overrides.steamRootCandidates)) return overrides;
+    const detectedSteamRoot = require('../gameData').getGameData().steamPath;
+    return { ...overrides, detectedSteamRoot };
+}
+
+async function performLibraryScan(scanContext = {}) {
+    const scanned = await runLibraryScanWorker(createLibraryScanContext(scanContext));
+    scannedGames = new Map(scanned.slice(0, MAX_LIBRARY_GAMES).map(game => [game.id, game]));
     return [...scannedGames.values()]
         .map(toRendererGame)
         .sort((left, right) => left.title.localeCompare(right.title, undefined, { numeric: true }));
 }
 
-function scanLibraryGames() {
+function scanLibraryGames(scanContext = {}) {
+    if (libraryScanWorkerController.isClosed()) {
+        return Promise.reject(new Error('Library scanner is shut down'));
+    }
     if (libraryScanPromise) return libraryScanPromise;
-    libraryScanPromise = Promise.resolve().then(performLibraryScan)
+    libraryScanPromise = performLibraryScan(scanContext)
         .finally(() => { libraryScanPromise = null; });
     return libraryScanPromise;
+}
+
+function shutdownLibraryScanner() {
+    return libraryScanWorkerController.shutdown();
 }
 
 function launchDetached(executable, args) {
@@ -522,6 +679,8 @@ async function openLibraryGameDirectory(gameId) {
 }
 
 module.exports = {
+    LibraryScanWorkerController,
+    MAX_LIBRARY_GAMES,
     createEpicLaunchUri,
     createSteamArtUrls,
     createSteamLaunchUri,
@@ -529,5 +688,8 @@ module.exports = {
     launchLibraryGame,
     openLibraryGameDirectory,
     resolveSteamInstallPath,
-    scanLibraryGames
+    runLibraryScanWorker,
+    scanLibraryProviders,
+    scanLibraryGames,
+    shutdownLibraryScanner
 };

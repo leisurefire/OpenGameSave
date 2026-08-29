@@ -11,7 +11,6 @@ const { getMainWin, getSettings } = require('../global');
 const { normalizeWikiId } = require('../validation');
 const { getCachedIconMap } = require('../services/iconService');
 const { TRUSTED_GUIDE_HOSTS } = require('../services/guideService');
-const { getSavePlatformKey } = require('../services/platformService');
 
 const ALLOWED_EXTERNAL_HOSTS = new Set([...TRUSTED_GUIDE_HOSTS, 'www.gnu.org']);
 
@@ -121,7 +120,6 @@ function registerWindowIpc({ ensureGameDataReady }) {
         await ensureGameDataReady();
         return getAllUserIds();
     });
-    ipcMain.handle('get-platform', () => getSavePlatformKey());
     ipcMain.handle('get-icon-map', getCachedIconMap);
     ipcMain.handle('get-main-selected-wiki-ids', (event, tableId) => requestSelectedWikiIds(tableId));
 }

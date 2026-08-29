@@ -22,15 +22,19 @@ const {
 } = require('./webdavCredentials');
 const {
     createHardenedWebDAVClient,
+    deleteResource,
     downloadResource,
     ensureDirectory,
+    isNotFound,
     isPreconditionFailed,
+    isWebDAVIntegrityError,
     probeWebDAVCapabilities,
     putConditionalResource,
     putImmutableResource,
     readRemoteJson,
     resourceExists,
-    verifyRemoteResource
+    verifyRemoteResource,
+    verifyUploadSource
 } = require('./webdavClient');
 const {
     listBackupInstanceFolders,
@@ -56,8 +60,8 @@ const {
 } = require('./webdavManifest');
 const {
     allocateConflictBackupKey,
+    classifyBackupChanges,
     createConflictMetadataBuffer,
-    findConflictingBackupKeys,
     makeLocalConflictFiles,
     mapRemoteConflictFiles,
     mergeLocalFiles
@@ -211,10 +215,10 @@ async function collectLocalBackupFiles(syncRoot) {
 
     const files = [];
     const metadataByBackup = new Map();
-    for (const rawGameId of listGameBackupFolders(syncRoot).sort()) {
+    for (const rawGameId of (await listGameBackupFolders(syncRoot)).sort()) {
         const gameId = normalizeWikiId(rawGameId);
         const gamePath = resolveInside(syncRoot, gameId);
-        for (const rawBackupId of listBackupInstanceFolders(gamePath).sort()) {
+        for (const rawBackupId of (await listBackupInstanceFolders(gamePath)).sort()) {
             const backupId = normalizeBackupDate(rawBackupId);
             const backupPath = resolveInside(gamePath, backupId);
             const metadataPath = resolveInside(backupPath, 'backup_info.json');
@@ -287,10 +291,49 @@ async function ensureContentObject(client, config, file, createdDirectories, ver
         createdDirectories.add(parentPath);
     }
     const source = Buffer.isBuffer(file.data) ? file.data : file.localPath;
-    const created = await putImmutableResource(client, objectPath, source, file.size);
-    await verifyRemoteResource(client, objectPath, file.size, file.sha256);
+    await verifyUploadSource(source, file.size, file.sha256);
+    let created = await putImmutableResource(client, objectPath, source, file.size);
+    try {
+        await verifyRemoteResource(client, objectPath, file.size, file.sha256);
+    } catch (error) {
+        if (!isNotFound(error) && !isWebDAVIntegrityError(error)) throw error;
+
+        // Reconstruct a missing or corrupt content-addressed object from the
+        // local source. Concurrent repairs are safe because the final complete
+        // hash verification remains authoritative.
+        try {
+            await verifyUploadSource(source, file.size, file.sha256);
+        } catch (sourceError) {
+            if (created) {
+                await deleteResource(client, objectPath).catch(() => undefined);
+            }
+            throw sourceError;
+        }
+        if (isWebDAVIntegrityError(error)) {
+            await deleteResource(client, objectPath).catch((deleteError) => {
+                if (!isNotFound(deleteError)) throw deleteError;
+            });
+        }
+        created = await putImmutableResource(client, objectPath, source, file.size) || created;
+        try {
+            await verifyRemoteResource(client, objectPath, file.size, file.sha256);
+        } catch (verificationError) {
+            if (isNotFound(verificationError) || isWebDAVIntegrityError(verificationError)) {
+                await deleteResource(client, objectPath).catch(() => undefined);
+            }
+            throw verificationError;
+        }
+    }
     verifiedObjects.add(file.sha256);
     return created;
+}
+
+function retainDeferredBackupBaselines(currentFiles, previousFiles, deferredBackupKeys) {
+    const deferred = new Set(deferredBackupKeys);
+    if (deferred.size === 0) return currentFiles;
+    const backupKeyOf = file => file.path.split('/').slice(0, 2).join('/');
+    return currentFiles.filter(file => !deferred.has(backupKeyOf(file)))
+        .concat((previousFiles || []).filter(file => deferred.has(backupKeyOf(file))));
 }
 
 async function migrateLegacyObjects(client, config, state, createdDirectories, verifiedObjects) {
@@ -383,9 +426,7 @@ async function uploadBackupsToWebDAV(syncPathSetting = null) {
     let state = await readRemoteState(client, config);
     const syncState = await readWebDAVSyncState(syncPath, config);
     const createdDirectories = new Set([config.remotePath]);
-    const verifiedObjects = new Set(state && !state.legacy
-        ? state.snapshot.files.map(file => file.sha256)
-        : []);
+    const verifiedObjects = new Set();
     let uploadedFiles = 0;
     let uploadedBytes = 0;
     for (let publishAttempt = 0; publishAttempt < 5; publishAttempt += 1) {
@@ -442,12 +483,16 @@ async function uploadBackupsToWebDAV(syncPathSetting = null) {
             );
             await persistWebDAVSyncState(syncPath, config, {
                 localFiles,
-                remoteFiles: mergeResult.files,
+                remoteFiles: retainDeferredBackupBaselines(
+                    mergeResult.files,
+                    syncState?.remoteFiles,
+                    mergeResult.deferredRemoteBackupKeys
+                ),
                 remoteRevision: revision
             });
             return {
                 syncPath,
-                games: listGameBackupFolders(syncPath).length,
+                games: (await listGameBackupFolders(syncPath)).length,
                 size: localFiles.reduce((total, file) => total + file.size, 0),
                 uploadedFiles,
                 uploadedBytes,
@@ -456,9 +501,6 @@ async function uploadBackupsToWebDAV(syncPathSetting = null) {
         } catch (error) {
             if (!isPreconditionFailed(error)) throw error;
             state = await readRemoteState(client, config, { required: true });
-            if (!state.legacy) {
-                for (const file of state.snapshot.files) verifiedObjects.add(file.sha256);
-            }
         }
     }
     throw new Error('WebDAV current snapshot changed repeatedly; retry synchronization later');
@@ -487,7 +529,8 @@ async function prepareDownloadFiles(
     remoteDeviceId,
     syncState
 ) {
-    const conflictingBackups = findConflictingBackupKeys(remoteFiles, localFiles, syncState);
+    const changeClassification = classifyBackupChanges(remoteFiles, localFiles, syncState);
+    const conflictingBackups = new Set(changeClassification.conflicts);
     const remoteFallbackBackups = new Set();
     const localFilesByPath = new Map(localFiles.map(file => [file.path, file]));
     const reservedKeys = new Set([...remoteFiles, ...localFiles]
@@ -527,9 +570,34 @@ async function prepareDownloadFiles(
             conflictVersion: preserveRemote ? 'remote' : 'local'
         });
     }
-    const files = mapRemoteConflictFiles(remoteFiles, remoteConflictDestinations, remoteDeviceId);
+    const files = mapRemoteConflictFiles(remoteFiles.filter((file) => {
+        const backupKey = file.path.split('/').slice(0, 2).join('/');
+        // Preserve a locally changed backup when the remote side is still the
+        // unchanged three-way baseline. A runtime path collision still gets a
+        // separately remapped copy of the remote backup below.
+        return (!changeClassification.localOnlyChanged.has(backupKey)
+            && !changeClassification.divergedWithoutChanges.has(backupKey))
+            || remoteFallbackBackups.has(backupKey);
+    }), remoteConflictDestinations, remoteDeviceId);
     files.push(...await makeLocalConflictFiles(localFiles, localConflictDestinations, localDeviceId));
-    return { files, conflicts };
+    const remoteAuthoritativeBackups = new Set([
+        ...changeClassification.conflicts,
+        ...changeClassification.remoteOnlyChanged
+    ]);
+    const localBackupKeys = new Set(localFiles.map(file =>
+        file.path.split('/').slice(0, 2).join('/')));
+    const remoteBackupKeys = new Set(remoteFiles.map(file =>
+        file.path.split('/').slice(0, 2).join('/')));
+    const replaceTreePaths = [...remoteAuthoritativeBackups].filter(backupKey =>
+        localBackupKeys.has(backupKey)
+        && remoteBackupKeys.has(backupKey)
+        && !remoteFallbackBackups.has(backupKey));
+    return {
+        files,
+        conflicts,
+        replaceTreePaths,
+        deferredLocalBackupKeys: [...changeClassification.localOnlyChanged]
+    };
 }
 
 async function captureDownloadPreconditions(syncPath, files) {
@@ -588,6 +656,26 @@ async function downloadAndVerifyFile(client, config, state, transaction, file) {
             { mode: 0o600 }
         );
     }
+    if (file.path.endsWith('/backup_info.json')) {
+        const metadata = validateBackupMetadata(JSON.parse(await fsOriginal.promises.readFile(stagedPath, 'utf8')));
+        metadata.provenance = 'external';
+        await fsOriginal.promises.writeFile(stagedPath, JSON.stringify(metadata, null, 4), { mode: 0o600 });
+    }
+    await fsOriginal.promises.utimes(stagedPath, new Date(file.mtimeMs), new Date(file.mtimeMs));
+}
+
+function assertTreeReplacementPreconditions(initialLocalFiles, currentLocalFiles, replaceTreePaths) {
+    if (replaceTreePaths.length === 0) return;
+    const affectedBackups = new Set(replaceTreePaths);
+    const toHashes = files => new Map(files
+        .filter(file => affectedBackups.has(file.path.split('/').slice(0, 2).join('/')))
+        .map(file => [file.path, file.sha256]));
+    const initial = toHashes(initialLocalFiles);
+    const current = toHashes(currentLocalFiles);
+    if (initial.size !== current.size
+        || [...initial].some(([relativePath, sha256]) => current.get(relativePath) !== sha256)) {
+        throw new Error('A local backup changed while its WebDAV replacement was being prepared; retry safely');
+    }
 }
 
 async function validateDownloadedMetadata(transaction, manifestFiles) {
@@ -618,7 +706,9 @@ async function downloadBackupsFromWebDAV(syncPathSetting = null) {
     );
     const manifestFiles = preparedDownload.files;
     const downloadPreconditions = await captureDownloadPreconditions(syncPath, manifestFiles);
-    let transaction = await beginWebDAVTransaction(syncPath, manifestFiles);
+    let transaction = await beginWebDAVTransaction(syncPath, manifestFiles, {
+        replaceTreePaths: preparedDownload.replaceTreePaths
+    });
 
     try {
         const metadataFiles = manifestFiles.filter(file => file.path.endsWith('/backup_info.json'));
@@ -630,6 +720,13 @@ async function downloadBackupsFromWebDAV(syncPathSetting = null) {
             }
         }
         await assertDownloadPreconditions(syncPath, downloadPreconditions);
+        if (preparedDownload.replaceTreePaths.length > 0) {
+            assertTreeReplacementPreconditions(
+                localFiles,
+                await collectLocalBackupFiles(syncPath),
+                preparedDownload.replaceTreePaths
+            );
+        }
         await installWebDAVTransaction(transaction);
         transaction = null;
         await pruneBackups(syncPath);
@@ -639,14 +736,18 @@ async function downloadBackupsFromWebDAV(syncPathSetting = null) {
 
     const reconciledLocalFiles = await collectLocalBackupFiles(syncPath);
     await persistWebDAVSyncState(syncPath, config, {
-        localFiles: reconciledLocalFiles,
+        localFiles: retainDeferredBackupBaselines(
+            reconciledLocalFiles,
+            syncState?.localFiles,
+            preparedDownload.deferredLocalBackupKeys
+        ),
         remoteFiles: state.snapshot.files,
         remoteRevision: state.snapshot.revision || null
     });
 
     return {
         syncPath,
-        games: listGameBackupFolders(syncPath).length,
+        games: (await listGameBackupFolders(syncPath)).length,
         size: state.snapshot.files.reduce((total, file) => total + file.size, 0),
         downloadedFiles: state.snapshot.files.length,
         conflicts: preparedDownload.conflicts

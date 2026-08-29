@@ -3,6 +3,7 @@ import { showDontShowDialog, showMessageDialog } from './dialog.js';
 import { getSortedFavoriteGroups, sortGamesForDisplay } from './tableDisplay.js';
 import { initializeTabs } from './tabNavigation.js';
 import { createBackupTableRow, createRestoreTableRow, platformOrder } from './tableRows.js';
+import { setDropDownAction } from './tablePopupMenu.js';
 import {
     getSelectedWikiIds,
     setupSelectAllCheckbox,
@@ -14,15 +15,18 @@ export { createBackupTableRow, createRestoreTableRow } from './tableRows.js';
 export { getSelectedWikiIds, setupSelectAllCheckbox, updateSelectedCountAndSize } from './tableSelection.js';
 export { hideLoadingIndicator, setActionButtonState, showLoadingIndicator } from './tableUi.js';
 import { formatSize } from './formatting.js';
-import { ACTION_ICONS } from './icons.js';
 import {
+    addVirtualRecord,
     appendRows as appendVirtualRows,
     applyVirtualFilter,
+    disableVirtualRows,
+    findVirtualRecord,
     findVirtualRow,
     getRowId,
     getVirtualState,
     removeVirtualRow,
-    sortVirtualRows
+    sortVirtualRows,
+    updateVirtualRecord
 } from './virtualTable.js';
 
 export function runWhenDomReady(callback) {
@@ -106,8 +110,8 @@ export function queueFullTableUpdate(tabName, loader, loadTable) {
     return scheduleTableUpdates(tabName, state);
 }
 
-export function appendRows(tableBody, rows) {
-    appendVirtualRows(tableBody, rows, { rowHeight: 60 });
+export function appendRows(tableBody, rows, options = {}) {
+    appendVirtualRows(tableBody, rows, { rowHeight: 60, ...options });
 }
 
 runWhenDomReady(() => {
@@ -177,25 +181,37 @@ function setupSearchFilter(tabName) {
 
         const dataMap = tabName === 'backup' ? window.backupTableDataMap : window.restoreTableDataMap;
 
-        const rowMatchesFilters = (row) => {
+        const rowMatchesFilters = (rowOrRecord) => {
             // Match against both English and Chinese names, regardless of the
             // displayed language. Fall back to the visible cell text if the
             // game data isn't available in the data map.
-            const gameData = dataMap && dataMap.get(row.getAttribute('data-wiki-id'));
+            const wikiId = getRowId(rowOrRecord);
+            const gameData = dataMap && (dataMap.get(wikiId) || dataMap.get(Number(wikiId)));
             const searchTargets = [];
             if (gameData) {
                 if (gameData.title) searchTargets.push(gameData.title);
                 if (gameData.zh_CN) searchTargets.push(gameData.zh_CN);
             }
             if (searchTargets.length === 0) {
-                const gameNameCell = row.querySelector('th[scope="row"]');
-                if (gameNameCell) searchTargets.push(gameNameCell.textContent);
+                if (rowOrRecord.gameTitle) {
+                    searchTargets.push(rowOrRecord.gameTitle);
+                } else {
+                    const gameNameCell = rowOrRecord.querySelector('th[scope="row"]');
+                    if (gameNameCell) searchTargets.push(gameNameCell.textContent);
+                }
             }
 
             const matchesSearch = searchTargets.some(name => name.toLowerCase().includes(filter));
-            const isFavorite = !row.querySelector('span[data-icon="favorite"].hidden');
-            const isBlocked = row.dataset.blocked === 'true';
-            const isUninstalled = row.dataset.uninstalled === 'true';
+            const isRecord = Boolean(rowOrRecord.iconStates);
+            const isFavorite = isRecord
+                ? rowOrRecord.iconStates.favorite
+                : !rowOrRecord.querySelector('span[data-icon="favorite"].hidden');
+            const isBlocked = isRecord
+                ? rowOrRecord.iconStates.blocked
+                : rowOrRecord.dataset.blocked === 'true';
+            const isUninstalled = isRecord
+                ? rowOrRecord.isUninstalled
+                : rowOrRecord.dataset.uninstalled === 'true';
             const matchesFavorite = !favoritesOnly || isFavorite;
             const matchesBlocked = blockedOnly ? isBlocked : !isBlocked;
             const matchesUninstalled = !uninstalledOnly || isUninstalled;
@@ -296,6 +312,12 @@ function getTableRow(tabName, wikiId) {
 }
 
 function setTableRowIcon(tabName, wikiId, iconName, show) {
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    if (updateVirtualRecord(tableBody, wikiId, record => {
+        record.iconStates[iconName] = show;
+        return record;
+    }, { refilter: iconName === 'favorite' || iconName === 'blocked' })) return;
+
     const row = getTableRow(tabName, wikiId);
     if (row) {
         setIcon(row, iconName, show);
@@ -303,6 +325,7 @@ function setTableRowIcon(tabName, wikiId, iconName, show) {
 }
 
 function isFavoriteRow(row) {
+    if (row.iconStates) return row.iconStates.favorite;
     return !row.querySelector('span[data-icon="favorite"].hidden');
 }
 
@@ -311,7 +334,7 @@ function sortRowsForTable(rows, settings) {
         rowsToSort.map(row => ({
             row,
             wikiId: getRowId(row),
-            titleToSort: row.querySelector('.game-title')?.textContent.trim() || ''
+            titleToSort: row.gameTitle || row.querySelector('.game-title')?.textContent.trim() || ''
         })),
         settings
     ).map(item => item.row);
@@ -328,6 +351,45 @@ export function getPlatformIcon(platform, iconMap) {
 
 export { formatSize };
 
+function createGameTableRecord({
+    wikiId,
+    game,
+    gameTitle,
+    selected = false,
+    favorite = false,
+    blocked = false,
+    uninstalled = false,
+    permanent = false,
+    autoBackup = false
+}) {
+    return {
+        id: wikiId.toString(),
+        game,
+        gameTitle,
+        selected,
+        isUninstalled: uninstalled,
+        iconStates: {
+            favorite,
+            blocked,
+            star: permanent,
+            timer: autoBackup
+        }
+    };
+}
+
+function materializeGameTableRecord(record, createRow) {
+    const row = createRow(record.game, record.gameTitle);
+    const checkbox = row.querySelector('.row-checkbox');
+    if (checkbox) checkbox.checked = record.selected;
+
+    for (const [iconName, show] of Object.entries(record.iconStates)) {
+        if (show) setIcon(row, iconName, true);
+    }
+    if (record.iconStates.blocked) row.dataset.blocked = 'true';
+    if (record.isUninstalled) row.dataset.uninstalled = 'true';
+    return row;
+}
+
 export function populateGameTable({
     tabName,
     tableDataMap,
@@ -340,16 +402,17 @@ export function populateGameTable({
     const selectAllCheckbox = table.querySelector(`#${tabName}-checkbox-all-search`);
 
     const { games: data, settings, autoBackupState } = viewModel;
-    const blockedGamesWikiIds = settings.blockedGames || [];
-    const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
+    const blockedGamesWikiIds = new Set((settings.blockedGames || []).map(String));
+    const uninstalledGamesWikiIds = new Set((settings.uninstalledGames || []).map(String));
     const selectedWikiIds = new Set(getSelectedWikiIds(tabName).map(String));
     const autoBackupSet = new Set(Object.keys(autoBackupState));
 
+    disableVirtualRows(tableBody);
     tableBody.innerHTML = '';
     tableDataMap.clear();
 
     const { favoriteGames, otherGames } = getSortedFavoriteGroups(data, settings);
-    const rows = [];
+    const records = [];
 
     const appendRowsToTable = (games, isFavorite) => {
         games.forEach((game) => {
@@ -363,43 +426,26 @@ export function populateGameTable({
                 return;
             }
 
-            const row = createRow(game, gameTitle);
-
-            if (selectedWikiIds.has(wikiId.toString())) {
-                const checkbox = row.querySelector('.row-checkbox');
-                if (checkbox) {
-                    checkbox.checked = true;
-                }
-            }
-
-            if (isFavorite) {
-                setIcon(row, 'favorite', true);
-            }
-
-            if (blockedGamesWikiIds.includes(wikiId.toString())) {
-                row.dataset.blocked = 'true';
-                setIcon(row, 'blocked', true);
-            }
-
-            if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
-                row.dataset.uninstalled = 'true';
-            }
-
-            if (hasPermanentBackup(game, wikiId)) {
-                setIcon(row, 'star', true);
-            }
-
-            if (autoBackupSet.has(wikiId.toString())) {
-                setIcon(row, 'timer', true);
-            }
-
-            rows.push(row);
+            const normalizedWikiId = wikiId.toString();
+            records.push(createGameTableRecord({
+                wikiId: normalizedWikiId,
+                game,
+                gameTitle,
+                selected: selectedWikiIds.has(normalizedWikiId),
+                favorite: isFavorite,
+                blocked: blockedGamesWikiIds.has(normalizedWikiId),
+                uninstalled: uninstalledGamesWikiIds.has(normalizedWikiId),
+                permanent: hasPermanentBackup(game, wikiId),
+                autoBackup: autoBackupSet.has(normalizedWikiId)
+            }));
         });
     };
 
     appendRowsToTable(favoriteGames, true);
     appendRowsToTable(otherGames, false);
-    appendRows(tableBody, rows);
+    appendRows(tableBody, records, {
+        materializeRow: record => materializeGameTableRecord(record, createRow)
+    });
 
     setupSelectAllCheckbox(tabName, selectAllCheckbox);
     applyTableFilters(tabName);
@@ -460,9 +506,15 @@ async function performAddOrUpdateTableRow(tabName, wikiId) {
 
     dataMap.set(wikiId, gameData);
 
+    const virtualRecord = findVirtualRecord(tableBody, wikiId);
     const existingRow = getTableRow(tabName, wikiId);
 
-    if (existingRow) {
+    if (virtualRecord) {
+        updateVirtualRecord(tableBody, wikiId, record => {
+            record.game = gameData;
+            return record;
+        });
+    } else if (existingRow) {
         // Update existing row cells
         const sizeCell = existingRow.querySelector('.backup-size');
         if (sizeCell) sizeCell.textContent = formatSize(gameData.backup_size);
@@ -481,53 +533,51 @@ async function performAddOrUpdateTableRow(tabName, wikiId) {
         }
         if (!gameTitle) return;
 
+        const normalizedWikiId = wikiId.toString();
+        const isFavorite = (settings.pinnedGames || []).map(String).includes(normalizedWikiId);
+        const isBlocked = (settings.blockedGames || []).map(String).includes(normalizedWikiId);
+        const isUninstalled = (settings.uninstalledGames || []).map(String).includes(normalizedWikiId);
+        const restoreGameData = tabName === 'backup'
+            ? window.restoreTableDataMap?.get(wikiId) || window.restoreTableDataMap?.get(Number(wikiId))
+            : gameData;
+        const hasPermanent = Boolean(restoreGameData?.backups?.some(backup => backup.is_permanent));
+        const autoBackupState = await window.api.invoke('get-auto-backup-state');
+        const hasAutoBackup = Boolean(autoBackupState[normalizedWikiId]);
+
+        // Insert row in sorted position
+        if (getVirtualState(tableBody)) {
+            addVirtualRecord(tableBody, createGameTableRecord({
+                wikiId: normalizedWikiId,
+                game: gameData,
+                gameTitle,
+                favorite: isFavorite,
+                blocked: isBlocked,
+                uninstalled: isUninstalled,
+                permanent: hasPermanent,
+                autoBackup: hasAutoBackup
+            }));
+            sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings));
+            applyTableFilters(tabName);
+            return;
+        }
+
         let row;
         if (tabName === 'backup') {
             const iconMap = await window.api.invoke('get-icon-map');
             const sortedPlatforms = platformOrder.filter(platform => (gameData.platform || []).includes(platform));
             const platformIcons = sortedPlatforms.map(platform => getPlatformIcon(platform, iconMap)).join(' ');
             row = createBackupTableRow(gameTitle, platformIcons, formatSize(gameData.backup_size), gameData.latest_backup, wikiId);
-
-            const restoreGameData = window.restoreTableDataMap && window.restoreTableDataMap.get(wikiId);
-            const hasPermanent = restoreGameData && restoreGameData.backups && restoreGameData.backups.some(b => b.is_permanent);
-            if (hasPermanent) setIcon(row, 'star', true);
         } else {
             row = createRestoreTableRow(gameTitle, gameData.backups.length, formatSize(gameData.backup_size), gameData.latest_backup, wikiId);
-
-            const hasPermanent = gameData.backups.some(b => b.is_permanent);
-            if (hasPermanent) setIcon(row, 'star', true);
         }
-
-        const favoriteGamesWikiIds = settings.pinnedGames || [];
-        const isFavorite = favoriteGamesWikiIds.includes(wikiId.toString());
-        if (isFavorite) {
-            setIcon(row, 'favorite', true);
-        }
-
-        const blockedGamesWikiIds = settings.blockedGames || [];
-        if (blockedGamesWikiIds.includes(wikiId.toString())) {
+        if (isFavorite) setIcon(row, 'favorite', true);
+        if (isBlocked) {
             row.dataset.blocked = 'true';
             setIcon(row, 'blocked', true);
         }
-
-        const uninstalledGamesWikiIds = (settings.uninstalledGames || []).map(String);
-        if (uninstalledGamesWikiIds.includes(wikiId.toString())) {
-            row.dataset.uninstalled = 'true';
-        }
-
-        // Check if auto backup is active
-        const autoBackupState = await window.api.invoke('get-auto-backup-state');
-        if (autoBackupState[wikiId.toString()]) {
-            setIcon(row, 'timer', true);
-        }
-
-        // Insert row in sorted position
-        if (getVirtualState(tableBody)) {
-            getVirtualState(tableBody).allRows.push(row);
-            sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings));
-            applyTableFilters(tabName);
-            return;
-        }
+        if (isUninstalled) row.dataset.uninstalled = 'true';
+        if (hasPermanent) setIcon(row, 'star', true);
+        if (hasAutoBackup) setIcon(row, 'timer', true);
 
         const siblingRows = Array.from(tableBody.querySelectorAll('tr'))
             .filter(r => !r.dataset.virtualSpacer)
@@ -701,111 +751,24 @@ window.api.receive('execute-menu-action', async (action, data) => {
     }
 });
 
-function setDropDownAction() {
-    document.addEventListener('click', async (event) => {
-        const button = event.target.closest('.dropdown-menu-button');
-
-        if (button) {
-            event.stopPropagation();
-            if (button === window.activeMenuTrigger) {
-                // Clicking the same button again should hide the menu
-                window.api.send('hide-popup-menu');
-                window.activeMenuTrigger = null;
-                return;
-            }
-
-            const row = button.closest('tr');
-            const wikiPageId = row.getAttribute('data-wiki-id');
-            const tabName = button.closest('#backup, #restore, #custom')?.id || 'backup';
-
-            const settings = await window.api.invoke('get-settings');
-            const isFavorite = (settings.pinnedGames || []).includes(wikiPageId.toString());
-            const isBlocked = (settings.blockedGames || []).includes(wikiPageId.toString());
-            const wikiUrl = !wikiPageId.includes('-') ? `https://www.pcgamingwiki.com/wiki/index.php?curid=${wikiPageId}` : 'none';
-
-            const menuItems = [
-                {
-                    label: await window.i18n.translate(isFavorite ? 'main.remove_favorite' : 'main.add_favorite'),
-                    icon: isFavorite ? 'heart-crack' : 'heart',
-                    action: isFavorite ? 'unfavorite' : 'add-favorite',
-                    data: wikiPageId
-                },
-                {
-                    label: await window.i18n.translate(isBlocked ? 'main.unblock_game' : 'main.block_game'),
-                    icon: isBlocked ? 'eye' : 'ban',
-                    action: isBlocked ? 'unblock-game' : 'block-game',
-                    data: wikiPageId
-                },
-                {
-                    label: await window.i18n.translate('main.auto_backup'),
-                    icon: 'timer-reset',
-                    action: 'auto-backup',
-                    data: wikiPageId,
-                    visible: tabName !== 'restore'
-                },
-                {
-                    label: await window.i18n.translate('main.manage_backups'),
-                    icon: 'list-checks',
-                    action: 'manage-backups',
-                    data: wikiPageId
-                },
-                {
-                    label: await window.i18n.translate('main.browse_local_save'),
-                    icon: ACTION_ICONS.manageLocalData,
-                    action: 'manage-local-data',
-                    data: wikiPageId
-                },
-                {
-                    label: await window.i18n.translate('main.view_wiki'),
-                    icon: 'globe',
-                    action: 'open-wiki',
-                    data: wikiUrl
-                }
-            ].filter(item => item.visible !== false);
-
-            const rect = button.getBoundingClientRect();
-            const menuGap = 4;
-            const estimatedMenuHeight = menuItems.length * 34 + 10;
-            const availableAbove = rect.top;
-            const availableBelow = window.innerHeight - rect.bottom;
-            // Open upward only when the measured row count will not fit below
-            // and the upper side genuinely has more room. The previous fixed
-            // 260px threshold made menus jump upward much too early.
-            const shouldOpenUp = availableBelow < estimatedMenuHeight + menuGap
-                && availableAbove > availableBelow;
-            window.api.send('show-popup-menu', {
-                items: menuItems,
-                x: rect.right + 4,
-                y: shouldOpenUp ? rect.top - menuGap : rect.bottom + menuGap,
-                direction: shouldOpenUp ? 'up' : 'down'
-            });
-            window.activeMenuTrigger = button;
-            return;
-        }
-    });
-
-    // Close on scroll in either table
-    ['#backup .table-container', '#restore .table-container'].forEach(selector => {
-        const el = document.querySelector(selector);
-        if (el) el.addEventListener('scroll', () => {
-            window.api.send('hide-popup-menu');
-            window.activeMenuTrigger = null;
-        });
-    });
-}
-
 async function addGameToFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
+    const virtualRecord = findVirtualRecord(tableBody, wikiId);
     const rowToMove = getTableRow(tabName, wikiId);
 
-    if (rowToMove) {
+    if (virtualRecord || rowToMove) {
         const settings = await window.api.invoke('get-settings');
-        setIcon(rowToMove, 'favorite', true);
-
-        if (sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings))) {
+        if (virtualRecord) {
+            updateVirtualRecord(tableBody, wikiId, record => {
+                record.iconStates.favorite = true;
+                return record;
+            });
+            sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings));
             document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
             return;
         }
+
+        setIcon(rowToMove, 'favorite', true);
 
         tableBody.removeChild(rowToMove);
 
@@ -835,17 +798,23 @@ async function addGameToFavorites(tabName, wikiId) {
 
 async function removeGameFromFavorites(tabName, wikiId) {
     const tableBody = document.querySelector(`#${tabName} tbody`);
+    const virtualRecord = findVirtualRecord(tableBody, wikiId);
     const rowToMove = getTableRow(tabName, wikiId);
 
-    if (rowToMove) {
+    if (virtualRecord || rowToMove) {
         const settings = await window.api.invoke('get-settings');
-        setIcon(rowToMove, 'favorite', false);
-
-        if (sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings))) {
+        if (virtualRecord) {
+            updateVirtualRecord(tableBody, wikiId, record => {
+                record.iconStates.favorite = false;
+                return record;
+            });
+            sortVirtualRows(tableBody, rows => sortRowsForTable(rows, settings));
             document.getElementById(`${tabName}-search`)?.dispatchEvent(new Event('input'));
             updateSelectedCountAndSize(tabName);
             return;
         }
+
+        setIcon(rowToMove, 'favorite', false);
 
         tableBody.removeChild(rowToMove);
 
@@ -884,6 +853,16 @@ async function removeGameFromFavorites(tabName, wikiId) {
 }
 
 function updateGameBlockedState(tabName, wikiId, blocked) {
+    const tableBody = document.querySelector(`#${tabName} tbody`);
+    if (updateVirtualRecord(tableBody, wikiId, record => {
+        record.iconStates.blocked = blocked;
+        return record;
+    })) {
+        applyTableFilters(tabName);
+        updateSelectedCountAndSize(tabName);
+        return;
+    }
+
     const row = getTableRow(tabName, wikiId);
 
     if (row) {

@@ -24,9 +24,9 @@ export function sortGamesForDisplay(games, settings) {
 }
 
 export function getSortedFavoriteGroups(games, settings) {
-    const favoriteWikiIds = settings.pinnedGames || [];
+    const favoriteWikiIds = new Set((settings.pinnedGames || []).map(String));
     const gamesWithTitleToSort = games.map(game => withTitleToSort(game, settings));
-    const isFavorite = game => favoriteWikiIds.includes(game.wiki_page_id.toString());
+    const isFavorite = game => favoriteWikiIds.has(game.wiki_page_id.toString());
 
     return {
         favoriteGames: sortGamesForDisplay(gamesWithTitleToSort.filter(isFavorite), settings),

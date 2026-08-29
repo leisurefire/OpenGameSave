@@ -5,16 +5,50 @@ const { format } = require('date-fns');
 
 const { getSettings, saveSettings, getMainWin } = require('./global');
 const { getGameDataFromDB, backupGame } = require('./backup');
-const { normalizeAutoBackupInterval, normalizeAutoBackupMode, normalizeWikiId } = require('./validation');
+const {
+    MAX_AUTO_BACKUP_GAMES,
+    normalizeAutoBackupInterval,
+    normalizeAutoBackupMode,
+    normalizeWikiId
+} = require('./validation');
 
 // Active auto-backup entries: Map<wikiId, { mode, intervalMinutes, timer?, watcher?, logs[] }>
 const activeAutoBackups = new Map();
+const pendingStartGenerations = new Map();
+const pendingStartPromises = new Set();
+let settingsPersistenceQueue = Promise.resolve();
+let autoBackupShuttingDown = false;
 
-// Cooldown tracking for file watchers - throttle pattern (backup immediately, then cooldown)
-const watcherCooldowns = new Map();
-const pendingWatcherBackups = new Set(); // Track changes that occurred during cooldown
 const WATCHER_COOLDOWN_MS = 10000; // 10 seconds cooldown between backups
 const MAX_AUTO_BACKUP_LOGS = 100;
+
+function sendToMainWindow(...args) {
+    const window = getMainWin();
+    if (!window || window.isDestroyed?.() || window.webContents?.isDestroyed?.()) return false;
+    try {
+        window.webContents.send(...args);
+        return true;
+    } catch (error) {
+        console.warn(`Could not deliver auto-backup event ${args[0]}:`, error.message);
+        return false;
+    }
+}
+
+function persistAutoBackupSettings() {
+    const persistence = settingsPersistenceQueue.catch(() => undefined).then(async () => {
+        const autoBackupGames = {};
+        for (const [wikiId, entry] of activeAutoBackups) {
+            if (entry.disposed) continue;
+            autoBackupGames[wikiId] = {
+                mode: entry.mode,
+                intervalMinutes: entry.intervalMinutes
+            };
+        }
+        await saveSettings('autoBackupGames', autoBackupGames);
+    });
+    settingsPersistenceQueue = persistence;
+    return persistence;
+}
 
 function addAutoBackupLog(entry, logEntry) {
     entry.logs.push(logEntry);
@@ -26,22 +60,28 @@ function addAutoBackupLog(entry, logEntry) {
 }
 
 async function disposeAutoBackupEntry(wikiId, entry) {
-    if (entry.timer) {
-        clearInterval(entry.timer);
-        entry.timer = null;
-    }
-    if (entry.watcher) {
-        try {
-            await entry.watcher.close();
-        } catch (error) {
-            console.error(`Error closing file watcher for ${wikiId}:`, error.message);
+    if (entry.disposePromise) return entry.disposePromise;
+    entry.disposePromise = (async () => {
+        entry.disposed = true;
+        if (entry.timer) {
+            clearInterval(entry.timer);
+            entry.timer = null;
         }
-        entry.watcher = null;
-    }
-    const cooldown = watcherCooldowns.get(wikiId);
-    if (cooldown) clearTimeout(cooldown);
-    watcherCooldowns.delete(wikiId);
-    pendingWatcherBackups.delete(wikiId);
+        if (entry.watcher) {
+            try {
+                await entry.watcher.close();
+            } catch (error) {
+                console.error(`Error closing file watcher for ${wikiId}:`, error.message);
+            }
+            entry.watcher = null;
+        }
+        if (entry.cooldownTimer) clearTimeout(entry.cooldownTimer);
+        entry.cooldownTimer = null;
+        entry.pendingBackup = false;
+        if (entry.inFlightPromise) await entry.inFlightPromise;
+        if (entry.refreshPromise) await entry.refreshPromise.catch(() => undefined);
+    })();
+    return entry.disposePromise;
 }
 
 /**
@@ -50,52 +90,100 @@ async function disposeAutoBackupEntry(wikiId, entry) {
  * @param {string} mode - 'interval' or 'watcher'
  * @param {number} intervalMinutes - only used for 'interval' mode
  */
-async function startAutoBackup(wikiId, mode, intervalMinutes) {
+function assertCurrentStart(wikiId, generation) {
+    if (autoBackupShuttingDown) throw new Error('Application is shutting down');
+    if (pendingStartGenerations.get(wikiId) !== generation) {
+        throw new Error('Auto-backup start was superseded');
+    }
+}
+
+function countScheduledAutoBackups() {
+    const wikiIds = new Set(activeAutoBackups.keys());
+    for (const wikiId of pendingStartGenerations.keys()) wikiIds.add(wikiId);
+    return wikiIds.size;
+}
+
+async function startAutoBackupInternal(wikiId, mode, intervalMinutes, options = {}) {
+    if (autoBackupShuttingDown) throw new Error('Application is shutting down');
     const safeWikiId = normalizeWikiId(wikiId);
     const safeMode = normalizeAutoBackupMode(mode);
     const safeIntervalMinutes = safeMode === 'interval' ? normalizeAutoBackupInterval(intervalMinutes) : null;
-    const { games } = await getGameDataFromDB(false, safeWikiId);
-    if (!games?.[0]) throw new Error('Game data is no longer available');
-
-    // Stop any existing auto backup for this game first
-    await stopAutoBackup(safeWikiId, false);
-
-    const entry = {
-        mode: safeMode,
-        intervalMinutes: safeIntervalMinutes,
-        timer: null,
-        watcher: null,
-        logs: [],
-        backupInProgress: false,
-        failCount: 0
-    };
+    const persist = options.persist !== false;
+    const notify = options.notify !== false;
+    if (!activeAutoBackups.has(safeWikiId) && !pendingStartGenerations.has(safeWikiId)
+        && countScheduledAutoBackups() >= MAX_AUTO_BACKUP_GAMES) {
+        throw new Error('Too many active auto-backup jobs');
+    }
+    const generation = Symbol(safeWikiId);
+    pendingStartGenerations.set(safeWikiId, generation);
+    let entry = null;
+    let configurationChanged = false;
 
     try {
+        const { games } = await getGameDataFromDB(false, safeWikiId);
+        if (!games?.[0]) throw new Error('Game data is no longer available');
+        assertCurrentStart(safeWikiId, generation);
+
+        configurationChanged = activeAutoBackups.has(safeWikiId);
+        await stopAutoBackup(safeWikiId, false, { cancelPending: false, notify: false, persist: false });
+        assertCurrentStart(safeWikiId, generation);
+
+        entry = {
+            mode: safeMode,
+            intervalMinutes: safeIntervalMinutes,
+            timer: null,
+            watcher: null,
+            logs: [],
+            cooldownTimer: null,
+            pendingBackup: false,
+            inFlightPromise: null,
+            refreshPromise: null,
+            disposePromise: null,
+            disposed: false,
+            failCount: 0
+        };
         if (safeMode === 'interval') {
             const intervalMs = safeIntervalMinutes * 60 * 1000;
             entry.timer = setInterval(() => {
-                void performSilentBackup(safeWikiId);
+                void triggerSilentBackup(safeWikiId, entry);
             }, intervalMs);
         } else {
-            await setupFileWatcher(safeWikiId, entry);
+            entry.watcher = await createFileWatcher(safeWikiId, entry);
         }
 
+        assertCurrentStart(safeWikiId, generation);
         activeAutoBackups.set(safeWikiId, entry);
-        const settings = getSettings();
-        const autoBackupGames = { ...(settings.autoBackupGames || {}) };
-        autoBackupGames[safeWikiId] = { mode: safeMode, intervalMinutes: safeIntervalMinutes };
-        await saveSettings('autoBackupGames', autoBackupGames);
+        configurationChanged = true;
+        if (persist) await persistAutoBackupSettings();
+        assertCurrentStart(safeWikiId, generation);
     } catch (error) {
-        activeAutoBackups.delete(safeWikiId);
-        await disposeAutoBackupEntry(safeWikiId, entry);
+        if (entry && activeAutoBackups.get(safeWikiId) === entry) {
+            activeAutoBackups.delete(safeWikiId);
+        }
+        if (entry) await disposeAutoBackupEntry(safeWikiId, entry);
+        if (persist && configurationChanged && !autoBackupShuttingDown) {
+            await persistAutoBackupSettings().catch((persistenceError) => {
+                console.error('Failed to persist auto-backup cleanup:', persistenceError.message);
+            });
+        }
         throw error;
+    } finally {
+        if (pendingStartGenerations.get(safeWikiId) === generation) {
+            pendingStartGenerations.delete(safeWikiId);
+        }
     }
 
-    // Notify renderer to update timer icon
-    const win = getMainWin();
-    if (win && !win.isDestroyed()) {
-        win.webContents.send('auto-backup-started', safeWikiId);
+    if (notify) {
+        sendToMainWindow('auto-backup-started', safeWikiId);
     }
+}
+
+function startAutoBackup(wikiId, mode, intervalMinutes, options) {
+    const startPromise = startAutoBackupInternal(wikiId, mode, intervalMinutes, options);
+    pendingStartPromises.add(startPromise);
+    const forget = () => pendingStartPromises.delete(startPromise);
+    startPromise.then(forget, forget);
+    return startPromise;
 }
 
 /**
@@ -104,26 +192,31 @@ async function startAutoBackup(wikiId, mode, intervalMinutes) {
  * @param {boolean} showSummary - whether to show disable summary
  * @returns {object|null} - logs if showSummary is true
  */
-async function stopAutoBackup(wikiId, showSummary = true) {
+async function stopAutoBackup(wikiId, showSummary = true, options = {}) {
     const safeWikiId = normalizeWikiId(wikiId);
+    const cancelPending = options.cancelPending !== false;
+    const persist = options.persist !== false;
+    const notify = options.notify !== false;
+    if (cancelPending) pendingStartGenerations.delete(safeWikiId);
     const entry = activeAutoBackups.get(safeWikiId);
-    if (!entry) return null;
+    if (!entry) {
+        if (cancelPending && persist) await persistAutoBackupSettings();
+        return null;
+    }
 
+    activeAutoBackups.delete(safeWikiId);
     await disposeAutoBackupEntry(safeWikiId, entry);
 
     const logs = [...entry.logs];
-    activeAutoBackups.delete(safeWikiId);
+    const replacementEntry = activeAutoBackups.get(safeWikiId);
 
-    // Remove from settings
-    const settings = getSettings();
-    const autoBackupGames = { ...(settings.autoBackupGames || {}) };
-    delete autoBackupGames[safeWikiId];
-    await saveSettings('autoBackupGames', autoBackupGames);
+    if (!replacementEntry) {
+        if (persist) await persistAutoBackupSettings();
 
-    // Notify renderer to update timer icon
-    const win = getMainWin();
-    if (win && !win.isDestroyed()) {
-        win.webContents.send('auto-backup-stopped', safeWikiId);
+        // Notify renderer to update timer icon
+        if (notify) {
+            sendToMainWindow('auto-backup-stopped', safeWikiId);
+        }
     }
 
     if (showSummary) {
@@ -135,7 +228,7 @@ async function stopAutoBackup(wikiId, showSummary = true) {
 /**
  * Set up file watcher for a game's save paths
  */
-async function setupFileWatcher(wikiId, entry) {
+async function createFileWatcher(wikiId, entry) {
     try {
         const { games } = await getGameDataFromDB(false, wikiId);
         if (!games || games.length === 0) throw new Error('Game data is no longer available');
@@ -164,21 +257,21 @@ async function setupFileWatcher(wikiId, entry) {
         });
 
         watcher.on('all', () => {
+            if (autoBackupShuttingDown || entry.disposed || activeAutoBackups.get(wikiId) !== entry) return;
             // Throttle: backup immediately on first change, then cooldown
-            if (watcherCooldowns.has(wikiId)) {
+            if (entry.cooldownTimer) {
                 // Mark that changes happened during cooldown
-                pendingWatcherBackups.add(wikiId);
+                entry.pendingBackup = true;
                 return;
             }
 
-            void performSilentBackup(wikiId);
-            startWatcherCooldown(wikiId);
+            void triggerSilentBackup(wikiId, entry);
+            startWatcherCooldown(wikiId, entry);
         });
         watcher.on('error', (error) => {
             console.error(`File watcher error for ${wikiId}:`, error.message);
         });
-
-        entry.watcher = watcher;
+        return watcher;
     } catch (error) {
         console.error(`Error setting up file watcher for ${wikiId}:`, error.message);
         throw error;
@@ -197,60 +290,68 @@ async function refreshAutoBackupWatchers() {
     for (const [wikiId, entry] of activeAutoBackups) {
         if (entry.mode !== 'watcher') continue;
 
-        const previousWatcher = entry.watcher;
-        entry.watcher = null;
-
-        const cooldown = watcherCooldowns.get(wikiId);
-        if (cooldown) clearTimeout(cooldown);
-        watcherCooldowns.delete(wikiId);
-        pendingWatcherBackups.delete(wikiId);
-
         try {
-            await setupFileWatcher(wikiId, entry);
-        } catch (error) {
-            // Keep the last known-good watcher alive when the new account scope
-            // does not currently resolve to a usable filesystem path.
-            entry.watcher = previousWatcher;
-            failures.push({ wikiId, error: error.message });
-            continue;
-        }
+            const previousRefresh = entry.refreshPromise || Promise.resolve();
+            entry.refreshPromise = previousRefresh.catch(() => undefined).then(async () => {
+                if (entry.disposed || activeAutoBackups.get(wikiId) !== entry) return;
+                const replacementWatcher = await createFileWatcher(wikiId, entry);
+                if (entry.disposed || activeAutoBackups.get(wikiId) !== entry) {
+                    await replacementWatcher.close();
+                    return;
+                }
 
-        if (previousWatcher) {
-            try {
-                await previousWatcher.close();
-            } catch (error) {
-                console.error(`Error closing previous file watcher for ${wikiId}:`, error.message);
-            }
+                const previousWatcher = entry.watcher;
+                entry.watcher = replacementWatcher;
+                if (entry.cooldownTimer) clearTimeout(entry.cooldownTimer);
+                entry.cooldownTimer = null;
+                entry.pendingBackup = false;
+                if (previousWatcher) await previousWatcher.close();
+            });
+            await entry.refreshPromise;
+        } catch (error) {
+            failures.push({ wikiId, error: error.message });
         }
     }
 
     return failures;
 }
 
-function startWatcherCooldown(wikiId) {
-    const existingTimer = watcherCooldowns.get(wikiId);
-    if (existingTimer) clearTimeout(existingTimer);
-    watcherCooldowns.set(wikiId, setTimeout(() => {
-        watcherCooldowns.delete(wikiId);
-        if (!activeAutoBackups.has(wikiId) || !pendingWatcherBackups.delete(wikiId)) return;
-        void performSilentBackup(wikiId);
-        startWatcherCooldown(wikiId);
-    }, WATCHER_COOLDOWN_MS));
+function startWatcherCooldown(wikiId, entry) {
+    if (entry.cooldownTimer) clearTimeout(entry.cooldownTimer);
+    entry.cooldownTimer = setTimeout(() => {
+        entry.cooldownTimer = null;
+        if (entry.disposed || activeAutoBackups.get(wikiId) !== entry || !entry.pendingBackup) return;
+        entry.pendingBackup = false;
+        void triggerSilentBackup(wikiId, entry);
+        startWatcherCooldown(wikiId, entry);
+    }, WATCHER_COOLDOWN_MS);
 }
 
 /**
  * Perform a silent backup (no UI summary)
  */
-async function performSilentBackup(wikiId) {
-    const entry = activeAutoBackups.get(wikiId);
-    if (!entry) return;
-
-    // Prevent concurrent backups for the same game
-    if (entry.backupInProgress) {
-        pendingWatcherBackups.add(wikiId);
-        return;
+function triggerSilentBackup(wikiId, expectedEntry = null) {
+    const entry = expectedEntry || activeAutoBackups.get(wikiId);
+    if (autoBackupShuttingDown || !entry || entry.disposed || activeAutoBackups.get(wikiId) !== entry) {
+        return Promise.resolve();
     }
-    entry.backupInProgress = true;
+    if (entry.inFlightPromise) {
+        entry.pendingBackup = true;
+        return entry.inFlightPromise;
+    }
+
+    const task = performSilentBackup(wikiId, entry).finally(() => {
+        if (entry.inFlightPromise === task) entry.inFlightPromise = null;
+        if (entry.disposed || activeAutoBackups.get(wikiId) !== entry
+            || !entry.pendingBackup || entry.cooldownTimer) return;
+        entry.pendingBackup = false;
+        void triggerSilentBackup(wikiId, entry);
+    });
+    entry.inFlightPromise = task;
+    return task;
+}
+
+async function performSilentBackup(wikiId, entry) {
 
     try {
         const { games } = await getGameDataFromDB(false, wikiId);
@@ -261,9 +362,8 @@ async function performSilentBackup(wikiId) {
                 success: false,
                 error: errorMsg
             });
-            const win = getMainWin();
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('show-alert', 'error', errorMsg);
+            if (!entry.disposed && activeAutoBackups.get(wikiId) === entry) {
+                sendToMainWindow('show-alert', 'error', errorMsg);
             }
             return;
         }
@@ -279,13 +379,12 @@ async function performSilentBackup(wikiId) {
         addAutoBackupLog(entry, logEntry);
 
         // Notify renderer to update table rows
-        const win = getMainWin();
-        if (win && !win.isDestroyed()) {
-            win.webContents.send('auto-backup-performed', wikiId);
+        if (!entry.disposed && activeAutoBackups.get(wikiId) === entry) {
+            sendToMainWindow('auto-backup-performed', wikiId);
 
             // Send alert on failure
             if (error) {
-                win.webContents.send('show-alert', 'error', error);
+                sendToMainWindow('show-alert', 'error', error);
             }
         }
     } catch (error) {
@@ -295,18 +394,8 @@ async function performSilentBackup(wikiId) {
             success: false,
             error: error.message
         });
-        const win = getMainWin();
-        if (win && !win.isDestroyed()) {
-            win.webContents.send('show-alert', 'error', error.message);
-        }
-    } finally {
-        if (activeAutoBackups.has(wikiId)) {
-            const activeEntry = activeAutoBackups.get(wikiId);
-            activeEntry.backupInProgress = false;
-            if (pendingWatcherBackups.has(wikiId) && !watcherCooldowns.has(wikiId)) {
-                pendingWatcherBackups.delete(wikiId);
-                void performSilentBackup(wikiId);
-            }
+        if (!entry.disposed && activeAutoBackups.get(wikiId) === entry) {
+            sendToMainWindow('show-alert', 'error', error.message);
         }
     }
 }
@@ -337,21 +426,25 @@ async function restoreAutoBackups() {
 
     for (const [wikiId, config] of Object.entries(autoBackupGames)) {
         try {
-            await startAutoBackup(wikiId, config.mode, config.intervalMinutes);
+            await startAutoBackup(wikiId, config.mode, config.intervalMinutes, { notify: false, persist: false });
         } catch (error) {
             console.error(`Failed to restore auto backup for ${wikiId}:`, error.message);
         }
     }
+    if (!autoBackupShuttingDown) await persistAutoBackupSettings();
 }
 
 /**
  * Stop all auto backups (for app quit) - cleanup only, preserves settings
  */
 async function stopAllAutoBackups() {
-    const closePromises = [...activeAutoBackups]
-        .map(([wikiId, entry]) => disposeAutoBackupEntry(wikiId, entry));
+    autoBackupShuttingDown = true;
+    await Promise.allSettled([...pendingStartPromises]);
+    await settingsPersistenceQueue.catch(() => undefined);
+    const entries = [...activeAutoBackups];
     activeAutoBackups.clear();
-    await Promise.allSettled(closePromises);
+    for (const [, entry] of entries) entry.disposed = true;
+    await Promise.all(entries.map(([wikiId, entry]) => disposeAutoBackupEntry(wikiId, entry)));
 }
 
 module.exports = {

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('crypto');
 
 const fse = require('fs-extra');
 const { format, parse } = require('date-fns');
@@ -164,6 +165,35 @@ async function copyFolderAsync(source, target, fsAdapter = fs) {
     }
 }
 
+async function copyFolderAtomically(source, target, fsAdapter = fs) {
+    const targetParent = path.dirname(target);
+    const targetName = path.basename(target);
+    const stagingPath = path.join(targetParent, `.${targetName}.import-${randomUUID()}`);
+
+    const existingTarget = await fsAdapter.promises.lstat(target).catch((error) => {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+    });
+    if (existingTarget) throw new Error(`Refusing to overwrite an existing directory: ${target}`);
+
+    try {
+        await copyFolderAsync(source, stagingPath, fsAdapter);
+        const stagingStats = await fsAdapter.promises.lstat(stagingPath);
+        if (!stagingStats.isDirectory() || stagingStats.isSymbolicLink()) {
+            throw new Error('The staged backup is not a regular directory');
+        }
+
+        const racedTarget = await fsAdapter.promises.lstat(target).catch((error) => {
+            if (error?.code === 'ENOENT') return null;
+            throw error;
+        });
+        if (racedTarget) throw new Error(`Refusing to overwrite an existing directory: ${target}`);
+        await fsAdapter.promises.rename(stagingPath, target);
+    } finally {
+        await fsAdapter.promises.rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
+    }
+}
+
 function getLatestModificationTime(targetPath, fsAdapter = fs) {
     let latestTime = 0;
 
@@ -280,6 +310,7 @@ async function readBackupFolder(wikiIdFolderPath, wikiId, { fsAdapter = fs, read
                         zh_CN: backupConfig.zh_CN,
                         backup_size: backupSize,
                         backup_paths: backupConfig.backup_paths,
+                        provenance: backupConfig.provenance,
                         is_permanent: backupConfig.is_permanent || false,
                         custom_name: backupConfig.custom_name || ''
                     });
@@ -320,6 +351,7 @@ module.exports = {
     ensureWritable,
     copyFolder,
     copyFolderAsync,
+    copyFolderAtomically,
     getLatestModificationTime,
     getLatestModificationTimeAsync,
     getNewestBackup,

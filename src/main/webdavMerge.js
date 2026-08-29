@@ -77,25 +77,59 @@ function groupFilesByBackup(files) {
     return groups;
 }
 
-function findConflictingBackupKeys(remoteFiles, localFiles, syncState = null) {
-    const remoteByPath = indexFiles(remoteFiles);
-    const previousLocalByPath = indexFiles(syncState?.localFiles);
-    const previousRemoteByPath = indexFiles(syncState?.remoteFiles);
-    const conflicts = new Set();
+function fileGroupsMatch(leftFiles = [], rightFiles = []) {
+    if (leftFiles.length !== rightFiles.length) return false;
+    const rightByPath = indexFiles(rightFiles);
+    return leftFiles.every(file => rightByPath.get(file.path)?.sha256 === file.sha256);
+}
 
-    for (const localFile of localFiles) {
-        const remoteFile = remoteByPath.get(localFile.path);
-        if (!remoteFile || remoteFile.sha256 === localFile.sha256) continue;
-        const backupKey = getBackupKey(localFile.path);
+function classifyBackupChanges(remoteFiles, localFiles, syncState = null) {
+    const remoteGroups = groupFilesByBackup(remoteFiles);
+    const localGroups = groupFilesByBackup(localFiles);
+    const previousLocalGroups = groupFilesByBackup(syncState?.localFiles || []);
+    const previousRemoteGroups = groupFilesByBackup(syncState?.remoteFiles || []);
+    const conflicts = new Set();
+    const localOnlyChanged = new Set();
+    const remoteOnlyChanged = new Set();
+    const divergedWithoutChanges = new Set();
+
+    const backupKeys = new Set([
+        ...remoteGroups.keys(),
+        ...localGroups.keys(),
+        ...previousLocalGroups.keys(),
+        ...previousRemoteGroups.keys()
+    ]);
+    for (const backupKey of backupKeys) {
+        const localGroup = localGroups.get(backupKey) || [];
+        const remoteGroup = remoteGroups.get(backupKey) || [];
+        if (fileGroupsMatch(localGroup, remoteGroup)) continue;
+        // There is no persisted tombstone protocol. A whole backup missing on
+        // one side can be retention pruning, so the surviving copy wins and is
+        // allowed to repopulate the missing side.
+        if (localGroup.length === 0) {
+            remoteOnlyChanged.add(backupKey);
+            continue;
+        }
+        if (remoteGroup.length === 0) {
+            localOnlyChanged.add(backupKey);
+            continue;
+        }
         if (!syncState) {
             conflicts.add(backupKey);
             continue;
         }
-        const localChanged = previousLocalByPath.get(localFile.path)?.sha256 !== localFile.sha256;
-        const remoteChanged = previousRemoteByPath.get(remoteFile.path)?.sha256 !== remoteFile.sha256;
+        const localChanged = !fileGroupsMatch(localGroup, previousLocalGroups.get(backupKey) || []);
+        const remoteChanged = !fileGroupsMatch(remoteGroup, previousRemoteGroups.get(backupKey) || []);
         if (localChanged && remoteChanged) conflicts.add(backupKey);
+        else if (localChanged) localOnlyChanged.add(backupKey);
+        else if (remoteChanged) remoteOnlyChanged.add(backupKey);
+        else divergedWithoutChanges.add(backupKey);
     }
-    return conflicts;
+    return { conflicts, divergedWithoutChanges, localOnlyChanged, remoteOnlyChanged };
+}
+
+function findConflictingBackupKeys(remoteFiles, localFiles, syncState = null) {
+    return classifyBackupChanges(remoteFiles, localFiles, syncState).conflicts;
 }
 
 function mapRemoteConflictFiles(remoteFiles, conflictDestinations, remoteDeviceId) {
@@ -131,15 +165,25 @@ async function makeLocalConflictFiles(localFiles, conflictDestinations, localDev
 
 async function mergeLocalFiles(remoteFiles, localFiles, deviceId, syncState = null, remoteDeviceId = 'legacy') {
     const mergedFiles = new Map(remoteFiles.map(file => [file.path, file]));
+    const remoteObjectHashes = new Set(remoteFiles.map(file => file.sha256));
     const localGroups = groupFilesByBackup(localFiles);
     const remoteGroups = groupFilesByBackup(remoteFiles);
     const reservedKeys = new Set([...remoteFiles, ...localFiles]
         .map(file => getBackupKey(file.path)));
     const conflicts = [];
     const uploadFiles = [];
-    const conflictingBackups = findConflictingBackupKeys(remoteFiles, localFiles, syncState);
+    const {
+        conflicts: conflictingBackups,
+        divergedWithoutChanges,
+        localOnlyChanged,
+        remoteOnlyChanged
+    } = classifyBackupChanges(remoteFiles, localFiles, syncState);
 
     for (const [backupKey, groupFiles] of localGroups) {
+        // A remote-only change is the three-way merge winner. Leaving the
+        // complete remote backup untouched avoids silently reverting another
+        // device's update with the unchanged local baseline.
+        if (remoteOnlyChanged.has(backupKey) || divergedWithoutChanges.has(backupKey)) continue;
         const hasConflict = conflictingBackups.has(backupKey);
         if (hasConflict) {
             const conflictBackup = allocateConflictBackupKey(backupKey, reservedKeys);
@@ -159,22 +203,41 @@ async function mergeLocalFiles(remoteFiles, localFiles, deviceId, syncState = nu
                 originalVersion: 'local',
                 conflictVersion: 'remote'
             });
+        } else if (localOnlyChanged.has(backupKey)) {
+            // Backups are atomic groups. When local is the sole changed side,
+            // remove stale remote members before publishing the local group.
+            for (const remoteFile of remoteGroups.get(backupKey) || []) {
+                mergedFiles.delete(remoteFile.path);
+            }
         }
         for (const originalFile of groupFiles) {
+            const previousFile = mergedFiles.get(originalFile.path);
             mergedFiles.set(originalFile.path, {
                 path: normalizeManifestPath(originalFile.path),
                 size: originalFile.size,
                 mtimeMs: originalFile.mtimeMs,
                 sha256: originalFile.sha256
             });
-            uploadFiles.push(originalFile);
+            // Existing, unchanged paths already refer to an immutable content
+            // object. New or changed paths are checked/uploaded below; this
+            // keeps integrity repair proportional to the current delta.
+            if (previousFile?.sha256 !== originalFile.sha256
+                || !remoteObjectHashes.has(originalFile.sha256)) {
+                uploadFiles.push(originalFile);
+            }
         }
     }
-    return { files: [...mergedFiles.values()], uploadFiles, conflicts };
+    return {
+        files: [...mergedFiles.values()],
+        uploadFiles,
+        conflicts,
+        deferredRemoteBackupKeys: [...remoteOnlyChanged]
+    };
 }
 
 module.exports = {
     allocateConflictBackupKey,
+    classifyBackupChanges,
     createConflictMetadataBuffer,
     findConflictingBackupKeys,
     makeConflictMetadataFile,

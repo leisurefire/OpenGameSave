@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 
+const { parseDn } = require('builder-util-runtime');
 const yaml = require('js-yaml');
 
 const { getExpectedAppAssetNames, normalizeAppVersion } = require('../src/main/appUpdatePolicy');
+
+const execFilePromise = util.promisify(execFile);
 
 function parseArguments(argv) {
     const argumentsMap = {};
@@ -41,13 +46,89 @@ function assertEqual(actual, expected, message) {
     if (actual !== expected) throw new Error(`${message}: expected ${expected}, received ${actual}`);
 }
 
-function validatePackagedUpdateConfig(distPath) {
-    const configPath = path.join(distPath, 'win-unpacked', 'resources', 'app-update.yml');
-    if (!fs.existsSync(configPath)) throw new Error(`Missing packaged updater configuration: ${configPath}`);
-    readYaml(configPath);
+function publisherMatchesSubject(publisherName, certificateSubject) {
+    const expected = parseDn(String(publisherName || ''));
+    const actual = parseDn(String(certificateSubject || ''));
+    if (expected.size > 0) {
+        return [...expected].every(([key, value]) => actual.get(key) === value);
+    }
+    return Boolean(publisherName) && actual.get('CN') === publisherName;
 }
 
-async function validateLocalArtifacts({ distPath, version }) {
+async function verifyAuthenticodeSignature(installerPath, publisherName) {
+    if (process.platform !== 'win32') {
+        throw new Error('Authenticode verification requires a Windows release runner');
+    }
+    const systemRoot = process.env.SystemRoot;
+    if (!systemRoot || !path.win32.isAbsolute(systemRoot)) {
+        throw new Error('SystemRoot is unavailable for Authenticode verification');
+    }
+    const powershellPath = path.win32.join(
+        systemRoot,
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe'
+    );
+    const command = [
+        "$ErrorActionPreference = 'Stop'",
+        '$signature = Get-AuthenticodeSignature -LiteralPath $env:OGS_AUTHENTICODE_PATH',
+        "$subject = if ($null -eq $signature.SignerCertificate) { '' } else { $signature.SignerCertificate.Subject }",
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+        '@{ Status = [string]$signature.Status; Subject = [string]$subject } | ConvertTo-Json -Compress'
+    ].join('; ');
+    const { stdout } = await execFilePromise(powershellPath, [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-InputFormat', 'None',
+        '-Command', command
+    ], {
+        env: { ...process.env, OGS_AUTHENTICODE_PATH: installerPath },
+        windowsHide: true,
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+    });
+    let signature;
+    try {
+        signature = JSON.parse(String(stdout || '').replace(/^\uFEFF/, '').trim());
+    } catch (_) {
+        throw new Error('Authenticode verification returned invalid output');
+    }
+    if (signature?.Status !== 'Valid') {
+        throw new Error(`Installer Authenticode status is not Valid: ${signature?.Status || 'Unknown'}`);
+    }
+    if (!publisherMatchesSubject(publisherName, signature.Subject)) {
+        throw new Error(`Installer certificate subject does not match the expected publisher: ${signature.Subject || '(none)'}`);
+    }
+    return { status: signature.Status, subject: signature.Subject };
+}
+
+function validatePackagedUpdateConfig(distPath, publisherName = null) {
+    const configPath = path.join(distPath, 'win-unpacked', 'resources', 'app-update.yml');
+    if (!fs.existsSync(configPath)) throw new Error(`Missing packaged updater configuration: ${configPath}`);
+    const config = readYaml(configPath);
+    if (publisherName) {
+        const configuredPublishers = Array.isArray(config.publisherName)
+            ? config.publisherName
+            : [config.publisherName];
+        if (!configuredPublishers.includes(publisherName)) {
+            throw new Error('Packaged updater publisherName does not match the expected publisher');
+        }
+    }
+    return config;
+}
+
+async function validateLocalArtifacts({
+    distPath,
+    version,
+    publisherName,
+    signatureVerifier = verifyAuthenticodeSignature
+}) {
+    if (typeof publisherName !== 'string' || !publisherName.trim() || /[\r\n]/.test(publisherName)) {
+        throw new Error('A valid expected Windows publisher is required');
+    }
+    const expectedPublisher = publisherName.trim();
     const normalizedVersion = normalizeAppVersion(version);
     if (!normalizedVersion || normalizedVersion !== version) throw new Error(`Invalid canonical release version: ${version}`);
     const expected = getExpectedAppAssetNames(version);
@@ -79,7 +160,8 @@ async function validateLocalArtifacts({ distPath, version }) {
     const sha512 = await hashFile(installerPath, 'sha512', 'base64');
     assertEqual(metadata.files[0].sha512, sha512, 'Update metadata files[0].sha512 mismatch');
     assertEqual(metadata.sha512, sha512, 'Update metadata top-level sha512 mismatch');
-    validatePackagedUpdateConfig(distPath);
+    validatePackagedUpdateConfig(distPath, expectedPublisher);
+    const signature = await signatureVerifier(installerPath, expectedPublisher);
 
     const artifacts = await Promise.all([expected.installer, expected.blockmap, expected.metadata].map(async name => {
         const filePath = path.join(distPath, name);
@@ -90,7 +172,7 @@ async function validateLocalArtifacts({ distPath, version }) {
             digest: `sha256:${await hashFile(filePath, 'sha256', 'hex')}`
         };
     }));
-    return { version, channel: expected.channel, artifacts };
+    return { version, channel: expected.channel, signature, artifacts };
 }
 
 function validateRemoteAssets(localReport, remoteJsonPath) {
@@ -109,10 +191,12 @@ function validateRemoteAssets(localReport, remoteJsonPath) {
 
 async function run() {
     const args = parseArguments(process.argv.slice(2));
+    if (!args.publisher) throw new Error('--publisher is required for release validation');
     const distPath = path.resolve(args.dist || 'dist');
     const report = await validateLocalArtifacts({
         distPath,
-        version: args.version
+        version: args.version,
+        publisherName: args.publisher || null
     });
     if (args['remote-json']) validateRemoteAssets(report, path.resolve(args['remote-json']));
     if (args.report) fs.writeFileSync(path.resolve(args.report), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
@@ -126,4 +210,9 @@ if (require.main === module) {
     });
 }
 
-module.exports = { validateLocalArtifacts, validateRemoteAssets };
+module.exports = {
+    publisherMatchesSubject,
+    validateLocalArtifacts,
+    validateRemoteAssets,
+    verifyAuthenticodeSignature
+};

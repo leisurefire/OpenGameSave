@@ -67,8 +67,12 @@ function getAppUpdateState() {
 function broadcastAppUpdateState() {
     const state = getAppUpdateState();
     BrowserWindow.getAllWindows().forEach((browserWindow) => {
-        if (!browserWindow.isDestroyed()) {
-            browserWindow.webContents.send('app-update-state', state);
+        if (!browserWindow.isDestroyed() && !browserWindow.webContents.isDestroyed?.()) {
+            try {
+                browserWindow.webContents.send('app-update-state', state);
+            } catch (error) {
+                console.warn('Could not deliver an application update state:', error.message);
+            }
         }
     });
 }

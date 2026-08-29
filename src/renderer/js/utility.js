@@ -2,28 +2,32 @@ import { showToast } from './toast.js';
 import { getFilteredVirtualSelectedIds, getVirtualState } from './virtualTable.js';
 import { renderIcon } from './icons.js';
 
-window.api.receive('show-alert', (type, message, modalContent) => {
+function receiveIfAllowed(channel, callback) {
+    if (window.api.can('receive', channel)) window.api.receive(channel, callback);
+}
+
+receiveIfAllowed('show-alert', (type, message, modalContent) => {
     showAlert(type, message, modalContent);
 });
 
-window.api.receive('open-import-modal', (gsmPath) => {
+receiveIfAllowed('open-import-modal', (gsmPath) => {
     showImportModal(gsmPath);
 });
 
-window.api.receive('update-progress', (progressId, progressTitle, percentage) => {
+receiveIfAllowed('update-progress', (progressId, progressTitle, percentage) => {
     updateProgress(progressId, progressTitle, percentage);
 });
 
-window.api.receive('menu-hidden', () => {
+receiveIfAllowed('menu-hidden', () => {
     window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
     window.activeMenuTrigger = null;
 });
 
-window.api.receive('app-update-state', (state) => {
+receiveIfAllowed('app-update-state', (state) => {
     void applyAppUpdateState(state);
 });
 
-window.api.receive('collect-selected-wiki-ids', (requestId, tableId) => {
+receiveIfAllowed('collect-selected-wiki-ids', (requestId, tableId) => {
     const table = document.querySelector(`#${tableId}`);
     const tableBody = table?.querySelector('tbody');
     const wikiIds = getVirtualState(tableBody)
@@ -341,7 +345,7 @@ document.addEventListener('click', (event) => {
         || event.target.closest('.library-card-manage')
         || event.target.closest('#home-options-button')
         || event.target.closest('[data-titlebar-menu]');
-    if (!isMenuTrigger) {
+    if (!isMenuTrigger && window.api.can('send', 'hide-popup-menu')) {
         window.activeMenuTrigger = null;
         window.api.send('hide-popup-menu');
     }

@@ -4,7 +4,7 @@ const path = require('path');
 const fse = require('fs-extra');
 
 const { getSettings } = require('./global');
-const { normalizeAbsolutePath } = require('./validation');
+const { normalizeAbsolutePath, validateBackupMetadata } = require('./validation');
 
 function normalizeSyncPath(inputPath) {
     const configuredPath = normalizeAbsolutePath(getSettings().backupPath);
@@ -16,54 +16,71 @@ function normalizeSyncPath(inputPath) {
     return configuredPath;
 }
 
-function isBackupInstanceFolder(folderPath) {
+async function isBackupInstanceFolder(folderPath) {
     try {
-        const stats = fsOriginal.lstatSync(path.join(folderPath, 'backup_info.json'));
+        const stats = await fsOriginal.promises.lstat(path.join(folderPath, 'backup_info.json'));
         return stats.isFile() && !stats.isSymbolicLink() && stats.size <= 1024 * 1024;
     } catch (_) {
         return false;
     }
 }
 
-function listDirectoryFolders(rootPath) {
-    if (!rootPath || !fsOriginal.existsSync(rootPath)) return [];
-    return fsOriginal.readdirSync(rootPath, { withFileTypes: true })
-        .filter(entry => entry.isDirectory())
-        .map(entry => entry.name);
+async function listDirectoryFolders(rootPath) {
+    if (!rootPath) return [];
+    try {
+        return (await fsOriginal.promises.readdir(rootPath, { withFileTypes: true }))
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name);
+    } catch (error) {
+        if (error?.code === 'ENOENT') return [];
+        throw error;
+    }
 }
 
-function listGameBackupFolders(rootPath) {
-    return listDirectoryFolders(rootPath).filter(item => {
+async function listGameBackupFolders(rootPath) {
+    const games = [];
+    for (const item of await listDirectoryFolders(rootPath)) {
         const gamePath = path.join(rootPath, item);
-        return listDirectoryFolders(gamePath).some(backup => isBackupInstanceFolder(path.join(gamePath, backup)));
-    });
+        for (const backup of await listDirectoryFolders(gamePath)) {
+            if (await isBackupInstanceFolder(path.join(gamePath, backup))) {
+                games.push(item);
+                break;
+            }
+        }
+    }
+    return games;
 }
 
-function listBackupInstanceFolders(gamePath) {
-    return listDirectoryFolders(gamePath).filter(backup => isBackupInstanceFolder(path.join(gamePath, backup)));
+async function listBackupInstanceFolders(gamePath) {
+    const backups = [];
+    for (const backup of await listDirectoryFolders(gamePath)) {
+        if (await isBackupInstanceFolder(path.join(gamePath, backup))) backups.push(backup);
+    }
+    return backups;
 }
 
 async function pruneBackups(rootPath) {
     const maxBackups = Number(getSettings().maxBackups) || 5;
-    if (!rootPath || !fsOriginal.existsSync(rootPath)) return;
+    if (!rootPath) return;
 
-    for (const gameId of listGameBackupFolders(rootPath)) {
+    for (const gameId of await listGameBackupFolders(rootPath)) {
         const gamePath = path.join(rootPath, gameId);
         const permanentBackups = [];
         const nonPermanentBackups = [];
+        const protectedBackups = [];
 
-        for (const backup of listBackupInstanceFolders(gamePath)) {
+        for (const backup of await listBackupInstanceFolders(gamePath)) {
             const infoPath = path.join(gamePath, backup, 'backup_info.json');
-            if (fsOriginal.existsSync(infoPath)) {
-                try {
-                    const info = await fse.readJson(infoPath);
-                    if (info.is_permanent) {
-                        permanentBackups.push(backup);
-                        continue;
-                    }
-                } catch (_) {
-                    // Treat unreadable metadata as non-permanent so it follows normal retention.
+            try {
+                const info = validateBackupMetadata(await fse.readJson(infoPath));
+                if (info.is_permanent) {
+                    permanentBackups.push(backup);
+                    continue;
                 }
+            } catch (error) {
+                protectedBackups.push(backup);
+                console.warn(`Skipping retention cleanup for invalid backup ${infoPath}: ${error.message}`);
+                continue;
             }
             nonPermanentBackups.push(backup);
         }
@@ -71,12 +88,12 @@ async function pruneBackups(rootPath) {
         nonPermanentBackups.sort((a, b) => b.localeCompare(a));
         const backupsToDelete = nonPermanentBackups.slice(maxBackups);
         for (const backup of backupsToDelete) {
-            fsOriginal.rmSync(path.join(gamePath, backup), { recursive: true, force: true });
+            await fsOriginal.promises.rm(path.join(gamePath, backup), { recursive: true, force: true });
         }
 
-        const remaining = [...permanentBackups, ...nonPermanentBackups.slice(0, maxBackups)];
+        const remaining = [...protectedBackups, ...permanentBackups, ...nonPermanentBackups.slice(0, maxBackups)];
         if (remaining.length === 0) {
-            fsOriginal.rmSync(gamePath, { recursive: true, force: true });
+            await fsOriginal.promises.rm(gamePath, { recursive: true, force: true });
         }
     }
 }

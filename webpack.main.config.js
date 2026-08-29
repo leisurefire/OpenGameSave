@@ -12,7 +12,8 @@ module.exports = {
     devtool: isProduction ? false : 'source-map',
     entry: {
         main: './src/main/main.js',
-        backupWorker: './src/main/backupWorker.js'
+        backupWorker: './src/main/backupWorker.js',
+        libraryScanWorker: './src/main/libraryScanWorker.js'
     },
     externals: [nodeExternals()],
     output: {

@@ -13,7 +13,7 @@ test('titlebar menus expose OpenGameSave workflows without the removed friends f
     const libraryService = readProjectFile('src/main/services/libraryService.js');
 
     assert.doesNotMatch(indexHtml, /data-titlebar-menu="friends"/);
-    assert.match(indexHtml, /img-src 'self' data:;/);
+    assert.match(indexHtml, /img-src 'self' data: blob:;/);
     assert.doesNotMatch(indexHtml, /img-src[^;]*https:/);
     assert.doesNotMatch(libraryService, /ld5\.res\.netease\.com/);
     assert.doesNotMatch(libraryService, /steam:\/\/open\/friends/);
@@ -38,13 +38,15 @@ test('library artwork remains lazy, bounded, and renderer-network independent', 
     const artworkService = readProjectFile('src/main/services/libraryArtworkService.js');
 
     assert.match(libraryPage, /new IntersectionObserver/);
-    assert.match(libraryPage, /ART_LOAD_CONCURRENCY = 4/);
+    assert.match(libraryPage, /ART_LOAD_CONCURRENCY = 2/);
     assert.match(libraryPage, /image\.loading = 'lazy'/);
     assert.match(libraryPage, /requestAnimationFrame/);
-    assert.match(artworkService, /MAX_ART_BYTES = 12 \* 1024 \* 1024/);
+    assert.match(artworkService, /MAX_ART_BYTES = 8 \* 1024 \* 1024/);
     assert.match(artworkService, /redirect: 'manual'/);
-    assert.match(artworkService, /Buffer\.byteLength\(dataUrl, 'utf8'\)/);
+    assert.match(artworkService, /data:\s*response\.buffer/);
+    assert.doesNotMatch(artworkService, /toString\('base64'\)/);
     assert.match(artworkService, /await response\.body\?\.cancel\(\)/);
+    assert.match(indexHtml, /img-src 'self' data: blob:/);
     assert.doesNotMatch(indexHtml, /connect-src[^;]*https:/);
 });
 

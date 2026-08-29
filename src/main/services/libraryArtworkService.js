@@ -3,12 +3,16 @@ const path = require('path');
 
 const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
-const MAX_ART_BYTES = 12 * 1024 * 1024;
+const MAX_ART_BYTES = 8 * 1024 * 1024;
 const MAX_BATTLENET_CACHE_FILES = 4096;
+const MAX_BATTLENET_INDEX_ENTRIES = 50000;
+const MAX_BATTLENET_CATALOG_BYTES = 64 * 1024 * 1024;
 const REMOTE_TIMEOUT_MS = 7000;
 const MAX_REDIRECTS = 3;
-const MAX_METADATA_CACHE_ENTRIES = 128;
-const MAX_MEMORY_CACHE_BYTES = 48 * 1024 * 1024;
+const MAX_METADATA_CACHE_ENTRIES = 32;
+const MAX_MEMORY_CACHE_BYTES = 24 * 1024 * 1024;
+const MAX_ACTIVE_ARTWORK_OPERATIONS = 4;
+const MAX_QUEUED_ARTWORK_OPERATIONS = 64;
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EPIC_METADATA_URL = 'https://store-content.ak.epicgames.com/api/content/productmapping';
@@ -48,6 +52,37 @@ const assetCache = new Map();
 const inFlightAssets = new Map();
 let assetCacheBytes = 0;
 let battleNetIndexCache = null;
+
+function createBoundedOperationRunner(maximumActive, maximumQueued) {
+    if (!Number.isSafeInteger(maximumActive) || maximumActive < 1
+        || !Number.isSafeInteger(maximumQueued) || maximumQueued < 0) {
+        throw new Error('Invalid bounded operation limits');
+    }
+    let active = 0;
+    const queue = [];
+    const start = ({ operation, resolve, reject }) => {
+        active += 1;
+        Promise.resolve().then(operation).then(resolve, reject).finally(() => {
+            active -= 1;
+            const next = queue.shift();
+            if (next) start(next);
+        });
+    };
+    return (operation) => {
+        if (typeof operation !== 'function') return Promise.reject(new Error('Operation must be a function'));
+        return new Promise((resolve, reject) => {
+            const task = { operation, resolve, reject };
+            if (active < maximumActive) start(task);
+            else if (queue.length < maximumQueued) queue.push(task);
+            else reject(new Error('Artwork operation queue is full'));
+        });
+    };
+}
+
+const runBoundedArtworkOperation = createBoundedOperationRunner(
+    MAX_ACTIVE_ARTWORK_OPERATIONS,
+    MAX_QUEUED_ARTWORK_OPERATIONS
+);
 
 function mimeTypeFromBytes(buffer) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 3) return null;
@@ -193,16 +228,21 @@ function battleNetHashedPath(cacheRoot, hash) {
     return path.join(cacheRoot, hash.slice(0, 2), hash.slice(2, 4), hash);
 }
 
-function addBattleNetFiles(index, cacheRoot, files, localeRank) {
-    if (!files || typeof files !== 'object') return;
-    for (const [assetKey, descriptor] of Object.entries(files)) {
+function addBattleNetFiles(index, cacheRoot, files, localeRank, budget = { remaining: MAX_BATTLENET_INDEX_ENTRIES }) {
+    if (!files || typeof files !== 'object') return true;
+    for (const assetKey in files) {
+        if (!Object.prototype.hasOwnProperty.call(files, assetKey)) continue;
+        if (budget.remaining <= 0) return false;
+        const descriptor = files[assetKey];
         const candidate = battleNetHashedPath(cacheRoot, descriptor?.hash);
         if (!candidate || !/\.(?:jpe?g|png|webp)$/i.test(String(descriptor?.name || ''))) continue;
         const normalizedKey = assetKey.toUpperCase();
         const candidates = index.get(normalizedKey) || [];
         candidates.push({ path: candidate, localeRank });
         index.set(normalizedKey, candidates);
+        budget.remaining -= 1;
     }
+    return budget.remaining > 0;
 }
 
 function buildBattleNetArtIndex(cacheRoot, locale = 'default') {
@@ -212,6 +252,8 @@ function buildBattleNetArtIndex(cacheRoot, locale = 'default') {
         return battleNetIndexCache.index;
     }
     const index = new Map();
+    const indexBudget = { remaining: MAX_BATTLENET_INDEX_ENTRIES };
+    let remainingCatalogBytes = MAX_BATTLENET_CATALOG_BYTES;
     const localeOrder = [...new Set([locale, 'default'])];
     for (const filePath of listBattleNetCacheFiles(cacheRoot)) {
         let stats;
@@ -220,10 +262,19 @@ function buildBattleNetArtIndex(cacheRoot, locale = 'default') {
             if (!stats.isFile() || stats.size <= 2 || stats.size > MAX_MANIFEST_BYTES) continue;
             const firstByte = readFileHeader(filePath, 1);
             if (firstByte[0] !== 0x7b) continue;
+            if (stats.size > remainingCatalogBytes) break;
+            remainingCatalogBytes -= stats.size;
             const catalog = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            localeOrder.forEach((entry, localeRank) => {
-                addBattleNetFiles(index, cacheRoot, catalog?.files?.[entry], localeRank);
-            });
+            for (let localeRank = 0; localeRank < localeOrder.length; localeRank += 1) {
+                if (!addBattleNetFiles(
+                    index,
+                    cacheRoot,
+                    catalog?.files?.[localeOrder[localeRank]],
+                    localeRank,
+                    indexBudget
+                )) break;
+            }
+            if (indexBudget.remaining <= 0) break;
         } catch {
             // Battle.net updates this cache in place; partial entries are ignored.
         }
@@ -391,7 +442,7 @@ async function readResponseBounded(response, maximumBytes) {
     return Buffer.concat(chunks, total);
 }
 
-async function fetchBounded(initialUrl, provider, purpose, maximumBytes, accept) {
+async function fetchBoundedImmediately(initialUrl, provider, purpose, maximumBytes, accept) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS);
     let currentUrl = initialUrl;
@@ -509,11 +560,17 @@ function readCachedAsset(cacheKey) {
     if (!cached) return null;
     assetCache.delete(cacheKey);
     assetCache.set(cacheKey, cached);
-    return cached.dataUrl;
+    return cached.asset;
 }
 
-function writeCachedAsset(cacheKey, dataUrl) {
-    const bytes = Buffer.byteLength(dataUrl, 'utf8');
+function fetchBounded(initialUrl, provider, purpose, maximumBytes, accept) {
+    return runBoundedArtworkOperation(() => (
+        fetchBoundedImmediately(initialUrl, provider, purpose, maximumBytes, accept)
+    ));
+}
+
+function writeCachedAsset(cacheKey, asset) {
+    const bytes = asset?.data?.byteLength || 0;
     const existing = assetCache.get(cacheKey);
     if (existing) {
         assetCacheBytes -= existing.bytes;
@@ -525,7 +582,7 @@ function writeCachedAsset(cacheKey, dataUrl) {
         assetCache.delete(oldestKey);
     }
     if (bytes <= MAX_MEMORY_CACHE_BYTES) {
-        assetCache.set(cacheKey, { dataUrl, bytes });
+        assetCache.set(cacheKey, { asset, bytes });
         assetCacheBytes += bytes;
     }
 }
@@ -537,15 +594,15 @@ async function loadLocalArtDataUrl(filePath, trustedRoots) {
     const cached = readCachedAsset(cacheKey);
     if (cached) return cached;
     if (inFlightAssets.has(cacheKey)) return await inFlightAssets.get(cacheKey);
-    const promise = (async () => {
+    const promise = runBoundedArtworkOperation(async () => {
         const buffer = await fs.promises.readFile(inspected.path);
         const current = inspectTrustedArtFile(inspected.path, trustedRoots);
         if (!current || current.size !== inspected.size || current.modified !== inspected.modified
             || buffer.length !== inspected.size || mimeTypeFromBytes(buffer) !== inspected.mimeType) return null;
-        const dataUrl = `data:${inspected.mimeType};base64,${buffer.toString('base64')}`;
-        writeCachedAsset(cacheKey, dataUrl);
-        return dataUrl;
-    })().finally(() => inFlightAssets.delete(cacheKey));
+        const asset = { mimeType: inspected.mimeType, data: buffer };
+        writeCachedAsset(cacheKey, asset);
+        return asset;
+    }).finally(() => inFlightAssets.delete(cacheKey));
     inFlightAssets.set(cacheKey, promise);
     return await promise;
 }
@@ -561,9 +618,9 @@ async function downloadOfficialArt(provider, url) {
         if (!IMAGE_MIME_TYPES.has(response.contentType) || response.contentType !== detectedMime) {
             throw new Error('Official artwork MIME type is invalid');
         }
-        const dataUrl = `data:${detectedMime};base64,${response.buffer.toString('base64')}`;
-        writeCachedAsset(cacheKey, dataUrl);
-        return dataUrl;
+        const asset = { mimeType: detectedMime, data: response.buffer };
+        writeCachedAsset(cacheKey, asset);
+        return asset;
     })().finally(() => inFlightAssets.delete(cacheKey));
     inFlightAssets.set(cacheKey, promise);
     return await promise;
@@ -594,7 +651,11 @@ async function getGameArtwork(game, artType) {
 module.exports = {
     EPIC_METADATA_URL,
     MAX_ART_BYTES,
+    MAX_BATTLENET_CATALOG_BYTES,
+    MAX_BATTLENET_INDEX_ENTRIES,
     MAX_MANIFEST_BYTES,
+    addBattleNetFiles,
+    createBoundedOperationRunner,
     createEpicProductUrl,
     createGogMetadataUrl,
     createSteamArtUrls,

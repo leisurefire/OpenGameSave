@@ -4,22 +4,27 @@ const DEFAULT_BUFFER = 8;
 
 const virtualTableStates = new WeakMap();
 
-export function getRowId(row) {
-    return row?.getAttribute('data-wiki-id')?.trim();
+export function getRowId(rowOrRecord) {
+    for (const candidate of [rowOrRecord?.id, rowOrRecord?.wikiId]) {
+        if (candidate !== undefined && candidate !== null && String(candidate).trim()) {
+            return String(candidate).trim();
+        }
+    }
+    return rowOrRecord?.getAttribute?.('data-wiki-id')?.trim();
 }
 
 export function getVirtualState(rowHost) {
-    return rowHost ? virtualTableStates.get(rowHost) : null;
+    return rowHost ? virtualTableStates.get(rowHost) || null : null;
 }
 
 export function getVirtualRows(rowHost) {
     const state = getVirtualState(rowHost);
-    return state ? state.allRows : Array.from(rowHost?.querySelectorAll('tr:not([data-virtual-spacer])') || []);
+    return state ? state.allRecords : Array.from(rowHost?.querySelectorAll('tr:not([data-virtual-spacer])') || []);
 }
 
 export function getFilteredVirtualRows(rowHost) {
     const state = getVirtualState(rowHost);
-    return state ? state.filteredRows : getVirtualRows(rowHost).filter(row => row.style.display !== 'none');
+    return state ? state.filteredRecords : getVirtualRows(rowHost).filter(row => row.style.display !== 'none');
 }
 
 export function getFilteredVirtualRowIds(rowHost) {
@@ -30,21 +35,30 @@ export function getFilteredVirtualRowIds(rowHost) {
 
 export function findVirtualRow(rowHost, rowId) {
     const state = getVirtualState(rowHost);
-    if (!state) return null;
-    return state.rowsById.get(rowId.toString()) || null;
+    if (!state || rowId === undefined || rowId === null) return null;
+    return state.renderedRowsById.get(String(rowId)) || null;
 }
 
-export function appendRows(rowHost, rows, options = {}) {
+export function findVirtualRecord(rowHost, rowId) {
+    const state = getVirtualState(rowHost);
+    if (!state || rowId === undefined || rowId === null) return null;
+    return state.recordsById.get(String(rowId)) || null;
+}
+
+export function appendRows(rowHost, rowsOrRecords, options = {}) {
     disableVirtualRows(rowHost);
 
     const threshold = options.threshold ?? DEFAULT_THRESHOLD;
-    if (rows.length >= threshold) {
-        enableVirtualRows(rowHost, rows, options);
+    if (rowsOrRecords.length >= threshold) {
+        enableVirtualRows(rowHost, rowsOrRecords, options);
         return;
     }
 
     const fragment = document.createDocumentFragment();
-    rows.forEach(row => fragment.appendChild(row));
+    rowsOrRecords.forEach(item => {
+        const row = options.materializeRow ? options.materializeRow(item) : item;
+        if (row) fragment.appendChild(row);
+    });
     rowHost.appendChild(fragment);
 }
 
@@ -52,8 +66,8 @@ export function applyVirtualFilter(rowHost, predicate, { resetScroll = true } = 
     const state = getVirtualState(rowHost);
     if (!state) return false;
 
-    state.filteredRows = state.allRows.filter(predicate);
-    state.filteredIds = new Set(state.filteredRows.map(row => getRowId(row)).filter(Boolean));
+    state.filterPredicate = predicate;
+    rebuildFilteredRecords(state);
     if (resetScroll && state.scrollContainer) {
         state.scrollContainer.scrollTop = 0;
     }
@@ -77,8 +91,8 @@ export function setAllVirtualSelected(rowHost, selected) {
     const state = getVirtualState(rowHost);
     if (!state) return false;
 
-    state.filteredRows.forEach(row => {
-        const rowId = getRowId(row);
+    state.filteredRecords.forEach(record => {
+        const rowId = getRowId(record);
         if (!rowId) return;
         if (selected) {
             state.selectedIds.add(rowId);
@@ -95,8 +109,8 @@ export function getFilteredVirtualSelectedIds(rowHost) {
     if (!state) return [];
 
     const selectedIds = [];
-    for (const row of state.filteredRows) {
-        const rowId = getRowId(row);
+    for (const record of state.filteredRecords) {
+        const rowId = getRowId(record);
         if (rowId && state.selectedIds.has(rowId)) selectedIds.push(rowId);
     }
     return selectedIds;
@@ -106,9 +120,44 @@ export function sortVirtualRows(rowHost, sorter) {
     const state = getVirtualState(rowHost);
     if (!state) return false;
 
-    state.allRows = sorter(state.allRows);
-    state.filteredRows = sorter(state.filteredRows);
+    const sortedRecords = sorter([...state.allRecords]);
+    if (!Array.isArray(sortedRecords)) {
+        throw new TypeError('Virtual table sorter must return an array');
+    }
+    state.allRecords = sortedRecords;
+    rebuildFilteredRecords(state);
     renderVirtualRows(rowHost);
+    return true;
+}
+
+export function addVirtualRecord(rowHost, record) {
+    const state = getVirtualState(rowHost);
+    const rowId = getRowId(record);
+    if (!state || !rowId || state.recordsById.has(rowId)) return false;
+
+    state.allRecords.push(record);
+    state.recordsById.set(rowId, record);
+    if (record.selected) state.selectedIds.add(rowId);
+    rebuildFilteredRecords(state);
+    renderVirtualRows(rowHost);
+    return true;
+}
+
+export function updateVirtualRecord(rowHost, rowId, updater, { refilter = true } = {}) {
+    const state = getVirtualState(rowHost);
+    const targetId = rowId?.toString();
+    const record = targetId ? state?.recordsById.get(targetId) : null;
+    if (!state || !record) return false;
+
+    const patch = typeof updater === 'function' ? updater(record) : updater;
+    if (patch && patch !== record) Object.assign(record, patch);
+    if (getRowId(record) !== targetId) {
+        throw new Error('Virtual row identifiers cannot be changed');
+    }
+
+    const isRendered = state.renderedRowsById.has(targetId);
+    if (refilter) rebuildFilteredRecords(state);
+    if (refilter || isRendered) renderVirtualRows(rowHost);
     return true;
 }
 
@@ -117,11 +166,11 @@ export function removeVirtualRow(rowHost, rowId) {
     if (!state) return false;
 
     const targetId = rowId.toString();
-    state.allRows = state.allRows.filter(row => getRowId(row) !== targetId);
-    state.filteredRows = state.filteredRows.filter(row => getRowId(row) !== targetId);
-    state.rowsById.delete(targetId);
-    state.filteredIds.delete(targetId);
+    if (!state.recordsById.has(targetId)) return false;
+    state.allRecords = state.allRecords.filter(record => getRowId(record) !== targetId);
+    state.recordsById.delete(targetId);
     state.selectedIds.delete(targetId);
+    rebuildFilteredRecords(state);
     renderVirtualRows(rowHost);
     return true;
 }
@@ -141,25 +190,39 @@ export function disableVirtualRows(rowHost) {
     state.scrollContainer?.removeEventListener('scroll', state.onScroll);
     if (state.renderFrame !== null) cancelAnimationFrame(state.renderFrame);
     virtualTableStates.delete(rowHost);
+
+    state.allRecords.length = 0;
+    state.filteredRecords.length = 0;
+    state.recordsById.clear();
+    state.renderedRowsById.clear();
+    state.filteredIds.clear();
+    state.selectedIds.clear();
 }
 
-function enableVirtualRows(rowHost, rows, options = {}) {
+function enableVirtualRows(rowHost, rowsOrRecords, options = {}) {
     const scrollContainer = options.scrollContainer || rowHost.closest('.table-container') || rowHost.parentElement;
+    const records = options.materializeRow
+        ? [...rowsOrRecords]
+        : rowsOrRecords.map(serializeRow);
+    const materializeRow = options.materializeRow || materializeSerializedRow;
     const selectedIds = new Set(
-        rows
-            .filter(row => row.querySelector('.row-checkbox')?.checked)
-            .map(row => getRowId(row))
+        records
+            .filter(record => record.selected)
+            .map(record => getRowId(record))
             .filter(Boolean)
     );
 
     const state = {
         rowHost,
         scrollContainer,
-        allRows: rows,
-        filteredRows: rows,
-        filteredIds: new Set(rows.map(row => getRowId(row)).filter(Boolean)),
-        rowsById: new Map(rows.map(row => [getRowId(row), row]).filter(([rowId]) => rowId)),
+        allRecords: records,
+        filteredRecords: [...records],
+        filteredIds: new Set(records.map(record => getRowId(record)).filter(Boolean)),
+        recordsById: new Map(records.map(record => [getRowId(record), record]).filter(([rowId]) => rowId)),
+        renderedRowsById: new Map(),
         selectedIds,
+        filterPredicate: null,
+        materializeRow,
         rowHeight: options.rowHeight || DEFAULT_ROW_HEIGHT,
         buffer: options.buffer ?? DEFAULT_BUFFER,
         createSpacer: options.createSpacer || createTableSpacer,
@@ -173,6 +236,27 @@ function enableVirtualRows(rowHost, rows, options = {}) {
         scrollContainer.scrollTop = 0;
     }
     renderVirtualRows(rowHost);
+}
+
+function serializeRow(row) {
+    return {
+        id: getRowId(row),
+        html: row.outerHTML,
+        selected: Boolean(row.querySelector?.('.row-checkbox')?.checked)
+    };
+}
+
+function materializeSerializedRow(record) {
+    const tableBody = document.createElement('tbody');
+    tableBody.innerHTML = record.html;
+    return tableBody.firstElementChild;
+}
+
+function rebuildFilteredRecords(state) {
+    state.filteredRecords = state.filterPredicate
+        ? state.allRecords.filter(state.filterPredicate)
+        : [...state.allRecords];
+    state.filteredIds = new Set(state.filteredRecords.map(record => getRowId(record)).filter(Boolean));
 }
 
 function scheduleVirtualRows(rowHost) {
@@ -192,26 +276,33 @@ function renderVirtualRows(rowHost) {
     if (state.renderFrame !== null) cancelAnimationFrame(state.renderFrame);
     state.renderFrame = null;
 
-    const { scrollContainer, filteredRows, selectedIds, rowHeight, buffer } = state;
+    const { scrollContainer, filteredRecords, selectedIds, rowHeight, buffer } = state;
     const viewportHeight = scrollContainer?.clientHeight || 0;
     const scrollTop = scrollContainer?.scrollTop || 0;
-    const firstVisible = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+    const firstVisible = Math.min(
+        filteredRecords.length,
+        Math.max(0, Math.floor(scrollTop / rowHeight) - buffer)
+    );
     const visibleCount = Math.ceil(viewportHeight / rowHeight) + buffer * 2;
-    const lastVisible = Math.min(filteredRows.length, firstVisible + visibleCount);
+    const lastVisible = Math.min(filteredRecords.length, firstVisible + visibleCount);
     const fragment = document.createDocumentFragment();
 
+    state.renderedRowsById.clear();
     fragment.appendChild(state.createSpacer(rowHost, firstVisible * rowHeight));
     for (let index = firstVisible; index < lastVisible; index += 1) {
-        const row = filteredRows[index];
-        const checkbox = row.querySelector('.row-checkbox');
-        const rowId = getRowId(row);
+        const record = filteredRecords[index];
+        const row = state.materializeRow(record);
+        if (!row) continue;
+        const checkbox = row.querySelector?.('.row-checkbox');
+        const rowId = getRowId(record) || getRowId(row);
         if (checkbox && rowId) {
             checkbox.checked = selectedIds.has(rowId);
         }
         row.style.display = '';
+        if (rowId) state.renderedRowsById.set(rowId, row);
         fragment.appendChild(row);
     }
-    fragment.appendChild(state.createSpacer(rowHost, (filteredRows.length - lastVisible) * rowHeight));
+    fragment.appendChild(state.createSpacer(rowHost, (filteredRecords.length - lastVisible) * rowHeight));
 
     rowHost.replaceChildren(fragment);
 }

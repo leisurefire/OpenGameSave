@@ -60,6 +60,73 @@ function setupDatabaseUpdateButton(button, icon, text, databaseVariantSelect) {
     });
 }
 
+async function loadInitialSettingsPage(controls, addGameInstallPath) {
+    const {
+        appUpdatePrereleaseCheckbox,
+        autoAppUpdateCheckbox,
+        autoDbUpdateCheckbox,
+        databaseVariantSelect,
+        languageSelect,
+        launchAtStartupCheckbox,
+        maxBackupsInput,
+        saveUninstalledCheckbox,
+        sidebarItemToggles,
+        syncAccentColorCheckbox
+    } = controls;
+
+    try {
+        const settings = await window.api.invoke('get-settings');
+        if (settings) {
+            languageSelect.value = settings.language;
+            maxBackupsInput.value = settings.maxBackups;
+            launchAtStartupCheckbox.checked = settings.launchAtStartup ?? false;
+            autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
+            appUpdatePrereleaseCheckbox.checked = settings.appUpdatePrerelease ?? false;
+            autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
+            databaseVariantSelect.value = settings.databaseVariant ?? 'standard';
+            saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
+            syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
+            const visibleSidebarItems = new Set(settings.visibleSidebarItems ?? sidebarItemToggles.map(([item]) => item));
+            sidebarItemToggles.forEach(([item, toggle]) => {
+                toggle.checked = visibleSidebarItems.has(item);
+            });
+
+            if (Array.isArray(settings.gameInstalls)) {
+                settings.gameInstalls.forEach((installPath) => {
+                    addGameInstallPath(installPath, false);
+                });
+            }
+        }
+        await updateTranslations(document);
+
+        _domReady = true;
+        if (_pendingLanguageUpdate) {
+            _pendingLanguageUpdate = false;
+            const latestSettings = await window.api.invoke('get-settings');
+            if (languageSelect && latestSettings?.language) {
+                languageSelect.value = latestSettings.language;
+            }
+            await updateTranslations(document);
+        }
+    } catch (error) {
+        console.error('Failed to load settings:', error);
+        let message = 'Failed to load settings';
+        try {
+            message = await window.i18n.translate('settings.load_settings_error');
+        } catch (_) {
+            // Keep a readable fallback even if localization also failed.
+        }
+        try {
+            await showAlert('error', message);
+        } catch (alertError) {
+            console.error('Failed to display settings load error:', alertError);
+        }
+    } finally {
+        _domReady = true;
+        document.body.style.visibility = 'visible';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const languageSelect = document.getElementById('language');
     const maxBackupsInput = document.getElementById('max-backups');
@@ -88,43 +155,18 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDatabaseUpdateButton(updateDatabaseButton, updateDatabaseIcon, updateDatabaseText, databaseVariantSelect);
 
     // Initial load
-    window.api.invoke('get-settings').then(async (settings) => {
-        if (settings) {
-            languageSelect.value = settings.language;
-            maxBackupsInput.value = settings.maxBackups;
-            launchAtStartupCheckbox.checked = settings.launchAtStartup ?? false;
-            autoAppUpdateCheckbox.checked = settings.autoAppUpdate;
-            appUpdatePrereleaseCheckbox.checked = settings.appUpdatePrerelease ?? false;
-            autoDbUpdateCheckbox.checked = settings.autoDbUpdate;
-            databaseVariantSelect.value = settings.databaseVariant ?? 'standard';
-            saveUninstalledCheckbox.checked = settings.saveUninstalledGames;
-            syncAccentColorCheckbox.checked = settings.syncAccentColor ?? false;
-            const visibleSidebarItems = new Set(settings.visibleSidebarItems ?? sidebarItemToggles.map(([item]) => item));
-            sidebarItemToggles.forEach(([item, toggle]) => {
-                toggle.checked = visibleSidebarItems.has(item);
-            });
-            // ToggleSwitch uses the same .checked property, so no extra logic needed.
-
-            if (settings.gameInstalls && settings.gameInstalls.length > 0) {
-                settings.gameInstalls.forEach((installPath) => {
-                    addGameInstallPath(installPath, false); // Don't trigger save on initial load
-                });
-            }
-        }
-        await updateTranslations(document);
-        document.body.style.visibility = 'visible';
-
-        // Mark DOM as ready, then flush any language update that arrived early.
-        _domReady = true;
-        if (_pendingLanguageUpdate) {
-            _pendingLanguageUpdate = false;
-            const latestSettings = await window.api.invoke('get-settings');
-            if (languageSelect && latestSettings?.language) {
-                languageSelect.value = latestSettings.language;
-            }
-            await updateTranslations(document);
-        }
-    });
+    void loadInitialSettingsPage({
+        appUpdatePrereleaseCheckbox,
+        autoAppUpdateCheckbox,
+        autoDbUpdateCheckbox,
+        databaseVariantSelect,
+        languageSelect,
+        launchAtStartupCheckbox,
+        maxBackupsInput,
+        saveUninstalledCheckbox,
+        sidebarItemToggles,
+        syncAccentColorCheckbox
+    }, addGameInstallPath);
 
     // Auto-save function
     let autoSaveQueue = Promise.resolve();
@@ -141,9 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const areArraysEqual = (arr1 = [], arr2 = []) => {
-                if (arr1.length !== arr2.length) return false;
-                const sortedLeft = [...arr1].sort();
-                const sortedRight = [...arr2].sort();
+                const left = Array.isArray(arr1) ? arr1 : [];
+                const right = Array.isArray(arr2) ? arr2 : [];
+                if (left.length !== right.length) return false;
+                const sortedLeft = [...left].sort();
+                const sortedRight = [...right].sort();
                 return sortedLeft.every((value, index) => value === sortedRight[index]);
             };
 

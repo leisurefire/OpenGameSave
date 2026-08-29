@@ -5,7 +5,8 @@ const path = require('path');
 const fse = require('fs-extra');
 
 const { getNewestBackup: getNewestBackupFromPath } = require('../fileSystemUtils');
-const { closeDb, dbAll, dbGet, openDb, stmtAll } = require('../sqliteUtils');
+const { closeDb, dbAll, dbGet, openDb } = require('../sqliteUtils');
+const { assertNoSymlinkAncestors, isPathInside, normalizeWikiId } = require('../validation');
 const { XGP_WIKI_IDS_METADATA_KEY } = require('../xgpSourceFormat');
 const {
     getContext,
@@ -13,6 +14,9 @@ const {
     reportProgress
 } = require('./backupWorkerContext');
 const { processGame } = require('./backupWorkerGameProcessor');
+const { getPlatformSaveLocations, getSavePlatformKey } = require('./platformService');
+
+const MAX_SQLITE_QUERY_PARAMETERS = 500;
 
 function getGameDisplayName(gameObj) {
     return getSettings().language === 'zh_CN' ? gameObj.zh_CN || gameObj.title : gameObj.title;
@@ -59,6 +63,16 @@ function findInstallPath(row, gameInstallPaths) {
         }
     }
     return false;
+}
+
+async function getRowsByWikiIds(db, wikiIds) {
+    const rows = [];
+    for (let offset = 0; offset < wikiIds.length; offset += MAX_SQLITE_QUERY_PARAMETERS) {
+        const chunk = wikiIds.slice(offset, offset + MAX_SQLITE_QUERY_PARAMETERS);
+        const placeholders = chunk.map(() => '?').join(',');
+        rows.push(...await dbAll(db, `SELECT * FROM games WHERE wiki_page_id IN (${placeholders})`, chunk));
+    }
+    return rows;
 }
 
 async function processAndPushGame(row, games) {
@@ -141,10 +155,18 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
     }
 
     const processedInstallPaths = new Set();
-    let stmtInstallFolder;
 
     try {
-        stmtInstallFolder = db.prepare('SELECT * FROM games WHERE install_folder = ?');
+        const rowsByInstallFolder = new Map();
+        const installedRows = await dbAll(db, 'SELECT * FROM games WHERE install_folder IS NOT NULL');
+        for (const row of installedRows) {
+            const installFolderRows = rowsByInstallFolder.get(row.install_folder);
+            if (installFolderRows) {
+                installFolderRows.push(row);
+            } else {
+                rowsByInstallFolder.set(row.install_folder, [row]);
+            }
+        }
 
         for (const installPath of gameInstallPaths) {
             if (!fsOriginal.existsSync(installPath)) continue;
@@ -156,7 +178,7 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
                 if (processedInstallPaths.has(dir)) continue;
                 processedInstallPaths.add(dir);
 
-                const rows = await stmtAll(stmtInstallFolder, dir);
+                const rows = rowsByInstallFolder.get(dir);
                 if (rows && rows.length > 0) {
                     for (const row of rows) {
                         try {
@@ -172,8 +194,6 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
             }
         }
 
-        stmtInstallFolder = null;
-
         await processXboxCandidateGames(db, games, errors);
 
         if (!ignoreUninstalled && getSettings().saveUninstalledGames) {
@@ -181,18 +201,14 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
             const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
             const remainingUninstalledWikiIds = uninstalledWikiIds.filter(id => !processedWikiIds.has(id));
 
-            for (const remainingWikiId of remainingUninstalledWikiIds) {
-                const rows = await dbAll(db, 'SELECT * FROM games WHERE wiki_page_id = ?', [remainingWikiId]);
-                if (rows && rows.length > 0) {
-                    for (const row of rows) {
-                        try {
-                            parseDbRow(row);
-                            await processAndPushGame(row, games);
-                        } catch (err) {
-                            console.error(`Error processing uninstalled game ${getGameDisplayName(row)}: ${err.stack}`);
-                            errors.push(`Error processing ${getGameDisplayName(row)}: ${err.message}`);
-                        }
-                    }
+            const remainingRows = await getRowsByWikiIds(db, remainingUninstalledWikiIds);
+            for (const row of remainingRows) {
+                try {
+                    parseDbRow(row);
+                    await processAndPushGame(row, games);
+                } catch (err) {
+                    console.error(`Error processing uninstalled game ${getGameDisplayName(row)}: ${err.stack}`);
+                    errors.push(`Error processing ${getGameDisplayName(row)}: ${err.message}`);
                 }
             }
 
@@ -201,7 +217,6 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
     } catch (error) {
         console.error(`Error displaying backup table: ${error.stack}`);
         errors.push(`Error displaying backup table: ${error.message}`);
-        stmtInstallFolder = null;
     } finally {
         await closeDb(db);
     }
@@ -223,6 +238,7 @@ async function getAllGameDataFromDB() {
         const rows = await dbAll(db, 'SELECT * FROM games');
         const totalRows = rows.length;
         let processedRows = 0;
+        let lastReportedProgress = -1;
 
         for (const row of rows) {
             try {
@@ -235,7 +251,10 @@ async function getAllGameDataFromDB() {
 
             processedRows += 1;
             const dbProgress = totalRows ? Math.floor((processedRows / totalRows) * 95) : 95;
-            reportProgress(dbProgress);
+            if (dbProgress !== lastReportedProgress) {
+                reportProgress(dbProgress);
+                lastReportedProgress = dbProgress;
+            }
         }
 
         reportProgress(100);
@@ -249,4 +268,58 @@ async function getAllGameDataFromDB() {
     return { games, errors };
 }
 
-module.exports = { getAllGameDataFromDB, getGameDataFromDB };
+async function getTrustedRestoreDefinition({ wikiId }) {
+    const safeWikiId = normalizeWikiId(wikiId);
+    if (!await ensureDatabase()) throw new Error(getContext().labels.missingDatabase);
+    const db = await openDb(getContext().dbPath, { readonly: true, fileMustExist: true });
+    try {
+        const row = await dbGet(
+            db,
+            'SELECT install_folder, save_location FROM games WHERE wiki_page_id = ?',
+            [safeWikiId]
+        );
+        if (!row) throw new Error('Game is not present in the current database');
+        const saveLocation = JSON.parse(row.save_location);
+        if (!saveLocation || typeof saveLocation !== 'object' || Array.isArray(saveLocation)) {
+            throw new Error('Game has an invalid save-location definition');
+        }
+        const fileTemplates = getPlatformSaveLocations(saveLocation);
+        const registryTemplates = getSavePlatformKey() === 'win' && Array.isArray(saveLocation.reg)
+            ? saveLocation.reg.filter(template => typeof template === 'string')
+            : [];
+
+        let trustedInstallPath = null;
+        if (typeof row.install_folder === 'string' && row.install_folder.length > 0) {
+            const installRoots = Array.isArray(getSettings().gameInstalls) ? getSettings().gameInstalls : [];
+            for (const installRoot of installRoots) {
+                if (typeof installRoot !== 'string' || !path.isAbsolute(installRoot)) continue;
+                const resolvedRoot = path.resolve(installRoot);
+                const candidate = path.resolve(resolvedRoot, row.install_folder);
+                if (candidate !== resolvedRoot && isPathInside(resolvedRoot, candidate)
+                    && fsOriginal.existsSync(candidate)) {
+                    try {
+                        await assertNoSymlinkAncestors(resolvedRoot, candidate, fsOriginal);
+                        const stats = fsOriginal.lstatSync(candidate);
+                        if (stats.isDirectory() && !stats.isSymbolicLink()) {
+                            trustedInstallPath = candidate;
+                            break;
+                        }
+                    } catch (_) {
+                        // A broken or linked candidate must not prevent a later
+                        // configured install root from providing the real game path.
+                    }
+                }
+            }
+        }
+
+        return {
+            fileTemplates,
+            registryTemplates,
+            trustedInstallPath
+        };
+    } finally {
+        await closeDb(db);
+    }
+}
+
+module.exports = { getAllGameDataFromDB, getGameDataFromDB, getTrustedRestoreDefinition };

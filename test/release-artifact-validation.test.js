@@ -8,9 +8,21 @@ const test = require('node:test');
 const yaml = require('js-yaml');
 
 const { getExpectedAppAssetNames } = require('../src/main/appUpdatePolicy');
-const { validateLocalArtifacts, validateRemoteAssets } = require('../scripts/validate-app-release');
+const {
+    publisherMatchesSubject,
+    validateLocalArtifacts,
+    validateRemoteAssets
+} = require('../scripts/validate-app-release');
 
 const projectVersion = require('../package.json').version;
+
+test('publisher matching mirrors the updater full-DN and common-name rules', () => {
+    const certificateSubject = 'CN=OpenGameSave Test, O=OpenGameSave Test, C=US';
+    assert.equal(publisherMatchesSubject('CN=OpenGameSave Test, O=OpenGameSave Test', certificateSubject), true);
+    assert.equal(publisherMatchesSubject('OpenGameSave Test', certificateSubject), true);
+    assert.equal(publisherMatchesSubject('CN=Different Publisher', certificateSubject), false);
+    assert.equal(publisherMatchesSubject('', certificateSubject), false);
+});
 
 test('release validator binds metadata and remote digests to exact local bytes', async (context) => {
     const tempPath = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-release-validation-'));
@@ -22,7 +34,8 @@ test('release validator binds metadata and remote digests to exact local bytes',
     fs.writeFileSync(path.join(tempPath, expected.blockmap), 'blockmap');
     fs.mkdirSync(path.join(tempPath, 'win-unpacked', 'resources'), { recursive: true });
     fs.writeFileSync(path.join(tempPath, 'win-unpacked', 'resources', 'app-update.yml'), yaml.dump({
-        provider: 'github'
+        provider: 'github',
+        publisherName: ['CN=OpenGameSave Test, O=OpenGameSave Test']
     }));
 
     const sha512 = crypto.createHash('sha512').update(installerBytes).digest('base64');
@@ -33,10 +46,23 @@ test('release validator binds metadata and remote digests to exact local bytes',
         sha512
     }));
 
+    await assert.rejects(validateLocalArtifacts({
+        distPath: tempPath,
+        version: projectVersion,
+        signatureVerifier: async () => ({ status: 'Valid', subject: 'CN=OpenGameSave Test' })
+    }), /expected Windows publisher is required/);
+
     const report = await validateLocalArtifacts({
         distPath: tempPath,
-        version: projectVersion
+        version: projectVersion,
+        publisherName: 'CN=OpenGameSave Test, O=OpenGameSave Test',
+        signatureVerifier: async (signedPath, publisherName) => {
+            assert.equal(signedPath, installerPath);
+            assert.equal(publisherName, 'CN=OpenGameSave Test, O=OpenGameSave Test');
+            return { status: 'Valid', subject: publisherName };
+        }
     });
+    assert.equal(report.signature.status, 'Valid');
     const remotePath = path.join(tempPath, 'remote.json');
     fs.writeFileSync(remotePath, JSON.stringify({
         assets: report.artifacts.map(artifact => ({
@@ -52,6 +78,8 @@ test('release validator binds metadata and remote digests to exact local bytes',
     fs.writeFileSync(path.join(tempPath, expected.metadata), yaml.dump(metadata));
     await assert.rejects(validateLocalArtifacts({
         distPath: tempPath,
-        version: projectVersion
+        version: projectVersion,
+        publisherName: 'CN=OpenGameSave Test, O=OpenGameSave Test',
+        signatureVerifier: async () => ({ status: 'Valid', subject: 'CN=OpenGameSave Test, O=OpenGameSave Test' })
     }), /size mismatch/);
 });

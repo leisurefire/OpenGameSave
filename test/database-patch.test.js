@@ -188,7 +188,8 @@ test('database publication workflow runs automatically and targets a dedicated r
     assert.ok(workflow.on.push.paths.includes('database/database.db'));
     assert.ok(Array.isArray(workflow.on.schedule));
     assert.ok(workflow.on.workflow_dispatch !== undefined);
-    assert.equal(workflow.permissions.contents, 'write');
+    assert.equal(workflow.permissions.contents, 'read');
+    assert.equal(workflow.jobs.publish.permissions.contents, 'write');
     assert.equal(workflow.jobs.publish.env.DATABASE_TAG, 'database');
     const workflowSource = fs.readFileSync(workflowPath, 'utf8');
     assert.match(workflowSource, /pointer="current\$\{suffix\}\.json"/);

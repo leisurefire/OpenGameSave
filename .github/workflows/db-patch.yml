@@ -20,21 +20,25 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish:
+    permissions:
+      contents: write
+    environment: database-release
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DATABASE_TAG: database
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
@@ -47,6 +51,8 @@ jobs:
       - name: Resolve the licensed upstream revision
         id: upstream
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           LICENSE=$(gh api repos/brodrigz/XgpSaveTools --jq '.license.spdx_id')
@@ -97,6 +103,7 @@ jobs:
       - name: Prepare and publish both database editions
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
           set -euo pipefail
@@ -264,7 +271,7 @@ jobs:
           node -e "const r=require('./dist/xgp-save-tools-sync-report.json'); const s=r.summary; process.stdout.write(['', '### Xbox enhanced edition','', '- Registry SHA-256: '+r.source.registry_sha256,'- Source entries: '+s.sourceEntries,'- Matched games: '+s.matchedGames,'- Mounted games: '+s.persistedMountedGames,'- Added WGS paths: '+s.addedWgsPaths,'- Added PGS paths: '+s.addedPgsPaths,'- Unmatched entries: '+s.unmatchedEntries,'- Ambiguous entries: '+s.ambiguousEntries,''].join('\n'))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload generation reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: database-editions-${{ github.run_id }}
           path: |

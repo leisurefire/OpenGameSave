@@ -23,7 +23,7 @@ export function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
     const virtualState = getVirtualState(tableContainer);
     const visibleCheckboxes = virtualState ? [] : Array.from(tableContainer.querySelectorAll('.row-checkbox'))
         .filter(checkbox => checkbox.closest('tr')?.style.display !== 'none');
-    const totalRows = virtualState ? virtualState.filteredRows.length : visibleCheckboxes.length;
+    const totalRows = virtualState ? virtualState.filteredRecords.length : visibleCheckboxes.length;
     const selectedRows = virtualState
         ? getFilteredVirtualSelectedIds(tableContainer).length
         : visibleCheckboxes.filter(checkbox => checkbox.checked).length;
@@ -44,7 +44,7 @@ export async function updateSelectedCountAndSize(tabName) {
 
     selectedWikiIds.forEach((wikiId) => {
         if (!visibleIds.has(wikiId)) return;
-        const gameData = dataMap.get(wikiId);
+        const gameData = dataMap.get(wikiId) || dataMap.get(Number(wikiId));
         if (gameData) {
             totalSize += gameData.backup_size;
             totalSelected += 1;

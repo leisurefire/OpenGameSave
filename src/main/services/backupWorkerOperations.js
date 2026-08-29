@@ -1,18 +1,21 @@
 const { execFile } = require('child_process');
 const fsOriginal = require('fs');
+const os = require('os');
 const path = require('path');
 const util = require('util');
 
 const fse = require('fs-extra');
 const { format } = require('date-fns');
+const WinReg = require('winreg');
 
 const {
     copyFolder: fsOriginalCopyFolder,
-    ensureWritable,
     getLatestModificationTime,
     readBackupFolder
 } = require('../fileSystemUtils');
 const {
+    assertNoSymlinkAncestors,
+    isPathInside,
     normalizeBackupDate,
     normalizeRegistryKeyPath,
     normalizeWikiId,
@@ -20,6 +23,7 @@ const {
     validateBackupMetadata
 } = require('../validation');
 const { getSettings } = require('./backupWorkerContext');
+const { restoreFileSystemPathsTransactionally } = require('./restoreFileSystemTransaction');
 
 const execFilePromise = util.promisify(execFile);
 
@@ -56,6 +60,7 @@ async function backupGame(gameObj) {
         const backupConfig = {
             title: gameObj.title,
             zh_CN: gameObj.zh_CN || null,
+            provenance: 'local',
             backup_paths: []
         };
 
@@ -116,9 +121,15 @@ async function backupGame(gameObj) {
         for (const backup of backupFolders) {
             const backupConfigPath = resolveInside(gameBackupPath, backup, 'backup_info.json');
             if (fsOriginal.existsSync(backupConfigPath)) {
-                const existingConfig = validateBackupMetadata(await fse.readJson(backupConfigPath));
-                if (!existingConfig.is_permanent) {
-                    nonPermanentBackups.push(backup);
+                try {
+                    const existingConfig = validateBackupMetadata(await fse.readJson(backupConfigPath));
+                    if (!existingConfig.is_permanent) {
+                        nonPermanentBackups.push(backup);
+                    }
+                } catch (error) {
+                    // Preserve a damaged historical snapshot for manual recovery. It
+                    // must not make this newly completed backup look like a failure.
+                    console.warn(`Skipping retention cleanup for invalid backup ${backup}: ${error.message}`);
                 }
             } else {
                 nonPermanentBackups.push(backup);
@@ -186,25 +197,143 @@ async function getGameDataForRestore({ wikiId = null }) {
 }
 
 async function restorePaths(pathsToRestore) {
-    for (const { sourcePath, destinationPath, backupType } of pathsToRestore) {
-        ensureWritable(destinationPath);
-
-        if (backupType === 'folder') {
-            fsOriginal.mkdirSync(destinationPath, { recursive: true });
-            fsOriginalCopyFolder(sourcePath, destinationPath);
-        } else if (backupType === 'file') {
-            fsOriginal.mkdirSync(path.dirname(destinationPath), { recursive: true });
-            fsOriginal.copyFileSync(path.join(sourcePath, path.basename(destinationPath)), destinationPath);
-        } else if (backupType === 'reg') {
-            const registryFilePath = path.join(sourcePath, 'registry_backup.reg');
-            validateRegistryBackupFile(registryFilePath, destinationPath);
-            await execFilePromise('reg.exe', ['import', registryFilePath], { windowsHide: true });
+    const backupRoot = path.resolve(getSettings().backupPath);
+    const fileSystemPaths = [];
+    const registryPaths = [];
+    for (const restorePath of pathsToRestore) {
+        if (restorePath.backupType === 'reg') {
+            registryPaths.push(restorePath);
+        } else if (restorePath.backupType === 'file' || restorePath.backupType === 'folder') {
+            fileSystemPaths.push(restorePath);
         } else {
-            console.warn(`Unknown backup type: ${backupType}`);
+            throw new Error(`Unknown backup type: ${restorePath.backupType}`);
         }
     }
 
-    return null;
+    const registryTransaction = await applyRegistryRestoreTransaction(registryPaths, backupRoot);
+    try {
+        await restoreFileSystemPathsTransactionally(fileSystemPaths, { backupRoot, fsAdapter: fsOriginal });
+        await registryTransaction.commit();
+        return null;
+    } catch (error) {
+        try {
+            await registryTransaction.rollback();
+        } catch (rollbackError) {
+            throw new AggregateError([error, rollbackError], 'Restore failed and registry rollback was incomplete');
+        }
+        throw error;
+    }
+}
+
+function registryPathsOverlap(left, right) {
+    const normalizedLeft = normalizeRegistryKeyPath(left).toLowerCase();
+    const normalizedRight = normalizeRegistryKeyPath(right).toLowerCase();
+    return normalizedLeft === normalizedRight
+        || normalizedLeft.startsWith(`${normalizedRight}\\`)
+        || normalizedRight.startsWith(`${normalizedLeft}\\`);
+}
+
+function parseRegistryDestination(registryPath) {
+    const segments = normalizeRegistryKeyPath(registryPath).split('\\');
+    const hiveName = segments.shift();
+    const hives = {
+        HKEY_CURRENT_USER: WinReg.HKCU,
+        HKEY_LOCAL_MACHINE: WinReg.HKLM,
+        HKEY_CLASSES_ROOT: WinReg.HKCR
+    };
+    return { hive: hives[hiveName], key: `\\${segments.join('\\')}` };
+}
+
+function registryKeyExists(registryPath) {
+    const { hive, key } = parseRegistryDestination(registryPath);
+    return new Promise((resolve, reject) => {
+        new WinReg({ hive, key }).keyExists((error, exists) => {
+            if (error) reject(error);
+            else resolve(exists);
+        });
+    });
+}
+
+async function rollbackRegistryChanges(applied, rollbackRoot) {
+    const errors = [];
+    for (const restorePath of [...applied].reverse()) {
+        try {
+            if (restorePath.hadPreviousValue) {
+                await execFilePromise('reg.exe', ['import', restorePath.previousPath], { windowsHide: true });
+            } else if (await registryKeyExists(restorePath.destinationPath)) {
+                await execFilePromise('reg.exe', ['delete', restorePath.destinationPath, '/f'], { windowsHide: true });
+            }
+        } catch (error) {
+            errors.push(error);
+        }
+    }
+    if (errors.length === 0) {
+        await fsOriginal.promises.rm(rollbackRoot, { recursive: true, force: true });
+    }
+    if (errors.length > 0) {
+        throw new AggregateError(errors, `Registry rollback data retained at ${rollbackRoot}`);
+    }
+}
+
+async function applyRegistryRestoreTransaction(registryPaths, backupRoot) {
+    if (registryPaths.length === 0) {
+        return { commit: async () => undefined, rollback: async () => undefined };
+    }
+    if (process.platform !== 'win32') throw new Error('Registry restore is only supported on Windows');
+
+    const normalizedPaths = [];
+    for (const restorePath of registryPaths) {
+        if (restorePath.untrusted) {
+            throw new Error('Registry restore from an external backup is not allowed');
+        }
+        const sourcePath = path.resolve(restorePath.sourcePath);
+        if (sourcePath === backupRoot || !isPathInside(backupRoot, sourcePath)) {
+            throw new Error('Registry restore source escapes the backup root');
+        }
+        await assertNoSymlinkAncestors(backupRoot, sourcePath, fsOriginal);
+        const destinationPath = normalizeRegistryKeyPath(restorePath.destinationPath);
+        if (normalizedPaths.some(item => registryPathsOverlap(item.destinationPath, destinationPath))) {
+            throw new Error('Registry restore destinations overlap');
+        }
+        const registryFilePath = path.join(sourcePath, 'registry_backup.reg');
+        validateRegistryBackupFile(registryFilePath, destinationPath);
+        normalizedPaths.push({ destinationPath, registryFilePath });
+    }
+
+    const rollbackRoot = await fsOriginal.promises.mkdtemp(path.join(os.tmpdir(), 'ogs-reg-restore-'));
+    const applied = [];
+    let finished = false;
+    try {
+        for (const [index, restorePath] of normalizedPaths.entries()) {
+            const previousPath = path.join(rollbackRoot, `previous-${index}.reg`);
+            const hadPreviousValue = await registryKeyExists(restorePath.destinationPath);
+            if (hadPreviousValue) {
+                await execFilePromise('reg.exe', ['export', restorePath.destinationPath, previousPath, '/y'], { windowsHide: true });
+            }
+            applied.push({ ...restorePath, previousPath, hadPreviousValue });
+            await execFilePromise('reg.exe', ['import', restorePath.registryFilePath], { windowsHide: true });
+        }
+    } catch (error) {
+        try {
+            await rollbackRegistryChanges(applied, rollbackRoot);
+        } catch (rollbackError) {
+            throw new AggregateError([error, rollbackError], 'Registry restore failed and rollback was incomplete');
+        }
+        throw error;
+    }
+
+    return {
+        async commit() {
+            if (finished) return;
+            finished = true;
+            await fsOriginal.promises.rm(rollbackRoot, { recursive: true, force: true });
+        },
+        async rollback() {
+            if (finished) return;
+            finished = true;
+            await rollbackRegistryChanges(applied, rollbackRoot);
+        }
+    };
 }
 
 function validateRegistryBackupFile(registryFilePath, destinationPath) {
@@ -254,4 +383,3 @@ module.exports = {
     getRestoreConflictTimes,
     restorePaths
 };
-

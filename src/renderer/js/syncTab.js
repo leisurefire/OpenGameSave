@@ -49,9 +49,32 @@ async function chooseBackupPath() {
     const canStart = await operationStartCheck('change-settings');
     if (canStart) {
         backupPathInput.value = selectedPath;
-        const migrated = await window.api.invoke('migrate-backups', selectedPath);
-        if (!migrated) backupPathInput.value = settings.backupPath;
-        await refreshSyncStatus();
+        try {
+            const migrated = await window.api.invoke('migrate-backups', selectedPath);
+            if (!migrated) {
+                backupPathInput.value = settings.backupPath;
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to migrate backup path:', error);
+            backupPathInput.value = settings.backupPath;
+            await showAlert(
+                'error',
+                await window.i18n.translate('alert.error_during_backup_migration'),
+                error?.message || String(error)
+            );
+            return;
+        }
+        try {
+            await refreshSyncStatus();
+        } catch (error) {
+            console.error('Failed to refresh sync status after backup migration:', error);
+            await showAlert(
+                'error',
+                await window.i18n.translate('alert.sync_failed'),
+                error?.message || String(error)
+            );
+        }
     } else {
         backupPathInput.value = settings.backupPath;
     }

@@ -4,6 +4,7 @@ const i18next = require('i18next');
 
 const { detectGamePaths, getGameData } = require('../gameData');
 const { getMainWin, getSettings, saveSettings } = require('../global');
+const { filterSettingsForRole, getAuthorizedSenderRole } = require('../ipcAuthorization');
 const { refreshAutoBackupWatchers } = require('../autoBackup');
 
 function getSystemAccentColor() {
@@ -18,9 +19,18 @@ function getSystemAccentColor() {
     return `#${accent.substring(0, 6)}`;
 }
 
+function getWindowAccentColor() {
+    return getSettings().syncAccentColor ? getSystemAccentColor() : '#16c60c';
+}
+
 function broadcastAccentColor(color) {
     BrowserWindow.getAllWindows().forEach((window) => {
-        if (!window.isDestroyed()) window.webContents.send('accent-color-changed', color);
+        if (window.isDestroyed() || window.webContents.isDestroyed?.()) return;
+        try {
+            window.webContents.send('accent-color-changed', color);
+        } catch (error) {
+            console.warn('Could not deliver an accent color update:', error.message);
+        }
     });
 }
 
@@ -43,7 +53,7 @@ function registerSettingsIpc({ ensureGameDataReady }) {
         if (getSettings().syncAccentColor) broadcastAccentColor(`#${newColor.substring(0, 6)}`);
     });
 
-    ipcMain.handle('get-accent-color', getSystemAccentColor);
+    ipcMain.handle('get-window-accent-color', getWindowAccentColor);
     ipcMain.on('apply-accent-color-setting', (event, syncEnabled) => {
         broadcastAccentColor(syncEnabled === true ? getSystemAccentColor() : '#16c60c');
     });
@@ -69,7 +79,9 @@ function registerSettingsIpc({ ensureGameDataReady }) {
             }
         }
     });
-    ipcMain.handle('get-settings', getSettings);
+    ipcMain.handle('get-settings', (event) => (
+        filterSettingsForRole(getAuthorizedSenderRole(event), getSettings())
+    ));
     ipcMain.handle('get-detected-game-paths', async () => {
         await ensureGameDataReady();
         await detectGamePaths();

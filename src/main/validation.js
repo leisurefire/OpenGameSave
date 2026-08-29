@@ -413,6 +413,9 @@ function validateBackupMetadata(rawMetadata) {
         title: normalizeShortText(rawMetadata.title, 512, { allowEmpty: false }),
         zh_CN: rawMetadata.zh_CN == null ? null : normalizeShortText(rawMetadata.zh_CN, 512),
         backup_paths: backupPaths,
+        // Missing provenance is treated conservatively for backups created by
+        // older versions or received from an unauthenticated transport.
+        provenance: rawMetadata.provenance === 'local' ? 'local' : 'external',
         is_permanent: rawMetadata.is_permanent === true,
         custom_name: normalizeShortText(rawMetadata.custom_name, 120)
     };
@@ -555,6 +558,7 @@ function validateDatabasePatch(rawPatch, expectedVersion, expectedFromVersion, e
 module.exports = {
     ALLOWED_SETTING_KEYS,
     BACKUP_DATE_PATTERN,
+    MAX_AUTO_BACKUP_GAMES,
     assertNoSymlinkAncestors,
     isXboxPgsPath,
     normalizeAbsolutePath,

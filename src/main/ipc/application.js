@@ -8,7 +8,6 @@ const {
     saveSyncProviderConfig
 } = require('../syncProviders');
 const {
-    checkAppUpdate,
     downloadAppUpdate,
     getAppUpdateState,
     getCurrentVersion,
@@ -17,7 +16,6 @@ const {
     getRepositoryUrl,
     getStatus,
     isNewerAppVersion,
-    updateApp,
     updateStatus
 } = require('../global');
 const { acquireGlobalOperation } = require('../gameOperationLock');
@@ -33,7 +31,6 @@ function registerApplicationIpc() {
     });
     ipcMain.handle('get-current-version', getCurrentVersion);
     ipcMain.handle('get-app-update-state', getAppUpdateState);
-    ipcMain.handle('check-app-update', checkAppUpdate);
     ipcMain.handle('download-app-update', downloadAppUpdate);
     ipcMain.handle('get-repository-url', getRepositoryUrl);
     ipcMain.handle('get-latest-version', () => getLatestVersion('OpenGameSave'));
@@ -66,7 +63,6 @@ function registerApplicationIpc() {
             }
         }
     });
-    ipcMain.on('update-app', updateApp);
 }
 
 module.exports = { registerApplicationIpc };

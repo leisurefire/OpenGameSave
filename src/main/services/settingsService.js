@@ -17,6 +17,76 @@ const { getMainWin } = require('./windowManager');
 let settings;
 /** @type {Promise<void | string[]>} */
 let writeQueue = Promise.resolve();
+const pendingSideEffects = new Set();
+
+const SIDE_EFFECT_KEYS = Object.freeze({
+    launch: new Set(['launchAtStartup']),
+    library: new Set(['gameInstalls', 'saveUninstalledGames']),
+    language: new Set(['language'])
+});
+
+function includesAnyKey(keys, candidates) {
+    return keys.some(key => candidates.has(key));
+}
+
+function sendToWindow(window, ...args) {
+    if (!window
+        || window.isDestroyed?.()
+        || !window.webContents
+        || window.webContents.isDestroyed?.()) {
+        return false;
+    }
+    try {
+        window.webContents.send(...args);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function sendToMainWindow(...args) {
+    return sendToWindow(getMainWin(), ...args);
+}
+
+async function runSettingSideEffect(name, action) {
+    try {
+        const applied = await action();
+        if (applied === false) throw new Error('The target window was unavailable');
+        pendingSideEffects.delete(name);
+    } catch (error) {
+        pendingSideEffects.add(name);
+        console.error(`Failed to apply the ${name} settings side effect:`, error);
+    }
+}
+
+async function applySettingSideEffects(changedKeys, requestedKeys, nextSettings) {
+    const shouldRun = name => includesAnyKey(changedKeys, SIDE_EFFECT_KEYS[name])
+        || (pendingSideEffects.has(name) && includesAnyKey(requestedKeys, SIDE_EFFECT_KEYS[name]));
+
+    if (shouldRun('launch')) {
+        await runSettingSideEffect('launch', () => setLaunchAtStartup(nextSettings.launchAtStartup));
+    }
+
+    if (shouldRun('library')) {
+        await runSettingSideEffect('library', () =>
+            sendToMainWindow('update-backup-table')
+            && sendToMainWindow('update-restore-table'));
+    }
+
+    if (shouldRun('language')) {
+        await runSettingSideEffect('language', async () => {
+            await i18next.changeLanguage(nextSettings.language);
+            let languageApplied = true;
+            for (const window of BrowserWindow.getAllWindows()) {
+                languageApplied = sendToWindow(window, 'apply-language') && languageApplied;
+            }
+            const backupUpdated = sendToMainWindow('update-backup-table');
+            const restoreUpdated = sendToMainWindow('update-restore-table');
+            Menu.setApplicationMenu(null);
+            return languageApplied && backupUpdated && restoreUpdated;
+        });
+    }
+}
 
 const placeholder_mapping = {
     // Windows
@@ -64,6 +134,7 @@ function setLaunchAtStartup(enabled) {
 // Settings
 // ======================================================================
 const loadSettings = () => {
+    pendingSideEffects.clear();
     const userDataPath = app.getPath('userData');
     const appDataPath = app.getPath('appData');
     const settingsPath = path.join(userDataPath, 'OGS Settings', 'settings.json');
@@ -148,52 +219,44 @@ function saveSettings(keyOrUpdates, value) {
     const updateEntries = Object.entries(updates);
     if (updateEntries.length === 0) return Promise.resolve([]);
 
-    // Validate the whole transaction before changing the in-memory settings so
-    // a single invalid value cannot partially apply a batch.
-    const sanitizedUpdates = {};
-    for (const [key, nextValue] of updateEntries) {
+    // Reject unknown keys synchronously, while evaluating values inside the
+    // queue against the latest committed settings snapshot.
+    for (const [key] of updateEntries) {
         if (!ALLOWED_SETTING_KEYS.has(key)) throw new Error(`Unknown setting: ${key}`);
-        sanitizedUpdates[key] = sanitizeSettingValue(key, nextValue, settings[key]);
     }
 
-    const changedKeys = Object.keys(sanitizedUpdates)
-        .filter(key => !Object.is(settings[key], sanitizedUpdates[key]));
-    if (changedKeys.length === 0) return Promise.resolve([]);
-
-    settings = { ...settings, ...sanitizedUpdates };
-    const settingsSnapshot = JSON.stringify(settings, null, 2);
-
     writeQueue = writeQueue.catch(() => undefined).then(async () => {
-        const tempPath = `${settingsPath}.${process.pid}.${randomUUID()}.tmp`;
-        try {
-            await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true, mode: 0o700 });
-            await fs.promises.writeFile(tempPath, settingsSnapshot, { encoding: 'utf8', mode: 0o600 });
-            await fs.promises.rename(tempPath, settingsPath);
-        } finally {
-            await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
+        // Keep the published in-memory state unchanged until the atomic file
+        // replacement succeeds. A failed write can then be retried with the
+        // same value instead of being mistaken for a no-op.
+        const sanitizedUpdates = {};
+        for (const [key, nextValue] of updateEntries) {
+            sanitizedUpdates[key] = sanitizeSettingValue(key, nextValue, settings[key]);
         }
 
-        if (changedKeys.includes('launchAtStartup')) {
-            setLaunchAtStartup(settings.launchAtStartup);
-        }
+        const requestedKeys = Object.keys(sanitizedUpdates);
+        const changedKeys = requestedKeys
+            .filter(key => !Object.is(settings[key], sanitizedUpdates[key]));
+        const hasPendingRetry = Object.entries(SIDE_EFFECT_KEYS)
+            .some(([name, keys]) => pendingSideEffects.has(name) && includesAnyKey(requestedKeys, keys));
+        if (changedKeys.length === 0 && !hasPendingRetry) return [];
 
-        if (changedKeys.some(key => key === 'gameInstalls' || key === 'saveUninstalledGames')
-            && getMainWin() && !getMainWin().isDestroyed()) {
-            getMainWin().webContents.send('update-backup-table');
-            getMainWin().webContents.send('update-restore-table');
-        }
-
-        if (changedKeys.includes('language')) {
-            await i18next.changeLanguage(settings.language);
-            BrowserWindow.getAllWindows().forEach((window) => {
-                if (!window.isDestroyed()) window.webContents.send('apply-language');
-            });
-            if (getMainWin() && !getMainWin().isDestroyed()) {
-                getMainWin().webContents.send('update-backup-table');
-                getMainWin().webContents.send('update-restore-table');
+        const nextSettings = { ...settings, ...sanitizedUpdates };
+        if (changedKeys.length > 0) {
+            const settingsSnapshot = JSON.stringify(nextSettings, null, 2);
+            const tempPath = `${settingsPath}.${process.pid}.${randomUUID()}.tmp`;
+            try {
+                await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true, mode: 0o700 });
+                await fs.promises.writeFile(tempPath, settingsSnapshot, { encoding: 'utf8', mode: 0o600 });
+                await fs.promises.rename(tempPath, settingsPath);
+            } finally {
+                await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
             }
-            Menu.setApplicationMenu(null);
+
+            settings = nextSettings;
         }
+
+        await applySettingSideEffects(changedKeys, requestedKeys, nextSettings);
 
         return changedKeys;
     });

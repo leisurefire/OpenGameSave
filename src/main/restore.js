@@ -1,7 +1,3 @@
-const { BrowserWindow, ipcMain } = require('electron');
-
-const { randomUUID } = require('crypto');
-
 const fsOriginal = require('original-fs');
 const os = require('os');
 const path = require('path');
@@ -9,14 +5,14 @@ const path = require('path');
 const i18next = require('i18next');
 const { format } = require('date-fns');
 
-const { getGameData } = require('./gameData');
+const { getAllUserIds, getGameData } = require('./gameData');
 const {
     getGameDisplayName, placeholder_mapping, getSettings
 } = require('./global');
 const { runWorkerTask } = require('./backup');
-const { assertNoSymlinkAncestors, isPathInside, isXboxPgsPath, normalizeBackupDate, normalizeRegistryKeyPath, normalizeWikiId, resolveInside } = require('./validation');
-
-const RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS = 30000;
+const { authorizeRestoreDestination } = require('./restoreAuthorization');
+const { requestDialogModalWindow } = require('./services/windowManager');
+const { assertNoSymlinkAncestors, isPathInside, isXboxPgsPath, normalizeBackupDate, normalizeWikiId, resolveInside } = require('./validation');
 
 async function getGameDataForRestore(wikiId = null) {
     try {
@@ -31,9 +27,6 @@ async function getGameDataForRestore(wikiId = null) {
 async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
     let localActionForAll = userActionForAll;
     const pathsToCheck = [];
-    let gameNotInstalled = false;
-    let steamNotInstalled = false;
-    let ubisoftNotInstalled = false;
     let gameObj = null;
 
     try {
@@ -47,6 +40,20 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
 
         const backupRoot = path.resolve(getSettings().backupPath);
         const gameBackupPath = resolveInside(backupRoot, safeWikiId);
+        const trustedDefinition = await runWorkerTask('getTrustedRestoreDefinition', { wikiId: safeWikiId });
+        const currentGameData = getGameData();
+        const currentUserIds = getAllUserIds();
+        const trustedUserIds = [...new Set(Object.values(currentUserIds)
+            .filter(value => typeof value === 'string' && value && value !== 'N/A'))];
+        const placeholderValues = { ...placeholder_mapping };
+        if (typeof currentGameData.steamPath === 'string' && currentGameData.steamPath) {
+            placeholderValues.steam = currentGameData.steamPath;
+        }
+        if (typeof currentGameData.ubisoftPath === 'string' && currentGameData.ubisoftPath) {
+            placeholderValues.uplay = currentGameData.ubisoftPath;
+            placeholderValues.ubisoftconnect = currentGameData.ubisoftPath;
+        }
+        const allowedRoots = getConfiguredRestoreRoots();
 
         const selectedBackupDate = requestedBackupDate == null
             ? null
@@ -59,7 +66,24 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
 
         for (const backupPath of latestBackupFolder.backup_paths) {
             const sourcePath = resolveInside(latestBackupPath, backupPath.folder_name);
-            const destinationPath = resolveTemplatedRestorePath(backupPath.template, backupPath.install_folder);
+            const authorization = authorizeRestoreDestination({
+                currentTemplates: {
+                    file: trustedDefinition.fileTemplates,
+                    registry: trustedDefinition.registryTemplates
+                },
+                trustedInstallFolder: trustedDefinition.trustedInstallPath,
+                placeholderValues,
+                allowedRoots,
+                dynamicValues: {
+                    uid: trustedUserIds,
+                    xbox_uid: typeof currentUserIds.xboxId === 'string' && currentUserIds.xboxId
+                        ? [currentUserIds.xboxId]
+                        : []
+                },
+                metadata: { template: backupPath.template, type: backupPath.type },
+                pathFlavor: process.platform === 'win32' ? 'win32' : 'posix'
+            });
+            const destinationPath = authorization.destination;
 
             if (!fsOriginal.existsSync(sourcePath)) {
                 console.warn(`Source path does not exist: ${sourcePath}`);
@@ -70,10 +94,6 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
                 throw new Error('Backup source is not a regular directory');
             }
 
-            if (backupPath.type === 'reg' && !isAllowedRegistryRestorePath(destinationPath)) {
-                throw new Error('Backup contains an invalid registry destination');
-            }
-
             // PGS metadata and the active snapshot are managed transactionally by Xbox
             // Gaming Services. A raw folder copy is useful as a backup, but writing it
             // back while cloud synchronization is active can corrupt or overwrite saves.
@@ -82,34 +102,22 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
                 throw Error(i18next.t('alert.xbox_pgs_restore_blocked'));
             }
 
-            const allowedRoot = backupPath.type === 'reg' ? null : getAllowedRestoreRoot(destinationPath);
-            if (backupPath.type !== 'reg' && (!path.isAbsolute(destinationPath) || !allowedRoot)) {
-                const normalizedTemplate = backupPath.template.toLowerCase();
-
-                if (normalizedTemplate.includes('{{p|game}}')) {
-                    gameNotInstalled = true;
-                } else if (normalizedTemplate.includes('{{p|steam}}')) {
-                    steamNotInstalled = true;
-                } else if (normalizedTemplate.includes('{{p|ubisoftconnect}}') || normalizedTemplate.includes('{{p|uplay}}')) {
-                    ubisoftNotInstalled = true;
-                } else if (normalizedTemplate.includes('{{p|xbox_uid}}')) {
-                    // Xbox UID not found - this will be caught below
-                    console.warn(`Xbox UID not found for restore path: ${destinationPath}`);
-                }
-
-                console.warn(`Destination path is outside the allowed save roots: ${destinationPath}`);
-                continue;
-            }
-
+            const allowedRoot = authorization.allowedRoot;
             if (allowedRoot) await assertNoSymlinkAncestors(allowedRoot, destinationPath, fsOriginal);
 
-            pathsToCheck.push({ sourcePath, destinationPath, backupType: backupPath.type });
+            pathsToCheck.push({
+                sourcePath,
+                destinationPath,
+                backupType: backupPath.type,
+                allowedRoot,
+                untrusted: latestBackupFolder.provenance !== 'local'
+            });
         }
 
+        const independentPaths = collapseOverlappingRestorePaths(pathsToCheck);
+        pathsToCheck.splice(0, pathsToCheck.length, ...independentPaths);
+
         if (pathsToCheck.length === 0) {
-            if (gameNotInstalled) throw Error(i18next.t('alert.game_not_installed'));
-            if (steamNotInstalled) throw Error(i18next.t('alert.steam_not_installed'));
-            if (ubisoftNotInstalled) throw Error(i18next.t('alert.ubisoft_not_installed'));
             throw new Error('Backup does not contain any restorable paths');
         }
 
@@ -125,14 +133,6 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
 
         await runWorkerTask('restorePaths', { pathsToRestore: pathsToCheck });
 
-        if (gameNotInstalled) {
-            throw Error(i18next.t('alert.game_not_installed'));
-        } else if (steamNotInstalled) {
-            throw Error(i18next.t('alert.steam_not_installed'));
-        } else if (ubisoftNotInstalled) {
-            throw Error(i18next.t('alert.ubisoft_not_installed'));
-        }
-
         return { action: localActionForAll, error: null };
 
     } catch (error) {
@@ -143,44 +143,21 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
 }
 
 async function requestRestoreConflictDecision(prompt) {
-    const targetWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
-    if (!targetWindow || targetWindow.isDestroyed()) {
-        return { choice: 'skip', doForAll: false };
-    }
-
-    return new Promise((resolve) => {
-        const requestId = randomUUID();
-        let resolved = false;
-
-        const finish = (response) => {
-            if (resolved) return;
-            resolved = true;
-            clearTimeout(timeoutId);
-            ipcMain.removeListener('restore-conflict-response', handleResponse);
-            targetWindow.removeListener('closed', handleWindowClosed);
-            resolve(response || { choice: 'skip', doForAll: false });
-        };
-
-        const handleResponse = (event, responseId, response) => {
-            if (event.sender !== targetWindow.webContents || responseId !== requestId) return;
-            finish(response);
-        };
-        const handleWindowClosed = () => finish({ choice: 'skip', doForAll: false });
-        const timeoutId = setTimeout(() => finish({ choice: 'skip', doForAll: false }), RESTORE_CONFLICT_RESPONSE_TIMEOUT_MS);
-
-        ipcMain.on('restore-conflict-response', handleResponse);
-        targetWindow.once('closed', handleWindowClosed);
-        try {
-            if (targetWindow.isDestroyed() || targetWindow.webContents.isDestroyed()) {
-                finish({ choice: 'skip', doForAll: false });
-                return;
-            }
-            targetWindow.webContents.send('restore-conflict-prompt', requestId, prompt);
-        } catch (error) {
-            console.error('Failed to send restore conflict prompt:', error);
-            finish({ choice: 'skip', doForAll: false });
-        }
+    const result = await requestDialogModalWindow({
+        title: prompt.title,
+        content: prompt.message,
+        iconType: 'warning',
+        buttons: [
+            { value: 'skip', text: i18next.t('alert.no') },
+            { value: 'replace', text: i18next.t('alert.yes'), primary: true }
+        ],
+        closeValue: 'skip',
+        checkbox: { label: prompt.checkboxLabel }
     });
+    return {
+        choice: result?.value === 'replace' ? 'replace' : 'skip',
+        doForAll: result?.checked === true
+    };
 }
 
 async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
@@ -213,40 +190,10 @@ async function shouldSkip(pathsToCheck, gameDisplayName, userActionForAll) {
     return { skip: false, actionForAll: null };
 }
 
-function resolveTemplatedRestorePath(templatedPath, installFolder) {
-    const basePath = String(templatedPath || '').replace(/\{\{p\|[^}]+\}\}/gi, match => {
-        const normalizedMatch = match.toLowerCase().replace(/\\/g, '/');
-
-        if (normalizedMatch === '{{p|game}}') {
-            return getGameInstallPath(installFolder);
-        } else if (normalizedMatch === '{{p|steam}}') {
-            return getGameData().steamPath;
-        } else if (normalizedMatch === '{{p|uplay}}' || normalizedMatch === '{{p|ubisoftconnect}}') {
-            return getGameData().ubisoftPath;
-        } else if (normalizedMatch === '{{p|xbox_uid}}') {
-            // Xbox UID placeholder: resolve to actual Xbox UID
-            // Note: finalTemplate normally already contains the resolved path after backup,
-            // but this handles edge cases where the raw placeholder appears.
-            // The full path pattern (including Game ID) is provided by the database.
-            const xboxUid = getGameData().currentXboxUserId;
-            if (xboxUid) {
-                return xboxUid;
-            }
-            // If no Xbox UID found, return empty string to fail the absolute path check gracefully
-            return '';
-        }
-
-        return placeholder_mapping[normalizedMatch] || match;
-    });
-
-    if (/\{\{p\|[^}]+\}\}/i.test(basePath) || basePath.includes('\0')) return '';
-    return path.normalize(basePath);
-}
-
-function getAllowedRestoreRoot(destinationPath) {
+function getConfiguredRestoreRoots() {
     const currentGameData = getGameData();
     const configuredInstallPaths = Array.isArray(getSettings().gameInstalls) ? getSettings().gameInstalls : [];
-    const allowedRoots = [
+    return [
         os.homedir(),
         process.env.APPDATA,
         process.env.LOCALAPPDATA,
@@ -256,38 +203,26 @@ function getAllowedRestoreRoot(destinationPath) {
         currentGameData.ubisoftPath,
         ...configuredInstallPaths
     ].filter(root => typeof root === 'string' && path.isAbsolute(root));
-    return allowedRoots
-        .filter(root => isPathInside(root, destinationPath))
-        .sort((left, right) => right.length - left.length)[0] || null;
 }
 
-function isAllowedRegistryRestorePath(registryPath) {
-    try {
-        normalizeRegistryKeyPath(registryPath);
-        return true;
-    } catch (_) {
-        return false;
-    }
-}
-
-function getGameInstallPath(installFolder) {
-    const gameInstallPaths = getSettings().gameInstalls;
-    if (!Array.isArray(gameInstallPaths)) return 'gameNotInstalled';
-
-    for (const installPath of gameInstallPaths) {
-        if (!fsOriginal.existsSync(installPath)) continue;
-        const directories = fsOriginal.readdirSync(installPath, { withFileTypes: true })
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => dirent.name);
-
-        for (const dir of directories) {
-            if (dir === installFolder) {
-                return path.join(installPath, dir);
-            }
+function collapseOverlappingRestorePaths(pathsToRestore) {
+    const registryPaths = pathsToRestore.filter(item => item.backupType === 'reg');
+    const fileSystemPaths = pathsToRestore
+        .filter(item => item.backupType !== 'reg')
+        .sort((left, right) => left.destinationPath.length - right.destinationPath.length);
+    const independentPaths = [];
+    for (const candidate of fileSystemPaths) {
+        const parent = independentPaths.find(item => isPathInside(item.destinationPath, candidate.destinationPath));
+        if (!parent) {
+            independentPaths.push(candidate);
+            continue;
         }
+        if (parent.destinationPath === candidate.destinationPath || parent.backupType === 'folder') {
+            continue;
+        }
+        throw new Error('Restore destinations overlap in an unsupported way');
     }
-
-    return 'gameNotInstalled';
+    return [...independentPaths, ...registryPaths];
 }
 
 module.exports = {

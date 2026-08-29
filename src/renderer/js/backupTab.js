@@ -1,6 +1,6 @@
 import { showAlert, updateProgress, operationStartCheck } from './utility.js';
 import { showMessageDialog } from './dialog.js';
-import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, addOrUpdateTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
+import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, getPlatformIcon, formatSize, updateSelectedCountAndSize, getSelectedWikiIds, updateUninstalledButtonVisibility, queueFullTableUpdate, runWhenDomReady, showOperationSummary, setActionButtonState, populateGameTable } from './commonTabs.js';
 
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
@@ -104,45 +104,22 @@ function setupBackupTabButtons() {
             return;
         }
         window.api.send('update-status', 'backuping', true);
-
-        await setActionButtonState({
-            button: backupButton,
-            icon: backupIcon,
-            text: backupText,
-            iconName: 'shield-check',
-            i18nKey: 'main.backup_in_progress',
-            busy: true
-        });
-
-        await performBackup();
-        document.querySelector('#backup-summary-done').classList.remove('hidden');
-
-        await setActionButtonState({
-            button: backupButton,
-            icon: backupIcon,
-            text: backupText,
-            iconName: 'shield-check',
-            i18nKey: 'main.backup_selected',
-            busy: false
-        });
-        window.api.send('update-status', 'backuping', false);
-
-        // Update table rows in background
-        (async () => {
+        let completed = false;
+        try {
             await setActionButtonState({
                 button: backupButton,
                 icon: backupIcon,
                 text: backupText,
                 iconName: 'shield-check',
-                i18nKey: 'main.updating_backup',
+                i18nKey: 'main.backup_in_progress',
                 busy: true
             });
-
-            for (const wikiId of selectedGames) {
-                await addOrUpdateTableRow('backup', wikiId);
-                await addOrUpdateTableRow('restore', wikiId);
-            }
-
+            completed = await performBackup();
+            if (completed) document.querySelector('#backup-summary-done').classList.remove('hidden');
+        } catch (error) {
+            console.error('Backup operation failed:', error);
+            showAlert('error', error.message || String(error));
+        } finally {
             await setActionButtonState({
                 button: backupButton,
                 icon: backupIcon,
@@ -151,7 +128,13 @@ function setupBackupTabButtons() {
                 i18nKey: 'main.backup_selected',
                 busy: false
             });
-        })().catch(console.error);
+            window.api.send('update-status', 'backuping', false);
+        }
+        if (!completed) return;
+
+        // One refresh per table avoids two IPC round-trips and a full virtual-row scan per selected game.
+        window.api.send('update-backup-table');
+        window.api.send('update-restore-table');
     });
 
 }
@@ -163,23 +146,29 @@ async function performBackup() {
     const totalGames = selectedWikiIds.length;
 
     const start = await operationStartCheck('backup');
-    if (start) {
-        updateProgress(backupProgressId, backupProgressTitle, 'start');
+    if (!start) return false;
+    updateProgress(backupProgressId, backupProgressTitle, 'start');
 
-        let backupCount = 0;
-        let backupFailed = 0;
-        let backupSize = 0;
-        let errors = [];
+    let backupCount = 0;
+    let backupFailed = 0;
+    let backupSize = 0;
+    const errors = [];
 
+    try {
         for (const wikiId of selectedWikiIds) {
             const gameData = backupTableDataMap.get(wikiId);
-            const newError = await window.api.invoke('backup-game', gameData);
+            let newError = null;
+            try {
+                newError = await window.api.invoke('backup-game', gameData);
+            } catch (error) {
+                newError = error.message || String(error);
+            }
 
             if (newError) {
                 backupFailed += 1;
                 errors.push(newError);
             } else {
-                backupSize += gameData.backup_size;
+                backupSize += gameData?.backup_size || 0;
             }
 
             backupCount++;
@@ -187,8 +176,10 @@ async function performBackup() {
             updateProgress(backupProgressId, backupProgressTitle, progressPercentage);
         }
 
-        updateProgress(backupProgressId, backupProgressTitle, 'end');
         showOperationSummary('backup', backupCount, backupFailed, errors, backupSize, 'summary.total_backup_failed');
+        return true;
+    } finally {
+        updateProgress(backupProgressId, backupProgressTitle, 'end');
     }
 }
 

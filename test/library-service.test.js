@@ -12,6 +12,9 @@ const {
 } = require('../src/main/services/libraryService');
 const {
     EPIC_METADATA_URL,
+    MAX_BATTLENET_INDEX_ENTRIES,
+    addBattleNetFiles,
+    createBoundedOperationRunner,
     createEpicProductUrl,
     createGogMetadataUrl,
     extractEpicArtUrls,
@@ -38,6 +41,50 @@ function writeFixture(filePath, contents = MINIMAL_JPEG) {
     fs.writeFileSync(filePath, contents);
     return filePath;
 }
+
+test('artwork I/O concurrency and queued work remain bounded', async () => {
+    const run = createBoundedOperationRunner(2, 1);
+    let active = 0;
+    let peakActive = 0;
+    const releases = [];
+    const operation = () => run(async () => {
+        active += 1;
+        peakActive = Math.max(peakActive, active);
+        await new Promise((resolve) => {
+            releases.push(resolve);
+        });
+        active -= 1;
+    });
+
+    const first = operation();
+    const second = operation();
+    const queued = operation();
+    await assert.rejects(operation(), /queue is full/);
+    assert.equal(peakActive, 2);
+
+    releases.shift()();
+    await new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+    assert.equal(peakActive, 2);
+    releases.shift()();
+    releases.shift()();
+    await Promise.all([first, second, queued]);
+});
+
+test('Battle.net artwork indexing stops at its explicit descriptor budget', () => {
+    const index = new Map();
+    const files = Object.fromEntries(Array.from({ length: 5 }, (_, indexValue) => [
+        `GAME_KEY_ART_${indexValue}`,
+        { hash: String(indexValue).padStart(32, 'a'), name: `${indexValue}.jpg` }
+    ]));
+    const budget = { remaining: 2 };
+
+    assert.equal(addBattleNetFiles(index, 'cache', files, 0, budget), false);
+    assert.equal([...index.values()].flat().length, 2);
+    assert.equal(budget.remaining, 0);
+    assert.ok(MAX_BATTLENET_INDEX_ENTRIES >= 2);
+});
 
 test('library launch URIs are built only from constrained provider identifiers', () => {
     assert.equal(createSteamLaunchUri('570'), 'steam://rungameid/570');

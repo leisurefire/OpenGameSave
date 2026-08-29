@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 
 const {
+    classifyBackupChanges,
     createConflictMetadataBuffer,
     findConflictingBackupKeys,
     makeLocalConflictFiles,
@@ -95,8 +96,18 @@ test('upload conflicts keep local canonical and preserve the complete remote bac
     const nextSyncState = makeSyncState(localFiles, result.files);
     const repeated = await mergeLocalFiles(result.files, localFiles, DEVICE_ID, nextSyncState);
     assert.equal(repeated.conflicts.length, 0);
+    assert.equal(repeated.uploadFiles.length, 0);
     assert.equal(repeated.files.some(file => file.path === '123/2026-08-18_10-00-01/path1/save.dat'
         && file.sha256 === digest('remote-save')), true);
+});
+
+test('a new manifest path revalidates a deduplicated remote object', async () => {
+    const remoteFile = makeFile('path1/original.dat', 'shared', { data: undefined });
+    const localFile = makeFile('path1/copy.dat', 'shared');
+
+    const result = await mergeLocalFiles([remoteFile], [localFile], DEVICE_ID);
+
+    assert.deepEqual(result.uploadFiles.map(file => file.path), [localFile.path]);
 });
 
 test('only one side changing since the last sync does not create a false conflict', async () => {
@@ -112,6 +123,96 @@ test('only one side changing since the last sync does not create a false conflic
     const uploadResult = await mergeLocalFiles([baseRemote], [localChanged], DEVICE_ID, syncState);
     assert.equal(uploadResult.conflicts.length, 0);
     assert.equal(uploadResult.files[0].sha256, localChanged.sha256);
+});
+
+test('three-way merge keeps a remote-only change instead of reverting it from local', async () => {
+    const baseLocal = makeFile('path1/save.dat', 'base');
+    const baseRemote = { ...baseLocal, data: undefined };
+    const remoteChanged = makeFile('path1/save.dat', 'remote-change', { data: undefined });
+    const syncState = makeSyncState([baseLocal], [baseRemote]);
+
+    const classification = classifyBackupChanges([remoteChanged], [baseLocal], syncState);
+    assert.deepEqual([...classification.remoteOnlyChanged], [BACKUP_KEY]);
+
+    const result = await mergeLocalFiles([remoteChanged], [baseLocal], DEVICE_ID, syncState);
+    assert.equal(result.conflicts.length, 0);
+    assert.equal(result.files.length, 1);
+    assert.equal(result.files[0].sha256, remoteChanged.sha256);
+    assert.equal(result.uploadFiles.length, 0);
+    assert.deepEqual(result.deferredRemoteBackupKeys, [BACKUP_KEY]);
+});
+
+test('stable baseline divergence remains a no-op on repeated upload', async () => {
+    const localFile = makeFile('backup_info.json', 'local-external-provenance');
+    const remoteFile = makeFile('backup_info.json', 'remote-original', { data: undefined });
+    const syncState = makeSyncState([localFile], [remoteFile]);
+
+    const classification = classifyBackupChanges([remoteFile], [localFile], syncState);
+    assert.deepEqual([...classification.divergedWithoutChanges], [BACKUP_KEY]);
+
+    const result = await mergeLocalFiles([remoteFile], [localFile], DEVICE_ID, syncState);
+    assert.equal(result.files.length, 1);
+    assert.equal(result.files[0].sha256, remoteFile.sha256);
+    assert.equal(result.uploadFiles.length, 0);
+    assert.equal(result.conflicts.length, 0);
+    assert.deepEqual(result.deferredRemoteBackupKeys, []);
+});
+
+test('three-way merge publishes the complete local group when only local changed', async () => {
+    const baseMetadata = makeFile('backup_info.json', 'base-metadata');
+    const baseSave = makeFile('path1/save.dat', 'base-save');
+    const remoteExtra = makeFile('path1/stale.dat', 'stale', { data: undefined });
+    const remoteFiles = [
+        { ...baseMetadata, data: undefined },
+        { ...baseSave, data: undefined },
+        remoteExtra
+    ];
+    const localFiles = [
+        makeFile('backup_info.json', 'local-metadata'),
+        baseSave
+    ];
+    const syncState = makeSyncState([baseMetadata, baseSave], remoteFiles);
+
+    const classification = classifyBackupChanges(remoteFiles, localFiles, syncState);
+    assert.deepEqual([...classification.localOnlyChanged], [BACKUP_KEY]);
+
+    const result = await mergeLocalFiles(remoteFiles, localFiles, DEVICE_ID, syncState);
+    assert.deepEqual(result.files.map(file => file.path).sort(), localFiles.map(file => file.path).sort());
+    assert.equal(result.files.some(file => file.path === remoteExtra.path), false);
+});
+
+test('backup-level classification catches disjoint concurrent additions', () => {
+    const baseMetadata = makeFile('backup_info.json', 'metadata');
+    const localFiles = [baseMetadata, makeFile('path1/local.dat', 'local')];
+    const remoteFiles = [
+        { ...baseMetadata, data: undefined },
+        makeFile('path1/remote.dat', 'remote', { data: undefined })
+    ];
+    const syncState = makeSyncState([baseMetadata], [{ ...baseMetadata, data: undefined }]);
+
+    assert.deepEqual(
+        [...classifyBackupChanges(remoteFiles, localFiles, syncState).conflicts],
+        [BACKUP_KEY]
+    );
+});
+
+test('whole-backup absence preserves the surviving copy without tombstones', async () => {
+    const baseFile = makeFile('path1/save.dat', 'base');
+    const remoteBase = { ...baseFile, data: undefined };
+    const syncState = makeSyncState([baseFile], [remoteBase]);
+
+    const remoteDeletion = classifyBackupChanges([], [baseFile], syncState);
+    assert.deepEqual([...remoteDeletion.localOnlyChanged], [BACKUP_KEY]);
+    assert.equal((await mergeLocalFiles([], [baseFile], DEVICE_ID, syncState)).files[0].sha256, baseFile.sha256);
+
+    const localDeletion = classifyBackupChanges([remoteBase], [], syncState);
+    assert.deepEqual([...localDeletion.remoteOnlyChanged], [BACKUP_KEY]);
+    assert.equal((await mergeLocalFiles([remoteBase], [], DEVICE_ID, syncState)).files[0].sha256, remoteBase.sha256);
+
+    const convergedDeletion = classifyBackupChanges([], [], syncState);
+    assert.equal(convergedDeletion.conflicts.size, 0);
+    assert.equal(convergedDeletion.localOnlyChanged.size, 0);
+    assert.equal(convergedDeletion.remoteOnlyChanged.size, 0);
 });
 
 test('both sides changing the same path since the last sync creates one backup-level conflict', async () => {

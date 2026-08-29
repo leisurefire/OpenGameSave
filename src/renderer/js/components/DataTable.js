@@ -6,8 +6,8 @@ import { appendRows as appendVirtualRows, disableVirtualRows } from '../virtualT
  *
  * Architecture:
  *  - Shadow DOM: container styling (border, bg, radius), sticky header
- *  - Light DOM: all rows live here so shared icons and global CSS work
- *  - appendRows(): normalizes rows once before adding them to the light DOM
+ *  - Light DOM: visible rows live here so shared icons and global CSS work
+ *  - appendRows(): serializes large inputs and materializes only the viewport
  *
  * Column alignment (Windows 11 convention):
  *  - widget first col: col[0,1] left, col[2..n-2] center, col[n-1] right
