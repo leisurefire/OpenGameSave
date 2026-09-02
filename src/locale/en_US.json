@@ -1,4 +1,7 @@
 {
+    "meta": {
+        "locale": "en-US"
+    },
     "settings": {
         "title": "Settings",
         "general": "General",
@@ -29,6 +32,8 @@
         "auto_db_update": "Update database automatically",
         "auto_db_update_hint": "Keep game save-location data up to date",
         "database_variant": "Database edition",
+        "database_variant_standard": "Standard",
+        "database_variant_xbox": "Xbox Enhanced",
         "database_variant_hint": "Choose Standard or Xbox Enhanced; the selection is applied on the next database update",
         "update_database_hint": "Check for the latest game save-location database now",
         "update_now": "Update now",
@@ -53,6 +58,7 @@
     },
     "about": {
         "title": "About",
+        "tagline": "By Gamers. For Gamers.",
         "current_version": "Current version ",
         "latest_version": "Latest version ",
         "github": "GitHub",
@@ -83,6 +89,7 @@
         "menu_view": "View",
         "menu_games": "Games",
         "menu_help": "Help",
+        "primary_navigation": "Primary navigation",
         "search_library": "Search library",
         "refresh_library": "Refresh library",
         "scanning_library": "Scanning installed games...",
@@ -261,6 +268,7 @@
         "no": "No",
         "cancel": "Cancel",
         "dont_show_again": "Don't show again",
+        "dismiss": "Dismiss",
         "blocked_game_tip": "Hidden games are only shown after selecting \"Hidden\". If a path was detected incorrectly, consider opening an issue on GitHub to help us improve.",
         "save_conflict": "Save Conflict",
         "save_conflict_detected": "Save conflict detected for {{game}}.",

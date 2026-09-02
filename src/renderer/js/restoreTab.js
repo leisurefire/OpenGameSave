@@ -39,6 +39,7 @@ function updateRestoreTable(loader) {
 
 // Function to populate restore table
 async function populateRestoreTable(viewModel) {
+    const moreLabel = await window.i18n.translate('main.more');
     populateGameTable({
         tabName: 'restore',
         tableDataMap: restoreTableDataMap,
@@ -47,7 +48,7 @@ async function populateRestoreTable(viewModel) {
             const backupCount = game.backups.length;
             const backupSize = formatSize(game.backup_size);
 
-            return createRestoreTableRow(gameTitle, backupCount, backupSize, game.latest_backup, game.wiki_page_id);
+            return createRestoreTableRow(gameTitle, backupCount, backupSize, game.latest_backup, game.wiki_page_id, moreLabel);
         },
         hasPermanentBackup: (game) => game.backups.some(backup => backup.is_permanent)
     });

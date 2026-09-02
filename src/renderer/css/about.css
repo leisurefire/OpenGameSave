@@ -23,15 +23,15 @@
 }
 
 .about-title {
-    color: rgba(255, 255, 255, 0.94);
+    color: var(--color-text-heading);
     font-size: 20px;
     font-weight: 700;
 }
 
 .about-details {
     padding: 14px !important;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 14px;
+    background: var(--color-card-surface);
+    border-radius: var(--radius-card);
 }
 
 .about-link-button,
@@ -48,12 +48,20 @@
     text-decoration: underline;
 }
 
+.version-status-success {
+    color: var(--color-status-success) !important;
+}
+
+.version-status-error {
+    color: var(--color-status-danger) !important;
+}
+
 .about-notices {
     width: 100%;
     max-width: 520px;
     padding: 14px;
     color: rgba(255, 255, 255, 0.52);
-    background: rgba(255, 255, 255, 0.035);
+    background: var(--color-card-surface-subtle);
     text-align: left;
 }
 
@@ -69,16 +77,16 @@
 }
 
 .about-notices-header h2 {
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--color-text-emphasis);
     font-size: 12px;
     font-weight: 650;
 }
 
 .about-notices-header > span {
     padding: 2px 7px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--color-text-subtle);
     background: rgba(255, 255, 255, 0.055);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 8px;
     text-transform: uppercase;
 }
@@ -99,7 +107,7 @@
     display: grid;
     gap: 2px;
     padding-top: 7px;
-    border-top: 1px solid rgba(255, 255, 255, 0.055);
+    border-top: 1px solid var(--color-divider);
     font-size: 9px;
     line-height: 1.42;
 }

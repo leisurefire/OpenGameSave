@@ -1,4 +1,7 @@
 {
+    "meta": {
+        "locale": "zh-CN"
+    },
     "settings": {
         "title": "设置",
         "general": "常规",
@@ -29,6 +32,8 @@
         "auto_db_update": "自动检查数据库更新",
         "auto_db_update_hint": "自动获取最新的游戏存档位置数据",
         "database_variant": "数据库版本",
+        "database_variant_standard": "标准版",
+        "database_variant_xbox": "Xbox 增强版",
         "database_variant_hint": "选择标准版或 Xbox 增强版；下次更新数据库时应用",
         "update_database_hint": "立即检查并获取最新的游戏存档位置数据库",
         "update_now": "立即更新",
@@ -53,6 +58,7 @@
     },
     "about": {
         "title": "关于",
+        "tagline": "由玩家打造，为玩家服务。",
         "current_version": "当前版本 ",
         "latest_version": "最新版本 ",
         "github": "GitHub",
@@ -83,6 +89,7 @@
         "menu_view": "查看",
         "menu_games": "游戏",
         "menu_help": "帮助",
+        "primary_navigation": "主导航",
         "search_library": "搜索游戏库",
         "refresh_library": "刷新游戏库",
         "scanning_library": "正在扫描已安装游戏...",
@@ -261,6 +268,7 @@
         "no": "否",
         "cancel": "取消",
         "dont_show_again": "不再展示",
+        "dismiss": "关闭通知",
         "blocked_game_tip": "隐藏的游戏只会在选择“隐藏”后展示。若路径识别错误，请在 GitHub 上提交问题以协助改进。",
         "save_conflict": "存档冲突",
         "save_conflict_detected": "检测到 {{game}} 的存档冲突。",

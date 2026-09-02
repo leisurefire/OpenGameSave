@@ -1,4 +1,5 @@
 const { BrowserWindow, ipcMain } = require('electron');
+const i18next = require('i18next');
 const path = require('path');
 const { isDeepStrictEqual } = require('util');
 
@@ -15,34 +16,63 @@ let menuWindow = null;
 let menuParentWindow = null;
 let isMenuOpen = false;
 let activeMenuItems = [];
+let activeMenuRequestId = null;
+let nextMenuRequestId = 0;
 
 function detachMenuParentListeners() {
     if (!menuParentWindow || menuParentWindow.isDestroyed()) {
         menuParentWindow = null;
         return;
     }
-    menuParentWindow.removeListener('blur', hideMenuWindowAfterBlur);
-    menuParentWindow.removeListener('move', hideMenuWindow);
+    menuParentWindow.removeListener('blur', hideMenuWindowAfterParentBlur);
+    menuParentWindow.removeListener('move', hideMenuWindowAfterParentMove);
     menuParentWindow = null;
 }
 
-function hideMenuWindow() {
-    const wasMenuOpen = isMenuOpen;
+function hideMenuWindow({ restoreFocus = false } = {}) {
+    const hadActiveMenu = isMenuOpen || activeMenuItems.length > 0;
+    const parentWindow = menuParentWindow;
     isMenuOpen = false;
     activeMenuItems = [];
+    activeMenuRequestId = null;
     detachMenuParentListeners();
-    if (wasMenuOpen && menuWindow && !menuWindow.isDestroyed()) {
+    if (menuWindow && !menuWindow.isDestroyed()) {
+        if (menuWindow.isVisible()) menuWindow.hide();
         menuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
     }
 
-    const mainWindow = getMainWin();
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('menu-hidden');
+    if (!hadActiveMenu) return;
+
+    const notificationWindow = parentWindow && !parentWindow.isDestroyed()
+        ? parentWindow
+        : getMainWin();
+    if (!notificationWindow || notificationWindow.isDestroyed()) return;
+
+    if (restoreFocus && notificationWindow.isVisible()) notificationWindow.focus();
+    notificationWindow.webContents.send('menu-hidden', { restoreFocus });
 }
 
-function hideMenuWindowAfterBlur() {
+function hideMenuWindowAfterParentBlur() {
+    const requestId = activeMenuRequestId;
     setTimeout(() => {
-        if (isMenuOpen && menuWindow && !menuWindow.isDestroyed()) hideMenuWindow();
+        if (requestId !== activeMenuRequestId) return;
+        if (!isMenuOpen || !menuWindow || menuWindow.isDestroyed()) return;
+        if (!menuWindow.isFocused()) hideMenuWindow();
     }, 150);
+}
+
+function hideMenuWindowAfterMenuBlur() {
+    const requestId = activeMenuRequestId;
+    setTimeout(() => {
+        if (requestId !== activeMenuRequestId) return;
+        if (isMenuOpen && menuWindow && !menuWindow.isDestroyed() && !menuWindow.isFocused()) {
+            hideMenuWindow();
+        }
+    }, 150);
+}
+
+function hideMenuWindowAfterParentMove() {
+    hideMenuWindow();
 }
 
 function destroyMenuWindow() {
@@ -51,6 +81,7 @@ function destroyMenuWindow() {
     menuWindow = null;
     isMenuOpen = false;
     activeMenuItems = [];
+    activeMenuRequestId = null;
 }
 
 function createMenuWindow() {
@@ -67,7 +98,7 @@ function createMenuWindow() {
         resizable: false,
         type: 'toolbar',
         hasShadow: true,
-        focusable: false,
+        focusable: true,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.js'),
             additionalArguments: [`${RENDERER_ROLE_ARGUMENT_PREFIX}menu`],
@@ -92,6 +123,7 @@ function createMenuWindow() {
         newMenuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
         newMenuWindow.showInactive();
     });
+    newMenuWindow.on('blur', hideMenuWindowAfterMenuBlur);
     newMenuWindow.on('closed', () => {
         if (menuWindow === newMenuWindow) {
             menuWindow = null;
@@ -113,16 +145,23 @@ function showPopupMenu(event, payload = {}) {
     const parentContentBounds = parentWindow.getContentBounds();
     detachMenuParentListeners();
     menuParentWindow = parentWindow;
-    menuParentWindow.on('blur', hideMenuWindowAfterBlur);
-    menuParentWindow.on('move', hideMenuWindow);
+    menuParentWindow.on('blur', hideMenuWindowAfterParentBlur);
+    menuParentWindow.on('move', hideMenuWindowAfterParentMove);
 
     menuWindow.targetScreenX = Math.round(parentContentBounds.x + x);
     menuWindow.targetScreenY = Math.round(parentContentBounds.y + y);
     menuWindow.menuDirection = direction;
     activeMenuItems = items;
+    activeMenuRequestId = ++nextMenuRequestId;
+    const requestId = activeMenuRequestId;
     const sendItems = () => {
         if (!menuWindow?.isDestroyed()) {
-            menuWindow.webContents.send('set-menu-items', { items, direction: menuWindow.menuDirection });
+            menuWindow.webContents.send('set-menu-items', {
+                items,
+                direction: menuWindow.menuDirection,
+                locale: i18next.t('meta.locale'),
+                requestId
+            });
         }
     };
     if (menuWindow.webContents.isLoading()) menuWindow.webContents.once('did-finish-load', sendItems);
@@ -131,6 +170,11 @@ function showPopupMenu(event, payload = {}) {
 
 function resizeAndShowMenu(event, size) {
     if (!menuWindow || menuWindow.isDestroyed() || event.sender !== menuWindow.webContents) return;
+    if (size?.dismiss === true) {
+        hideMenuWindow({ restoreFocus: true });
+        return;
+    }
+    if (size?.requestId !== activeMenuRequestId || activeMenuItems.length === 0) return;
     const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
     const height = Math.min(Math.max(Math.ceil(size?.height || 1), 1), 1000);
     const clampInset = value => Math.min(Math.max(Math.ceil(Number(value) || 0), 0), 48);
@@ -143,14 +187,20 @@ function resizeAndShowMenu(event, size) {
     const y = menuWindow.menuDirection === 'up'
         ? Math.round(menuWindow.targetScreenY - height + inset.bottom)
         : Math.round(menuWindow.targetScreenY - inset.top);
+    if (!menuParentWindow || menuParentWindow.isDestroyed() || !menuParentWindow.isFocused()) {
+        hideMenuWindow();
+        return;
+    }
     isMenuOpen = true;
     menuWindow.setBounds({ x, y, width, height }, false);
     menuWindow.setOpacity(1);
     if (!menuWindow.isVisible()) menuWindow.showInactive();
+    if (menuParentWindow.isFocused()) menuWindow.focus();
+    else hideMenuWindow();
 }
 
 function registerMenuWindowIpc() {
-    ipcMain.on('hide-popup-menu', hideMenuWindow);
+    ipcMain.on('hide-popup-menu', () => hideMenuWindow());
     ipcMain.on('show-popup-menu', showPopupMenu);
     ipcMain.on('resize-and-show-menu', resizeAndShowMenu);
     ipcMain.on('menu-item-click', (event, action, data) => {
@@ -159,7 +209,7 @@ function registerMenuWindowIpc() {
             item?.action === action && isDeepStrictEqual(item?.data, data)
         ));
         if (!authorizedItem) return;
-        hideMenuWindow();
+        hideMenuWindow({ restoreFocus: true });
         const mainWindow = getMainWin();
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('execute-menu-action', authorizedItem.action, authorizedItem.data);

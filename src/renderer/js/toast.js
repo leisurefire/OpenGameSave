@@ -39,7 +39,8 @@ export async function showToast(type, message, detailContent) {
     } else {
         const closeBtn = document.createElement('button');
         closeBtn.className = 'app-toast-close';
-        closeBtn.setAttribute('aria-label', 'Dismiss');
+        closeBtn.setAttribute('data-i18n-aria-label', 'alert.dismiss');
+        closeBtn.setAttribute('aria-label', await window.i18n.translate('alert.dismiss'));
         closeBtn.innerHTML = '<span data-lucide-icon="x"></span>';
         closeBtn.onclick = () => dismissToast(toastElement);
         toastElement.appendChild(closeBtn);

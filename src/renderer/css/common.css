@@ -3,7 +3,7 @@ body,
 html {
     background: transparent !important;
     font-family: var(--font-sans);
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-primary);
     overflow: hidden;
     user-select: none;
     height: 100vh;
@@ -17,6 +17,18 @@ html {
 *::before,
 *::after {
     box-sizing: border-box;
+}
+
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
 }
 
 [data-lucide-icon] {
@@ -130,23 +142,23 @@ button {
 .home-action-button {
     background: var(--color-win-surface);
     border: 1px solid var(--color-control-border);
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-primary);
     transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     border-radius: var(--radius-win-sm);
 }
 
-.home-action-button:hover {
+.home-action-button:hover:not(:disabled) {
     background: var(--color-win-surface-hover);
     border-color: var(--color-control-border-hover);
 }
 
-.home-action-button:active {
+.home-action-button:active:not(:disabled) {
     background: var(--color-win-surface-active);
     color: rgba(255, 255, 255, 0.7);
 }
 
 .compact-action-button {
-    min-height: 34px;
+    min-height: var(--control-height);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -172,11 +184,11 @@ button {
     transition: background-color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
 }
 
-.primary-button:hover {
+.primary-button:hover:not(:disabled) {
     background: var(--color-theme-accent-fluorescent);
 }
 
-.primary-button:active {
+.primary-button:active:not(:disabled) {
     opacity: 0.8;
 }
 
@@ -186,9 +198,9 @@ select {
     background: rgba(255, 255, 255, 0.045) !important;
     border: 1px solid var(--color-control-border) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
-    border-radius: var(--radius-win-sm) !important;
-    color: #ffffff !important;
-    min-height: 36px;
+    border-radius: var(--radius-control) !important;
+    color: var(--color-text-primary) !important;
+    min-height: var(--control-height-field);
     padding: 7px 11px;
     transition: background-color 0.12s ease, border-color 0.12s ease;
 }
@@ -277,7 +289,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [role="tab"]:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-theme-accent-bright) 72%, white);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
 }
 
@@ -296,7 +308,7 @@ select:focus-visible,
     align-items: center;
     gap: 10px;
     padding: 9px 10px 9px 12px;
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--color-text-primary);
     background: rgba(43, 43, 43, 0.97);
     backdrop-filter: blur(32px) saturate(115%);
     border: 1px solid var(--color-win-border-bright);
@@ -346,22 +358,22 @@ select:focus-visible,
 }
 
 .app-toast[data-status="success"] .app-toast-icon {
-    color: color-mix(in srgb, var(--system-accent) 72%, white);
+    color: var(--color-accent-emphasis);
 }
 
 .app-toast[data-status="warning"] .app-toast-icon {
-    color: rgb(250, 204, 21);
+    color: var(--color-status-warning);
 }
 
 .app-toast[data-status="error"] .app-toast-icon,
 .app-toast[data-status="dialog"] .app-toast-icon {
-    color: rgb(248, 113, 113);
+    color: var(--color-status-danger);
 }
 
 .app-toast-content {
     min-width: 0;
     flex: 1 1 auto;
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--color-text-emphasis);
     font-size: 12.5px;
     font-weight: 500;
     line-height: 18px;

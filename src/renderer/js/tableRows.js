@@ -1,6 +1,6 @@
 export const platformOrder = ['Custom', 'Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
 
-function createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, detailClass, detailValue) {
+function createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, detailClass, detailValue, moreLabel = 'More') {
     const row = document.createElement('tr');
     row.setAttribute('data-wiki-id', wikiPageId);
     row.innerHTML = `
@@ -18,19 +18,21 @@ function createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, deta
         <td class="row-detail-cell p-4 truncate opacity-80 text-center align-middle ${detailClass}">${detailValue}</td>
         <td class="row-size-cell p-4 truncate opacity-80 text-center align-middle backup-size">${backupSize}</td>
         <td class="p-4 text-center">
-            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button">
+            <button class="dropdown-menu-button p-2 hover:text-theme-accent transition-colors" type="button"
+                data-i18n-aria-label="main.more" aria-haspopup="menu" aria-expanded="false">
                 <span data-lucide-icon="ellipsis-vertical"></span>
             </button>
         </td>`;
     row.querySelector('.game-title').textContent = gameTitle;
     row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
+    row.querySelector('.dropdown-menu-button').setAttribute('aria-label', moreLabel);
     return row;
 }
 
-export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId) {
-    return createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, '', platformIcons);
+export function createBackupTableRow(gameTitle, platformIcons, backupSize, newestBackupTime, wikiPageId, moreLabel) {
+    return createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, '', platformIcons, moreLabel);
 }
 
-export function createRestoreTableRow(gameTitle, backupCount, backupSize, newestBackupTime, wikiPageId) {
-    return createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, 'backup-count', backupCount);
+export function createRestoreTableRow(gameTitle, backupCount, backupSize, newestBackupTime, wikiPageId, moreLabel) {
+    return createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, 'backup-count', backupCount, moreLabel);
 }

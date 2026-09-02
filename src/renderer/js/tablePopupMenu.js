@@ -9,6 +9,7 @@ export function setDropDownAction() {
             if (button === window.activeMenuTrigger) {
                 // Clicking the same button again should hide the menu
                 window.api.send('hide-popup-menu');
+                button.setAttribute('aria-expanded', 'false');
                 window.activeMenuTrigger = null;
                 return;
             }
@@ -72,13 +73,15 @@ export function setDropDownAction() {
             // 260px threshold made menus jump upward much too early.
             const shouldOpenUp = availableBelow < estimatedMenuHeight + menuGap
                 && availableAbove > availableBelow;
+            window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
+            button.setAttribute('aria-expanded', 'true');
+            window.activeMenuTrigger = button;
             window.api.send('show-popup-menu', {
                 items: menuItems,
                 x: rect.right + 4,
                 y: shouldOpenUp ? rect.top - menuGap : rect.bottom + menuGap,
                 direction: shouldOpenUp ? 'up' : 'down'
             });
-            window.activeMenuTrigger = button;
         }
     });
 
@@ -87,6 +90,7 @@ export function setDropDownAction() {
         const el = document.querySelector(selector);
         if (el) el.addEventListener('scroll', () => {
             window.api.send('hide-popup-menu');
+            window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
             window.activeMenuTrigger = null;
         });
     });

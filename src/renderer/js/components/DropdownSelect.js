@@ -1,5 +1,7 @@
 import { createIcon } from '../icons.js';
 
+let nextDropdownId = 0;
+
 class DropdownSelect extends HTMLElement {
     static get observedAttributes() {
         return ['disabled', 'aria-label'];
@@ -11,28 +13,26 @@ class DropdownSelect extends HTMLElement {
         this._value = '';
         this._options = [];
         this._activeIndex = -1;
+        this._listboxId = `dropdown-listbox-${++nextDropdownId}`;
         this._handleDocumentPointerDown = this._handleDocumentPointerDown.bind(this);
+        this._optionObserver = new MutationObserver(() => this._readOptions());
         this._render();
     }
 
     connectedCallback() {
-        this._options = Array.from(this.querySelectorAll('option')).map(option => ({
-            value: option.value,
-            label: option.textContent.trim(),
-            selected: option.selected || option.hasAttribute('selected')
-        }));
-
-        const selectedOption = this._options.find(option => option.selected) || this._options[0];
-        if (!this._value && selectedOption) {
-            this._value = selectedOption.value;
-        }
-
-        this._renderOptions();
-        this._updateSelection();
+        this._readOptions();
+        this._optionObserver.observe(this, {
+            attributes: true,
+            attributeFilter: ['selected', 'value'],
+            characterData: true,
+            childList: true,
+            subtree: true
+        });
         document.addEventListener('pointerdown', this._handleDocumentPointerDown, true);
     }
 
     disconnectedCallback() {
+        this._optionObserver.disconnect();
         document.removeEventListener('pointerdown', this._handleDocumentPointerDown, true);
     }
 
@@ -66,6 +66,20 @@ class DropdownSelect extends HTMLElement {
         this.shadowRoot.querySelector('.select-trigger')?.focus(options);
     }
 
+    _readOptions() {
+        this._options = Array.from(this.querySelectorAll('option')).map(option => ({
+            value: option.value,
+            label: option.textContent.trim(),
+            selected: option.selected || option.hasAttribute('selected')
+        }));
+
+        const currentOption = this._options.find(option => option.value === this._value);
+        const selectedOption = currentOption || this._options.find(option => option.selected) || this._options[0];
+        this._value = selectedOption?.value || '';
+        this._renderOptions();
+        this._updateSelection();
+    }
+
     _render() {
         this.shadowRoot.innerHTML = `
             <style>
@@ -73,7 +87,7 @@ class DropdownSelect extends HTMLElement {
                     position: relative;
                     display: inline-block;
                     width: 156px;
-                    color: rgba(255, 255, 255, 0.9);
+                    color: var(--color-text-primary, rgba(255, 255, 255, 0.9));
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
                     font-size: 13px;
                     line-height: 1.35;
@@ -91,7 +105,7 @@ class DropdownSelect extends HTMLElement {
 
                 .select-trigger {
                     width: 100%;
-                    min-height: 34px;
+                    min-height: var(--control-height, 34px);
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
@@ -102,7 +116,7 @@ class DropdownSelect extends HTMLElement {
                     text-align: left;
                     background: rgba(255, 255, 255, 0.055);
                     border: 1px solid var(--color-control-border, rgba(255, 255, 255, 0.045));
-                    border-radius: 10px;
+                    border-radius: var(--radius-control-lg, 10px);
                     cursor: pointer;
                     transition: background-color 120ms ease, border-color 120ms ease;
                 }
@@ -114,7 +128,7 @@ class DropdownSelect extends HTMLElement {
                 }
 
                 .select-trigger:focus-visible {
-                    outline: 2px solid color-mix(in srgb, var(--system-accent, #16c60c) 62%, white);
+                    outline: 2px solid var(--color-focus-ring, #7de875);
                     outline-offset: 2px;
                 }
 
@@ -145,7 +159,7 @@ class DropdownSelect extends HTMLElement {
                     padding: 4px;
                     background: rgba(43, 43, 43, 0.99);
                     border: 1px solid rgba(255, 255, 255, 0.12);
-                    border-radius: 12px;
+                    border-radius: var(--radius-win, 12px);
                     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
                     transform-origin: top right;
                     animation: menu-in 120ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -163,7 +177,7 @@ class DropdownSelect extends HTMLElement {
 
                 .select-option {
                     width: 100%;
-                    min-height: 34px;
+                    min-height: var(--control-height, 34px);
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
@@ -174,7 +188,7 @@ class DropdownSelect extends HTMLElement {
                     text-align: left;
                     background: transparent;
                     border: 0;
-                    border-radius: 8px;
+                    border-radius: var(--radius-control, 8px);
                     cursor: pointer;
                 }
 
@@ -208,11 +222,12 @@ class DropdownSelect extends HTMLElement {
                     .chevron { transition: none; }
                 }
             </style>
-            <button class="select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+            <button class="select-trigger" type="button" role="combobox" aria-haspopup="listbox"
+                aria-expanded="false" aria-controls="${this._listboxId}">
                 <span class="selected-label"></span>
                 <span class="chevron"></span>
             </button>
-            <div class="select-menu" role="listbox" hidden></div>
+            <div id="${this._listboxId}" class="select-menu" role="listbox" hidden></div>
         `;
 
         this._trigger = this.shadowRoot.querySelector('.select-trigger');
@@ -233,6 +248,7 @@ class DropdownSelect extends HTMLElement {
             button.type = 'button';
             button.className = 'select-option';
             button.setAttribute('role', 'option');
+            button.id = `${this._listboxId}-option-${index}`;
             button.dataset.index = String(index);
 
             const label = document.createElement('span');
@@ -274,6 +290,7 @@ class DropdownSelect extends HTMLElement {
         this._menu.hidden = true;
         this.removeAttribute('open');
         this._trigger.setAttribute('aria-expanded', 'false');
+        this._trigger.removeAttribute('aria-activedescendant');
         this._activeIndex = -1;
         this._updateActiveOption();
     }
@@ -311,6 +328,12 @@ class DropdownSelect extends HTMLElement {
         this._menu?.querySelectorAll('.select-option').forEach((button, index) => {
             button.classList.toggle('is-active', index === this._activeIndex);
         });
+        const activeOption = this._menu?.querySelector(`.select-option[data-index="${this._activeIndex}"]`);
+        if (!this._menu?.hidden && activeOption) {
+            this._trigger?.setAttribute('aria-activedescendant', activeOption.id);
+        } else {
+            this._trigger?.removeAttribute('aria-activedescendant');
+        }
     }
 
     _updateDisabled() {

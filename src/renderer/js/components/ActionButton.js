@@ -63,7 +63,7 @@ class ActionButton extends HTMLElement {
                     align-items: center;
                     justify-content: center;
                     gap: 0.375rem;
-                    min-height: 28px;
+                    min-height: var(--control-height-compact, 28px);
                     padding: 4px 9px;
                     width: 100%;
                     height: 100%;
@@ -71,7 +71,7 @@ class ActionButton extends HTMLElement {
                     font-size: 11.5px;
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
-                    border-radius: var(--radius-win-sm, 4px);
+                    border-radius: var(--radius-control, 8px);
                     border: 1px solid var(--color-control-border, rgba(255,255,255,0.045));
                     cursor: pointer;
                     transition: background-color 0.1s ease, border-color 0.1s ease;
@@ -85,21 +85,21 @@ class ActionButton extends HTMLElement {
                 }
 
                 .btn-wrapper:focus-visible {
-                    outline: 2px solid color-mix(in srgb, var(--system-accent, #16c60c) 62%, white);
+                    outline: 2px solid var(--color-focus-ring, #7de875);
                     outline-offset: 2px;
                 }
 
                 .btn-default {
-                    background: rgba(255, 255, 255, 0.05);
-                    color: rgba(255, 255, 255, 0.9);
+                    background: var(--color-control-surface, rgba(255, 255, 255, 0.05));
+                    color: var(--color-text-primary, rgba(255, 255, 255, 0.9));
                 }
 
-                .btn-default:hover {
-                    background: rgba(255, 255, 255, 0.08);
+                .btn-default:hover:not(:disabled) {
+                    background: var(--color-control-surface-hover, rgba(255, 255, 255, 0.08));
                     border-color: var(--color-control-border-hover, rgba(255,255,255,0.085));
                 }
 
-                .btn-default:active {
+                .btn-default:active:not(:disabled) {
                     background: rgba(255, 255, 255, 0.03);
                     color: rgba(255, 255, 255, 0.7);
                 }
@@ -110,11 +110,11 @@ class ActionButton extends HTMLElement {
                     border-color: transparent;
                 }
 
-                .btn-danger:hover {
+                .btn-danger:hover:not(:disabled) {
                     background: var(--color-danger-surface-hover, #c42b1c);
                 }
 
-                .btn-danger:active {
+                .btn-danger:active:not(:disabled) {
                     background: var(--color-danger-surface-active, #9f211a);
                 }
 

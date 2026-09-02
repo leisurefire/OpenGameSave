@@ -71,6 +71,7 @@ export function updateBackupTable(loader) {
 // Function to populate backup table
 async function populateBackupTable(viewModel) {
     const platformOrder = ['Steam', 'Ubisoft', 'EA', 'Epic', 'GOG', 'Xbox', 'Blizzard'];
+    const moreLabel = await window.i18n.translate('main.more');
 
     populateGameTable({
         tabName: 'backup',
@@ -81,7 +82,7 @@ async function populateBackupTable(viewModel) {
             const platformIcons = sortedPlatforms.map(platform => getPlatformIcon(platform, viewModel.iconMap)).join(' ');
             const backupSize = formatSize(game.backup_size);
 
-            return createBackupTableRow(gameTitle, platformIcons, backupSize, game.latest_backup, game.wiki_page_id);
+            return createBackupTableRow(gameTitle, platformIcons, backupSize, game.latest_backup, game.wiki_page_id, moreLabel);
         },
         hasPermanentBackup: (game, wikiId) => {
             const restoreGameData = window.restoreTableDataMap && window.restoreTableDataMap.get(wikiId);

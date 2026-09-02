@@ -108,7 +108,7 @@ class ToggleSwitch extends HTMLElement {
                 }
 
                 .toggle-button:focus-visible {
-                    outline: 2px solid color-mix(in srgb, var(--system-accent, #16c60c) 62%, white);
+                    outline: 2px solid var(--color-focus-ring, #7de875);
                     outline-offset: 2px;
                 }
 

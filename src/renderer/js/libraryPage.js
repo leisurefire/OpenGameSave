@@ -147,14 +147,15 @@ async function showGameMenu(game, button) {
         });
     }
     const rect = button.getBoundingClientRect();
+    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-expanded', 'true');
+    window.activeMenuTrigger = button;
     window.api.send('show-popup-menu', {
         items: menuItems,
         x: rect.left,
         y: rect.bottom + 3,
         direction: 'down'
     });
-    button.setAttribute('aria-expanded', 'true');
-    window.activeMenuTrigger = button;
 }
 
 function revokeImageObjectUrl(image) {
@@ -327,6 +328,7 @@ function createCard(game, position) {
     const manageButton = document.createElement('button');
     manageButton.className = 'library-card-manage';
     manageButton.type = 'button';
+    manageButton.setAttribute('aria-haspopup', 'menu');
     manageButton.setAttribute('aria-expanded', 'false');
     manageButton.setAttribute('data-i18n-title', 'main.manage_game');
     manageButton.setAttribute('data-i18n-aria-label', 'main.manage_game');

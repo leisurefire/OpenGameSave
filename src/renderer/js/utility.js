@@ -18,9 +18,11 @@ receiveIfAllowed('update-progress', (progressId, progressTitle, percentage) => {
     updateProgress(progressId, progressTitle, percentage);
 });
 
-receiveIfAllowed('menu-hidden', () => {
-    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
+receiveIfAllowed('menu-hidden', (state = {}) => {
+    const trigger = window.activeMenuTrigger;
+    trigger?.setAttribute('aria-expanded', 'false');
     window.activeMenuTrigger = null;
+    if (state.restoreFocus === true && trigger?.isConnected) trigger.focus();
 });
 
 receiveIfAllowed('app-update-state', (state) => {
@@ -76,22 +78,28 @@ async function getTitlebarMenuItems(menuName) {
 }
 
 function setupTitlebarMenus() {
-    document.querySelectorAll('[data-titlebar-menu]').forEach(button => button.addEventListener('click', async (event) => {
-        event.stopPropagation();
-        if (button === window.activeMenuTrigger) {
-            window.api.send('hide-popup-menu');
-            window.activeMenuTrigger = null;
-            return;
-        }
-        const rect = button.getBoundingClientRect();
-        window.api.send('show-popup-menu', {
-            items: await getTitlebarMenuItems(button.dataset.titlebarMenu),
-            x: rect.left,
-            y: rect.bottom + 3,
-            direction: 'down'
+    document.querySelectorAll('[data-titlebar-menu]').forEach((button) => {
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
+        button.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            if (button === window.activeMenuTrigger) {
+                window.api.send('hide-popup-menu');
+                return;
+            }
+            const items = await getTitlebarMenuItems(button.dataset.titlebarMenu);
+            const rect = button.getBoundingClientRect();
+            window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
+            button.setAttribute('aria-expanded', 'true');
+            window.activeMenuTrigger = button;
+            window.api.send('show-popup-menu', {
+                items,
+                x: rect.left,
+                y: rect.bottom + 3,
+                direction: 'down'
+            });
         });
-        window.activeMenuTrigger = button;
-    }));
+    });
 }
 
 async function applyAppUpdateState(state) {
@@ -169,6 +177,15 @@ function setupHomeActions() {
 
 export async function updateTranslations(container) {
     const translationTasks = [];
+
+    const documentElement = container.documentElement || container.ownerDocument?.documentElement;
+    if (documentElement) {
+        translationTasks.push(window.i18n.translate('meta.locale').then((locale) => {
+            if (/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale)) {
+                documentElement.lang = locale;
+            }
+        }));
+    }
 
     container.querySelectorAll('[data-i18n]').forEach((el) => {
         const key = el.getAttribute('data-i18n');
@@ -346,6 +363,7 @@ document.addEventListener('click', (event) => {
         || event.target.closest('#home-options-button')
         || event.target.closest('[data-titlebar-menu]');
     if (!isMenuTrigger && window.api.can('send', 'hide-popup-menu')) {
+        window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
         window.activeMenuTrigger = null;
         window.api.send('hide-popup-menu');
     }

@@ -133,10 +133,11 @@ class DataTable extends HTMLElement {
             <style>
                 :host {
                     display: block;
-                    --_surface:    rgba(255,255,255,0.04);
+                    --_surface:    var(--color-card-surface, rgba(255,255,255,0.04));
                     --_surface-hd: rgba(32,32,32,0.96);
-                    --_border:     var(--color-win-border,         rgba(255,255,255,0.08));
-                    --_radius:     14px;
+                    --_border:     var(--color-win-border, rgba(255,255,255,0.08));
+                    --_divider:    var(--color-divider-soft, rgba(255,255,255,0.05));
+                    --_radius:     var(--radius-card, 14px);
                     --_font:       var(--font-sans,                "Segoe UI", sans-serif);
                 }
 
@@ -146,7 +147,7 @@ class DataTable extends HTMLElement {
                     border-radius: var(--_radius);
                     overflow: hidden;
                     font-family: var(--_font);
-                    color: rgba(255,255,255,0.9);
+                    color: var(--color-text-primary, rgba(255,255,255,0.9));
                     font-size: 13px;
                 }
 
@@ -182,7 +183,7 @@ class DataTable extends HTMLElement {
                 ::slotted(tr.dt-row) {
                     display: grid;
                     grid-template-columns: var(--dt-columns, repeat(3, minmax(0, 1fr)));
-                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                    border-bottom: 1px solid var(--_divider);
                     transition: background-color 0.1s ease;
                 }
 

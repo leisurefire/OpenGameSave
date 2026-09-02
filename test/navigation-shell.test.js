@@ -75,3 +75,29 @@ test('library and guide interactions expose keyboard and assistive-technology st
     assert.match(mainCss, /@media \(forced-colors: active\)/);
     assert.match(mainCss, /\.guide-open-button:focus-visible/);
 });
+
+test('popup menus are keyboard operable and restore focus without stealing it after app switches', () => {
+    const menuService = readProjectFile('src/main/services/menuWindowService.js');
+    const menuEntry = readProjectFile('src/renderer/menu.entry.js');
+    const menuCss = readProjectFile('src/renderer/menu.css');
+    const tablePopupMenu = readProjectFile('src/renderer/js/tablePopupMenu.js');
+    const tableRows = readProjectFile('src/renderer/js/tableRows.js');
+    const libraryPage = readProjectFile('src/renderer/js/libraryPage.js');
+    const utility = readProjectFile('src/renderer/js/utility.js');
+
+    assert.match(menuService, /focusable:\s*true/);
+    assert.match(menuService, /!menuParentWindow\.isFocused\(\)/);
+    assert.match(menuService, /menuWindow\.isFocused\(\)/);
+    assert.match(menuService, /hideMenuWindow\(\{ restoreFocus: true \}\)/);
+    assert.match(menuService, /locale:\s*i18next\.t\('meta\.locale'\)/);
+    assert.match(menuEntry, /document\.createElement\('button'\)/);
+    assert.match(menuEntry, /setAttribute\('role', 'menuitem'\)/);
+    assert.match(menuEntry, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
+    assert.match(menuEntry, /event\.key === 'Escape'/);
+    assert.match(menuEntry, /document\.documentElement\.lang = locale/);
+    assert.match(menuCss, /\.menu-item:focus-visible/);
+    assert.match(tableRows, /aria-haspopup="menu" aria-expanded="false"/);
+    assert.match(tablePopupMenu, /button\.setAttribute\('aria-expanded', 'true'\)/);
+    assert.match(libraryPage, /setAttribute\('aria-haspopup', 'menu'\)/);
+    assert.match(utility, /state\.restoreFocus === true.*trigger\.focus\(\)/s);
+});

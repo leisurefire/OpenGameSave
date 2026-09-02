@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             latestVersionSpan.innerText = latestVersion;
         } else {
             latestVersionSpan.innerText = failedMessage;
-            latestVersionSpan.style.color = 'red';
+            latestVersionSpan.classList.add('version-status-error');
         }
 
         const updateAvailable = latestVersion
@@ -33,8 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             : false;
 
         if (updateAvailable) {
-            currentVersionSpan.style.color = 'red';
-            latestVersionSpan.style.color = 'var(--gsm-green-soft)';
+            currentVersionSpan.classList.add('version-status-error');
+            latestVersionSpan.classList.remove('version-status-error');
+            latestVersionSpan.classList.add('version-status-success');
 
             updateButton.classList.remove('hidden');
             updateButton.addEventListener('click', async () => {
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     noticesToggle.addEventListener('click', async () => {
         const willShow = noticesPanel.classList.contains('hidden');
         noticesPanel.classList.toggle('hidden', !willShow);
+        noticesToggle.setAttribute('aria-expanded', String(willShow));
         noticesToggle.dataset.i18n = willShow ? 'about.hide_notices' : 'about.view_notices';
         noticesToggle.textContent = await window.i18n.translate(noticesToggle.dataset.i18n);
     });

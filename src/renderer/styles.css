@@ -25,6 +25,37 @@
     --color-control-border-hover: rgba(255, 255, 255, 0.085);
     --color-win-border-focus: var(--color-theme-accent-bright);
 
+    /* Shared scales preserve the existing visual hierarchy without flattening every surface. */
+    --color-text-heading: rgba(255, 255, 255, 0.94);
+    --color-text-primary: rgba(255, 255, 255, 0.9);
+    --color-text-emphasis: rgba(255, 255, 255, 0.88);
+    --color-text-secondary: rgba(255, 255, 255, 0.68);
+    --color-text-tertiary: rgba(255, 255, 255, 0.55);
+    --color-text-subtle: rgba(255, 255, 255, 0.5);
+    --color-text-description: rgba(255, 255, 255, 0.46);
+    --color-text-muted: rgba(255, 255, 255, 0.42);
+    --color-text-faint: rgba(255, 255, 255, 0.38);
+    --color-card-surface-subtle: rgba(255, 255, 255, 0.035);
+    --color-card-surface: rgba(255, 255, 255, 0.04);
+    --color-card-surface-raised: rgba(255, 255, 255, 0.045);
+    --color-card-surface-hover: rgba(255, 255, 255, 0.065);
+    --color-control-surface: rgba(255, 255, 255, 0.05);
+    --color-control-surface-hover: rgba(255, 255, 255, 0.08);
+    --color-card-border-soft: rgba(255, 255, 255, 0.075);
+    --color-card-border: rgba(255, 255, 255, 0.085);
+    --color-divider-soft: rgba(255, 255, 255, 0.05);
+    --color-divider: rgba(255, 255, 255, 0.055);
+    --color-divider-strong: rgba(255, 255, 255, 0.08);
+    --color-accent-emphasis: color-mix(in srgb, var(--system-accent) 72%, white);
+    --color-focus-ring: color-mix(in srgb, var(--system-accent) 72%, white);
+
+    /* Status colors must not depend on the user-selected accent color. */
+    --color-status-success: #6ccb5f;
+    --color-status-warning: #facc15;
+    --color-status-warning-muted: rgba(250, 204, 21, 0.7);
+    --color-status-danger: #f87171;
+    --color-status-info: #60a5fa;
+
     /* Filled danger controls keep their label legible at normal text sizes. */
     --color-danger-surface: #b3261e;
     --color-danger-surface-hover: #c42b1c;
@@ -37,6 +68,16 @@
     /* Fluent Corner Radius */
     --radius-win: 12px;
     --radius-win-sm: 8px;
+    --radius-card: 14px;
+    --radius-control: 8px;
+    --radius-control-lg: 10px;
+    --radius-pill: 999px;
+
+    /* Shared control sizing. */
+    --control-height-compact: 28px;
+    --control-height-small: 32px;
+    --control-height: 34px;
+    --control-height-field: 36px;
 
     --animate-fadeIn: fadeIn 0.1s ease-out forwards;
     --animate-fadeOut: fadeOut 0.1s ease-in forwards;

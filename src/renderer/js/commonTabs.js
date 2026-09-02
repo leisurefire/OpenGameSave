@@ -562,13 +562,14 @@ async function performAddOrUpdateTableRow(tabName, wikiId) {
         }
 
         let row;
+        const moreLabel = await window.i18n.translate('main.more');
         if (tabName === 'backup') {
             const iconMap = await window.api.invoke('get-icon-map');
             const sortedPlatforms = platformOrder.filter(platform => (gameData.platform || []).includes(platform));
             const platformIcons = sortedPlatforms.map(platform => getPlatformIcon(platform, iconMap)).join(' ');
-            row = createBackupTableRow(gameTitle, platformIcons, formatSize(gameData.backup_size), gameData.latest_backup, wikiId);
+            row = createBackupTableRow(gameTitle, platformIcons, formatSize(gameData.backup_size), gameData.latest_backup, wikiId, moreLabel);
         } else {
-            row = createRestoreTableRow(gameTitle, gameData.backups.length, formatSize(gameData.backup_size), gameData.latest_backup, wikiId);
+            row = createRestoreTableRow(gameTitle, gameData.backups.length, formatSize(gameData.backup_size), gameData.latest_backup, wikiId, moreLabel);
         }
         if (isFavorite) setIcon(row, 'favorite', true);
         if (isBlocked) {
@@ -657,6 +658,7 @@ export function removeTableRow(tabName, wikiId) {
 }
 
 window.api.receive('execute-menu-action', async (action, data) => {
+    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
     window.activeMenuTrigger = null;
     if (action === 'add-favorite') {
         const wikiId = data;

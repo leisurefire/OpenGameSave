@@ -44,7 +44,7 @@
                 <img src="../assets/logo.png" alt="">
                 <span class="text-content">OpenGameSave</span>
             </div>
-            <nav class="sidebar-nav" id="main-tab" aria-label="Primary navigation">
+            <nav class="sidebar-nav" id="main-tab" aria-label="Primary navigation" data-i18n-aria-label="main.primary_navigation">
                 <button id="library-tab" data-nav-target="library" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
                     <span data-lucide-icon="library-big"></span>
                     <span class="text-content" data-i18n="main.library">Library</span>
@@ -59,7 +59,7 @@
                 </button>
                 <button id="sync-tab" data-nav-target="sync" class="sidebar-nav-button font-semibold transition-all opacity-60 flex items-center gap-3">
                     <span data-lucide-icon="cloud"></span>
-                    <span class="text-content">Sync</span>
+                    <span class="text-content" data-i18n="main.sync">Sync</span>
                 </button>
             </nav>
 
@@ -220,7 +220,7 @@
 
         <!-- Save management: Backup -->
         <section id="backup" role="tabpanel" class="hidden">
-            <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
+            <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
             
                         <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.backup_complete">BACKUP COMPLETE</h2>
@@ -234,7 +234,7 @@
                     <p id="backup-summary-total-failed" class="text-red-400 text-sm"></p>
                     <button id="backup-failed-learn-more" class="text-xs text-theme-accent underline mt-1" data-i18n="alert.learn_more">Learn more</button>
                 </div>
-                <button id="backup-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
+                <button id="backup-summary-done" class="primary-button px-10 py-3 mt-10" data-i18n="summary.done">Done</button>
             </div>
 
             <div id="backup-content" class="hidden tab-layout">
@@ -254,7 +254,7 @@
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
                             <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
-                            <input type="text" id="backup-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
+                            <input type="text" id="backup-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">
@@ -290,7 +290,7 @@
                     </div>
 
                 <div class="table-container">
-                    <table class="game-list-table w-full text-left">
+                    <table class="game-list-table w-full text-left" data-i18n-aria-label="main.backup">
                         <colgroup>
                             <col class="game-list-select-column">
                             <col class="game-list-primary-column">
@@ -300,11 +300,11 @@
                         </colgroup>
                         <thead class="table-semantic-head">
                             <tr>
-                                <th data-i18n="main.select_all">Select all</th>
+                                <th><span class="visually-hidden" data-i18n="main.select_all">Select all</span></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.supported_plats">Platforms</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_size">Size</th>
-                                <th class="p-4 text-center"></th>
+                                <th class="p-4 text-center"><span class="visually-hidden" data-i18n="main.action">Action</span></th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -317,7 +317,7 @@
 
         <!-- Save management: Restore -->
         <section id="restore" role="tabpanel" class="hidden">
-            <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading">Loading...</div>
+            <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
             
                         <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.restore_complete">RESTORE COMPLETE</h2>
@@ -331,7 +331,7 @@
                     <p id="restore-summary-total-failed" class="text-red-400 text-sm"></p>
                     <button id="restore-failed-learn-more" class="text-xs text-theme-accent underline mt-1" data-i18n="alert.learn_more">Learn more</button>
                 </div>
-                <button id="restore-summary-done" class="primary-button px-10 py-3 mt-10">DONE</button>
+                <button id="restore-summary-done" class="primary-button px-10 py-3 mt-10" data-i18n="summary.done">Done</button>
             </div>
 
             <div id="restore-content" class="hidden tab-layout">
@@ -351,7 +351,7 @@
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
                             <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
-                            <input type="text" id="restore-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games">
+                            <input type="text" id="restore-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">
@@ -387,7 +387,7 @@
                     </div>
 
                 <div class="table-container">
-                    <table class="game-list-table w-full text-left">
+                    <table class="game-list-table w-full text-left" data-i18n-aria-label="main.restore">
                         <colgroup>
                             <col class="game-list-select-column">
                             <col class="game-list-primary-column">
@@ -397,11 +397,11 @@
                         </colgroup>
                         <thead class="table-semantic-head">
                             <tr>
-                                <th data-i18n="main.select_all">Select all</th>
+                                <th><span class="visually-hidden" data-i18n="main.select_all">Select all</span></th>
                                 <th class="p-4" data-i18n="main.game_name">Game Name</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.backup_count">Backups</th>
                                 <th class="p-4 text-center align-middle" data-i18n="main.restore_size">Size</th>
-                                <th class="p-4 text-center"></th>
+                                <th class="p-4 text-center"><span class="visually-hidden" data-i18n="main.action">Action</span></th>
                             </tr>
                         </thead>
                         <tbody></tbody>

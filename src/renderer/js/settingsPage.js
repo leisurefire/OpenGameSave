@@ -316,14 +316,17 @@ document.addEventListener('DOMContentLoaded', () => {
         newPath.innerHTML = `
             <input type="text" readonly
                 class="display-path grow text-xs font-mono" />
-            <button type="button" class="select-path settings-icon-button" aria-label="Select path">
+            <button type="button" class="select-path settings-icon-button" aria-label="Select path"
+                data-i18n-aria-label="settings.select_path">
                 <span data-action-icon="selectDirectory"></span>
             </button>
-            <button type="button" class="remove-path settings-icon-button danger" aria-label="Remove path">
+            <button type="button" class="remove-path settings-icon-button danger" aria-label="Delete"
+                data-i18n-aria-label="main.delete">
                 <span data-action-icon="delete"></span>
             </button>
         `;
         gamePathsContainer.appendChild(newPath);
+        void updateTranslations(newPath);
 
         const selectPathButton = newPath.querySelector('.select-path');
         const pathInput = newPath.querySelector('.display-path');

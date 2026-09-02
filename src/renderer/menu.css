@@ -3,6 +3,19 @@
     -webkit-font-smoothing: antialiased;
 }
 
+:root {
+    color-scheme: dark;
+    --color-text-primary: rgba(255, 255, 255, 0.9);
+    --color-menu-surface: rgba(43, 43, 43, 0.99);
+    --color-menu-border: rgba(255, 255, 255, 0.12);
+    --color-menu-hover: rgba(255, 255, 255, 0.08);
+    --color-menu-active: rgba(255, 255, 255, 0.03);
+    --color-focus-ring: color-mix(in srgb, var(--system-accent, #16c60c) 72%, white);
+    --radius-menu: 12px;
+    --radius-control: 8px;
+    --control-height: 34px;
+}
+
 html {
     margin: 0;
     padding: 0;
@@ -34,10 +47,10 @@ body {
     max-width: 360px;
     flex-direction: column;
     overflow: hidden;
-    background: rgba(43, 43, 43, 0.99);
+    background: var(--color-menu-surface);
     backdrop-filter: blur(32px) saturate(110%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
+    border: 1px solid var(--color-menu-border);
+    border-radius: var(--radius-menu);
     box-shadow:
         0 6px 18px rgba(0, 0, 0, 0.3),
         0 1px 3px rgba(0, 0, 0, 0.24);
@@ -85,25 +98,33 @@ body {
     min-width: max-content;
     display: flex;
     align-items: center;
-    min-height: 34px;
+    min-height: var(--control-height);
     gap: 10px;
     padding: 7px 10px;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-primary);
+    background: transparent;
+    border: 0;
     font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 13.5px;
     font-weight: 400;
     text-align: left;
     cursor: pointer;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     transition: background-color 0.1s ease;
 }
 
 .menu-item:hover {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--color-menu-hover);
+}
+
+.menu-item:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+    background-color: var(--color-menu-hover);
 }
 
 .menu-item:active {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--color-menu-active);
     color: rgba(255, 255, 255, 0.7);
 }
 
@@ -119,4 +140,25 @@ body {
     color: inherit;
     text-align: left;
     white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .menu-container {
+        animation: none;
+    }
+
+    .menu-item {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .menu-container,
+    .menu-item:focus-visible {
+        border: 1px solid ButtonText;
+    }
+
+    .menu-item:focus-visible {
+        outline-color: Highlight;
+    }
 }
