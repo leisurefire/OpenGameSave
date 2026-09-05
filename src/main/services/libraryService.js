@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { shell } = isMainThread ? require('electron') : { shell: null };
+const { app, shell } = isMainThread ? require('electron') : { app: null, shell: null };
 
 const vdf = require('vdf-parser');
 const WinReg = require('winreg');
@@ -157,12 +157,14 @@ const libraryScanWorkerController = new LibraryScanWorkerController();
 
 function readDirectoryEntriesBounded(directoryPath, predicate, maximumEntries) {
     const entries = [];
+    let visited = 0;
     let directory;
     try {
         directory = fs.opendirSync(directoryPath);
-        while (entries.length < maximumEntries) {
+        while (entries.length < maximumEntries && visited < MAX_PROVIDER_DIRECTORY_ENTRIES) {
             const entry = directory.readSync();
             if (!entry) break;
+            visited += 1;
             if (predicate(entry)) entries.push(entry);
         }
     } catch (_) {
@@ -557,7 +559,8 @@ function toRendererGame(game) {
         platformId: game.platformId,
         installPath: game.installPath,
         hasCover: Boolean(game.coverPath) || hasFallback,
-        hasHero: Boolean(game.heroPath) || hasFallback
+        hasHero: Boolean(game.heroPath) || hasFallback,
+        ...(game.guide ? { guide: game.guide } : {})
     };
 }
 
@@ -598,15 +601,14 @@ function runLibraryScanWorker(scanContext) {
 function createLibraryScanContext(overrides = {}) {
     if (Array.isArray(overrides.steamRootCandidates)) return overrides;
     const detectedSteamRoot = require('../gameData').getGameData().steamPath;
-    return { ...overrides, detectedSteamRoot };
+    const guideDatabasePath = path.join(app.getPath('userData'), 'OGS Database', 'database.db');
+    return { ...overrides, detectedSteamRoot, guideDatabasePath };
 }
 
 async function performLibraryScan(scanContext = {}) {
     const scanned = await runLibraryScanWorker(createLibraryScanContext(scanContext));
     scannedGames = new Map(scanned.slice(0, MAX_LIBRARY_GAMES).map(game => [game.id, game]));
-    return [...scannedGames.values()]
-        .map(toRendererGame)
-        .sort((left, right) => left.title.localeCompare(right.title, undefined, { numeric: true }));
+    return [...scannedGames.values()].map(toRendererGame);
 }
 
 function scanLibraryGames(scanContext = {}) {

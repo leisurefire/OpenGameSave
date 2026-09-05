@@ -1,4 +1,5 @@
-const { app } = require('electron');
+const { isMainThread } = require('worker_threads');
+const { app } = isMainThread ? require('electron') : { app: null };
 const fs = require('fs');
 const path = require('path');
 
@@ -150,8 +151,7 @@ function toGuideGame(row, catalog) {
     };
 }
 
-function openUserDatabase() {
-    const databasePath = getUserDatabasePath();
+function openUserDatabase(databasePath = getUserDatabasePath()) {
     if (!fs.existsSync(databasePath)) return null;
     try {
         return openDb(databasePath, { readonly: true, fileMustExist: true });
@@ -335,8 +335,8 @@ function createLibraryMatchQuery(games) {
     };
 }
 
-function selectLibraryMatchRows(games) {
-    const database = openUserDatabase();
+function selectLibraryMatchRows(games, databasePath) {
+    const database = openUserDatabase(databasePath);
     if (!database) return [];
     try {
         const rows = [];
@@ -415,9 +415,9 @@ function matchLibraryGamesToGuideRows(games, rows) {
     });
 }
 
-function enrichLibraryGamesWithGuides(games) {
+function enrichLibraryGamesWithGuides(games, databasePath) {
     if (!Array.isArray(games) || games.length === 0) return [];
-    const rows = selectLibraryMatchRows(games);
+    const rows = selectLibraryMatchRows(games, databasePath);
     return matchLibraryGamesToGuideRows(games, rows);
 }
 

@@ -5,12 +5,14 @@ const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 const MAX_ART_BYTES = 8 * 1024 * 1024;
 const MAX_BATTLENET_CACHE_FILES = 4096;
+const MAX_BATTLENET_DIRECTORY_ENTRIES = 20000;
 const MAX_BATTLENET_INDEX_ENTRIES = 50000;
 const MAX_BATTLENET_CATALOG_BYTES = 64 * 1024 * 1024;
 const REMOTE_TIMEOUT_MS = 7000;
 const MAX_REDIRECTS = 3;
 const MAX_METADATA_CACHE_ENTRIES = 32;
 const MAX_MEMORY_CACHE_BYTES = 24 * 1024 * 1024;
+const MAX_MEMORY_CACHE_ENTRIES = 256;
 const MAX_ACTIVE_ARTWORK_OPERATIONS = 4;
 const MAX_QUEUED_ARTWORK_OPERATIONS = 64;
 
@@ -204,14 +206,28 @@ function findGogLocalArt(registryData, platformId, installPath, cacheRoots = [])
 
 function listBattleNetCacheFiles(cacheRoot) {
     const files = [];
+    let remainingEntries = MAX_BATTLENET_DIRECTORY_ENTRIES;
+    function* readEntries(directoryPath) {
+        const directory = fs.opendirSync(directoryPath);
+        try {
+            while (remainingEntries > 0) {
+                const entry = directory.readSync();
+                if (!entry) return;
+                remainingEntries -= 1;
+                yield entry;
+            }
+        } finally {
+            directory.closeSync();
+        }
+    }
     try {
-        for (const first of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+        for (const first of readEntries(cacheRoot)) {
             if (!first.isDirectory() || !/^[a-f0-9]{2}$/i.test(first.name)) continue;
             const firstRoot = path.join(cacheRoot, first.name);
-            for (const second of fs.readdirSync(firstRoot, { withFileTypes: true })) {
+            for (const second of readEntries(firstRoot)) {
                 if (!second.isDirectory() || !/^[a-f0-9]{2}$/i.test(second.name)) continue;
                 const secondRoot = path.join(firstRoot, second.name);
-                for (const entry of fs.readdirSync(secondRoot, { withFileTypes: true })) {
+                for (const entry of readEntries(secondRoot)) {
                     if (entry.isFile()) files.push(path.join(secondRoot, entry.name));
                     if (files.length >= MAX_BATTLENET_CACHE_FILES) return files;
                 }
@@ -429,17 +445,22 @@ async function readResponseBounded(response, maximumBytes) {
     if (!reader) return Buffer.alloc(0);
     const chunks = [];
     let total = 0;
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > maximumBytes) {
-            await reader.cancel();
-            throw new Error('Official resource exceeds the size limit');
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maximumBytes) {
+                await reader.cancel();
+                throw new Error('Official resource exceeds the size limit');
+            }
+            // Fetch owns each chunk; retain its view until the single final copy.
+            chunks.push(value);
         }
-        chunks.push(Buffer.from(value));
+        return Buffer.concat(chunks, total);
+    } finally {
+        reader.releaseLock();
     }
-    return Buffer.concat(chunks, total);
 }
 
 async function fetchBoundedImmediately(initialUrl, provider, purpose, maximumBytes, accept) {
@@ -456,8 +477,8 @@ async function fetchBoundedImmediately(initialUrl, provider, purpose, maximumByt
             });
             if (response.status >= 300 && response.status < 400) {
                 const location = response.headers.get('location');
-                if (!location || redirect === MAX_REDIRECTS) throw new Error('Official resource redirect was rejected');
                 await response.body?.cancel();
+                if (!location || redirect === MAX_REDIRECTS) throw new Error('Official resource redirect was rejected');
                 currentUrl = new URL(location, currentUrl).toString();
                 continue;
             }
@@ -485,7 +506,8 @@ async function cachedMetadata(key, loader) {
         return await cached;
     }
     const promise = loader().catch((error) => {
-        metadataCache.delete(key);
+        // An evicted request can fail after a newer request has reused its key.
+        if (metadataCache.get(key) === promise) metadataCache.delete(key);
         throw error;
     });
     metadataCache.set(key, promise);
@@ -576,7 +598,8 @@ function writeCachedAsset(cacheKey, asset) {
         assetCacheBytes -= existing.bytes;
         assetCache.delete(cacheKey);
     }
-    while (assetCache.size && assetCacheBytes + bytes > MAX_MEMORY_CACHE_BYTES) {
+    while (assetCache.size && (assetCacheBytes + bytes > MAX_MEMORY_CACHE_BYTES
+        || assetCache.size >= MAX_MEMORY_CACHE_ENTRIES)) {
         const oldestKey = assetCache.keys().next().value;
         assetCacheBytes -= assetCache.get(oldestKey).bytes;
         assetCache.delete(oldestKey);
@@ -588,22 +611,62 @@ function writeCachedAsset(cacheKey, asset) {
 }
 
 async function loadLocalArtDataUrl(filePath, trustedRoots) {
-    const inspected = inspectTrustedArtFile(filePath, trustedRoots);
-    if (!inspected) return null;
-    const cacheKey = `file:${inspected.path}:${inspected.modified}:${inspected.size}`;
-    const cached = readCachedAsset(cacheKey);
-    if (cached) return cached;
-    if (inFlightAssets.has(cacheKey)) return await inFlightAssets.get(cacheKey);
+    if (typeof filePath !== 'string' || !filePath || filePath.length > 4096) return null;
+    const resolvedPath = path.resolve(filePath);
+    const requestKey = `local:${resolvedPath}:${JSON.stringify(trustedRoots)}`;
+    if (inFlightAssets.has(requestKey)) return await inFlightAssets.get(requestKey);
     const promise = runBoundedArtworkOperation(async () => {
-        const buffer = await fs.promises.readFile(inspected.path);
-        const current = inspectTrustedArtFile(inspected.path, trustedRoots);
-        if (!current || current.size !== inspected.size || current.modified !== inspected.modified
-            || buffer.length !== inspected.size || mimeTypeFromBytes(buffer) !== inspected.mimeType) return null;
-        const asset = { mimeType: inspected.mimeType, data: buffer };
-        writeCachedAsset(cacheKey, asset);
-        return asset;
-    }).finally(() => inFlightAssets.delete(cacheKey));
-    inFlightAssets.set(cacheKey, promise);
+        // This path runs for visible cards in the main process. Keep its file
+        // inspection asynchronous, inside the same I/O bound as downloads.
+        const pathStats = await fs.promises.lstat(resolvedPath);
+        if (!pathStats.isFile() || pathStats.isSymbolicLink()
+            || pathStats.size <= 0 || pathStats.size > MAX_ART_BYTES) return null;
+        const realPath = await fs.promises.realpath(resolvedPath);
+        let allowed = false;
+        for (const root of trustedRoots) {
+            const realRoot = await fs.promises.realpath(root).catch(() => null);
+            if (realRoot && isPathWithin(realRoot, realPath)) {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed) return null;
+        const handle = await fs.promises.open(realPath, fs.constants.O_RDONLY
+            | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+        try {
+            const stats = await handle.stat();
+            if (!stats.isFile() || stats.size <= 0 || stats.size > MAX_ART_BYTES) return null;
+            if (stats.dev !== pathStats.dev || stats.ino !== pathStats.ino) return null;
+            const cacheKey = `file:${realPath}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`;
+            const cached = readCachedAsset(cacheKey);
+            if (cached) return cached;
+            // Read at most the inspected size plus one byte, even if the file
+            // grows after stat. readFile() would allocate for the entire file.
+            const buffer = Buffer.alloc(stats.size + 1);
+            let length = 0;
+            while (length < buffer.length) {
+                const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
+                if (!bytesRead) break;
+                length += bytesRead;
+            }
+            const current = await handle.stat();
+            const currentPathStats = await fs.promises.lstat(resolvedPath);
+            if (length !== stats.size || current.size !== stats.size
+                || current.mtimeMs !== stats.mtimeMs || current.ctimeMs !== stats.ctimeMs
+                || !currentPathStats.isFile() || currentPathStats.isSymbolicLink()
+                || currentPathStats.dev !== stats.dev || currentPathStats.ino !== stats.ino
+                || await fs.promises.realpath(resolvedPath) !== realPath) return null;
+            const data = buffer.subarray(0, length);
+            const mimeType = mimeTypeFromBytes(data);
+            if (!mimeType) return null;
+            const asset = { mimeType, data };
+            writeCachedAsset(cacheKey, asset);
+            return asset;
+        } finally {
+            await handle.close();
+        }
+    }).finally(() => inFlightAssets.delete(requestKey));
+    inFlightAssets.set(requestKey, promise);
     return await promise;
 }
 

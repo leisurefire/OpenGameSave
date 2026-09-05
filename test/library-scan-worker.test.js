@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const Database = require('better-sqlite3');
 
 const {
     LibraryScanWorkerController,
@@ -57,6 +58,17 @@ test('provider traversal stays off the caller thread and preserves renderer resu
         }
     `);
 
+    const guideDatabasePath = path.join(temporaryDirectory, 'guides.db');
+    const database = new Database(guideDatabasePath);
+    database.exec(`
+        CREATE TABLE games (wiki_page_id INTEGER, title TEXT, zh_CN TEXT, steam_id TEXT, gog_id TEXT);
+        INSERT INTO games VALUES (42, 'Worker Boundary Game', '测试游戏', '345678', NULL);
+    `);
+    database.close();
+    const callerThreadQueries = context.mock.method(Database.prototype, 'prepare', () => {
+        throw new Error('Library guide matching must run in the scanner worker');
+    });
+
     const originalReadFileSync = fs.readFileSync;
     const originalReaddirSync = fs.readdirSync;
     const originalStatSync = fs.statSync;
@@ -77,7 +89,8 @@ test('provider traversal stays off the caller thread and preserves renderer resu
     try {
         const scanContext = {
             providerNames: ['Steam'],
-            steamRootCandidates: [temporaryDirectory]
+            steamRootCandidates: [temporaryDirectory],
+            guideDatabasePath
         };
         const firstScan = scanLibraryGames(scanContext);
         const coalescedScan = scanLibraryGames(scanContext);
@@ -91,9 +104,11 @@ test('provider traversal stays off the caller thread and preserves renderer resu
             platformId: '345678',
             installPath,
             hasCover: true,
-            hasHero: true
+            hasHero: true,
+            guide: { wikiPageId: '42', title: 'Worker Boundary Game', titleZhCN: '测试游戏' }
         }]);
         assert.deepEqual(callerThreadSyncReads, []);
+        assert.equal(callerThreadQueries.mock.callCount(), 0);
     } finally {
         fs.readFileSync = originalReadFileSync;
         fs.readdirSync = originalReaddirSync;

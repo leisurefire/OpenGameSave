@@ -78,6 +78,7 @@ test('guide UI searches the local game database and exposes source provenance', 
     const guideService = fs.readFileSync(path.join(__dirname, '../src/main/services/guideService.js'), 'utf8');
     const guideIpc = fs.readFileSync(path.join(__dirname, '../src/main/ipc/guides.js'), 'utf8');
     const libraryIpc = fs.readFileSync(path.join(__dirname, '../src/main/ipc/library.js'), 'utf8');
+    const libraryWorker = fs.readFileSync(path.join(__dirname, '../src/main/libraryScanWorker.js'), 'utf8');
 
     assert.match(indexHtml, /id="guides-game-results"/);
     assert.match(indexHtml, /id="guides-database-repo"/);
@@ -87,7 +88,8 @@ test('guide UI searches the local game database and exposes source provenance', 
     assert.match(guideService, /databaseCatalogCache/);
     assert.match(guideService, /LOWER\(COALESCE\(zh_CN/);
     assert.match(guideIpc, /ipcMain\.handle\('search-game-guides'/);
-    assert.match(libraryIpc, /enrichLibraryGamesWithGuides/);
+    assert.doesNotMatch(libraryIpc, /enrichLibraryGamesWithGuides/);
+    assert.match(libraryWorker, /enrichLibraryGamesWithGuides/);
 });
 
 test('about page and shipped notices disclose licenses for curated references', () => {
