@@ -17,6 +17,8 @@ let searchTimer = null;
 let searchRequestId = 0;
 let heroRenderId = 0;
 let sourceCountRenderId = 0;
+let guideSelectionRequestId = 0;
+let catalogRequestId = 0;
 
 function localize(item, field) {
     return language === 'zh_CN' ? item?.[`${field}_zh_CN`] || item?.[field] : item?.[field];
@@ -153,8 +155,9 @@ function renderHero() {
         });
 }
 
-function selectGuideGame(game) {
+function selectGuideGame(game, { invalidate = true } = {}) {
     if (!game) return;
+    if (invalidate) guideSelectionRequestId += 1;
     guideGame = game;
     activeCategory = 'all';
     renderHero();
@@ -242,20 +245,24 @@ function searchGames() {
 }
 
 async function selectGuideByWikiId(wikiPageId) {
+    const requestId = ++guideSelectionRequestId;
     try {
         const game = await window.api.invoke('get-game-guide', wikiPageId);
+        if (requestId !== guideSelectionRequestId) return;
         if (game) {
             selectGuideGame(game);
             document.getElementById('guides-search').value = localize(game, 'title') || game.title;
             hideSearchResults();
         }
     } catch (error) {
+        if (requestId !== guideSelectionRequestId) return;
         console.error('Could not select game guide:', error);
         showAlert('error', await window.i18n.translate('alert.guide_catalog_failed'));
     }
 }
 
 async function loadGuides() {
+    const requestId = ++catalogRequestId;
     const loading = document.getElementById('guides-loading');
     const content = document.getElementById('guides-content');
     document.getElementById('guides')?.setAttribute('aria-busy', 'true');
@@ -266,22 +273,27 @@ async function loadGuides() {
             window.api.invoke('get-game-guide-catalog'),
             window.api.invoke('get-settings')
         ]);
+        if (requestId !== catalogRequestId) return;
         language = settings?.language || 'en_US';
         catalogGames = Array.isArray(catalog?.games) ? catalog.games : [];
         const selectedWikiId = guideGame?.wiki_page_id;
-        guideGame = catalogGames.find(game => game.wiki_page_id === selectedWikiId)
-            || catalogGames.find(game => game.id === guideGame?.id)
+        guideGame = catalogGames.find(game => selectedWikiId != null && game.wiki_page_id === selectedWikiId)
+            || catalogGames.find(game => guideGame?.id != null && game.id === guideGame.id)
+            || guideGame
             || catalogGames[0]
             || null;
-        if (guideGame) selectGuideGame(guideGame);
+        if (guideGame) selectGuideGame(guideGame, { invalidate: false });
         content.classList.remove('hidden');
     } catch (error) {
+        if (requestId !== catalogRequestId) return;
         console.error('Could not load game guides:', error);
         showAlert('error', await window.i18n.translate('alert.guide_catalog_failed'));
         content.classList.toggle('hidden', !guideGame);
     } finally {
-        document.getElementById('guides')?.setAttribute('aria-busy', 'false');
-        loading.classList.add('hidden');
+        if (requestId === catalogRequestId) {
+            document.getElementById('guides')?.setAttribute('aria-busy', 'false');
+            loading.classList.add('hidden');
+        }
     }
 }
 

@@ -9,6 +9,28 @@ function readProjectFile(relativePath) {
     return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
+test('English and Chinese catalogs have matching keys and interpolation variables', () => {
+    const flatten = (object, prefix = '', result = {}) => {
+        for (const [key, value] of Object.entries(object)) {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            if (typeof value === 'string') result[fullKey] = value;
+            else flatten(value, fullKey, result);
+        }
+        return result;
+    };
+    const english = flatten(JSON.parse(readProjectFile('src/locale/en_US.json')));
+    const chinese = flatten(JSON.parse(readProjectFile('src/locale/zh_CN.json')));
+    assert.deepEqual(Object.keys(english).sort(), Object.keys(chinese).sort());
+    const placeholders = text => Array.from(text.matchAll(/\{\{([^}]+)\}\}/g), match => match[1]).sort();
+    for (const key of Object.keys(english)) {
+        assert.ok(english[key].trim(), key);
+        assert.ok(chinese[key].trim(), key);
+        assert.deepEqual(placeholders(english[key]), placeholders(chinese[key]), key);
+    }
+    assert.match(english['alert.backup_game_error'], /backing up/);
+    assert.doesNotMatch(english['alert.backup_game_error'], /restor/i);
+});
+
 test('renderer language metadata and visible shell labels remain localized', () => {
     const english = JSON.parse(readProjectFile('src/locale/en_US.json'));
     const chinese = JSON.parse(readProjectFile('src/locale/zh_CN.json'));
@@ -56,14 +78,14 @@ test('shared UI primitives keep loading, table, and select states consistent', (
     assert.match(styles, /--control-height:/);
     assert.match(indexHtml, /id="library-loading" class="library-state"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.match(indexHtml, /id="guides-loading" class="library-state"[^>]*role="status"[^>]*aria-live="polite"/);
-    assert.match(indexHtml, /id="backup-loading" class="flex justify-center p-20 opacity-40"[^>]*role="status"[^>]*aria-live="polite"/);
-    assert.match(indexHtml, /id="restore-loading" class="flex justify-center p-20 opacity-40"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(indexHtml, /id="backup-loading" class="page-loading-state"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(indexHtml, /id="restore-loading" class="page-loading-state"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.equal((indexHtml.match(/class="table-semantic-head"/g) || []).length, 2);
     assert.match(mainCss, /input\.search-input:focus/);
     assert.match(mainCss, /input\.search-input:focus\s*\{[\s\S]*?border-width:\s*1px !important;/);
     assert.match(mainCss, /\.table-semantic-head\s*\{[\s\S]*?clip:\s*rect\(0, 0, 0, 0\)/);
     assert.match(mainCss, /\.table-container table th,[\s\S]*?height:\s*60px/);
-    assert.match(mainCss, /input\[type="text"\]\.search-input::placeholder\s*\{[\s\S]*?var\(--color-text-faint\)/);
+    assert.match(mainCss, /input\.search-input::placeholder\s*\{[\s\S]*?var\(--color-text-tertiary\)/);
     assert.match(mainCss, /\.sync-card,[\s\S]*?background:\s*var\(--color-card-surface-raised\)/);
     assert.match(settingsHtml, /data-i18n="settings\.database_variant_standard"/);
     assert.match(settingsHtml, /data-i18n="settings\.database_variant_xbox"/);

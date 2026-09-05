@@ -1,6 +1,8 @@
 import { renderIcon } from './js/icons.js';
 import './menu.css';
 
+let activeRequestId = null;
+
 function getMenuPayload(payload) {
     return {
         items: Array.isArray(payload) ? payload : payload?.items,
@@ -34,6 +36,7 @@ function focusMenuItem(menu, index) {
         item.tabIndex = itemIndex === normalizedIndex ? 0 : -1;
     });
     items[normalizedIndex].focus({ preventScroll: true });
+    items[normalizedIndex].scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function handleMenuKeyDown(event) {
@@ -44,7 +47,7 @@ function handleMenuKeyDown(event) {
     if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        window.api.send('resize-and-show-menu', { dismiss: true });
+        window.api.send('resize-and-show-menu', { dismiss: true, requestId: activeRequestId });
         return;
     }
 
@@ -59,6 +62,7 @@ function handleMenuKeyDown(event) {
 
 function measureAndShowMenu(menu, requestId) {
     requestAnimationFrame(() => {
+        if (requestId !== activeRequestId) return;
         const style = window.getComputedStyle(document.body);
         const inset = {
             top: parseFloat(style.paddingTop) || 0,
@@ -68,7 +72,7 @@ function measureAndShowMenu(menu, requestId) {
         };
         const horizontalPadding = inset.left + inset.right;
         const verticalPadding = inset.top + inset.bottom;
-        const width = Math.ceil(menu.scrollWidth + horizontalPadding + 2);
+        const width = Math.ceil(Math.max(menu.offsetWidth, menu.scrollWidth + 2) + horizontalPadding);
         const height = Math.ceil(menu.offsetHeight + verticalPadding + 2);
         window.api.send('resize-and-show-menu', { width, height, inset, requestId });
         focusMenuItem(menu, 0);
@@ -83,6 +87,7 @@ window.api.receive('set-menu-items', (payload) => {
     if (!menu || !wrapper || !Array.isArray(items)) {
         return;
     }
+    activeRequestId = requestId;
 
     if (typeof locale === 'string' && /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale)) {
         document.documentElement.lang = locale;
@@ -112,7 +117,7 @@ window.api.receive('set-menu-items', (payload) => {
             focusMenuItem(menu, getEnabledMenuItems(menu).indexOf(menuItem));
         });
         menuItem.addEventListener('click', () => {
-            window.api.send('menu-item-click', item?.action, item?.data);
+            window.api.send('menu-item-click', item?.action, item?.data, requestId);
         });
 
         wrapper.appendChild(menuItem);

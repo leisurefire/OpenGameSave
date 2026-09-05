@@ -71,7 +71,7 @@ test('library and guide interactions expose keyboard and assistive-technology st
     assert.match(libraryPage, /activeGameActions\.has\(actionKey\)/);
     assert.match(guidesPage, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
     assert.match(guidesPage, /setSearchResultsExpanded/);
-    assert.match(mainCss, /@media \(prefers-reduced-motion: reduce\)/);
+    assert.match(readProjectFile('src/renderer/css/common.css'), /@media \(prefers-reduced-motion: reduce\)/);
     assert.match(mainCss, /@media \(forced-colors: active\)/);
     assert.match(mainCss, /\.guide-open-button:focus-visible/);
 });
@@ -97,7 +97,49 @@ test('popup menus are keyboard operable and restore focus without stealing it af
     assert.match(menuEntry, /document\.documentElement\.lang = locale/);
     assert.match(menuCss, /\.menu-item:focus-visible/);
     assert.match(tableRows, /aria-haspopup="menu" aria-expanded="false"/);
-    assert.match(tablePopupMenu, /button\.setAttribute\('aria-expanded', 'true'\)/);
+    assert.match(tablePopupMenu, /requestPopupMenu\(button,/);
+    assert.match(utility, /button\.setAttribute\('aria-expanded', 'true'\)/);
     assert.match(libraryPage, /setAttribute\('aria-haspopup', 'menu'\)/);
     assert.match(utility, /state\.restoreFocus === true.*trigger\.focus\(\)/s);
+});
+
+test('scrollable popup menus reveal keyboard focus and include their scrollbar when sizing', () => {
+    const vm = require('node:vm');
+    const source = readProjectFile('src/renderer/menu.entry.js').replace(/^import .*;\r?\n/gm, '');
+    const document = { activeElement: null, body: {} };
+    const revealed = [];
+    const sentMessages = [];
+    const items = Array.from({ length: 3 }, (_, index) => ({
+        tabIndex: -1,
+        focus() { document.activeElement = this; },
+        scrollIntoView() { revealed.push(index); }
+    }));
+    const menu = {
+        querySelectorAll: () => items,
+        offsetWidth: 360,
+        scrollWidth: 350,
+        offsetHeight: 966
+    };
+    const context = vm.createContext({
+        document,
+        window: {
+            getComputedStyle: () => ({ paddingTop: '16px', paddingRight: '16px', paddingBottom: '16px', paddingLeft: '16px' }),
+            api: {
+                receive() {},
+                send: (...args) => sentMessages.push(args)
+            }
+        },
+        requestAnimationFrame: callback => callback(),
+        menu
+    });
+    vm.runInContext(source, context);
+    document.activeElement = items[0];
+    vm.runInContext("handleMenuKeyDown({ key: 'End', currentTarget: menu, preventDefault() {} });", context);
+    assert.equal(document.activeElement, items[2]);
+    assert.deepEqual(revealed, [2]);
+    assert.equal(items[2].tabIndex, 0);
+
+    vm.runInContext('measureAndShowMenu(menu, null);', context);
+    assert.equal(sentMessages[0][0], 'resize-and-show-menu');
+    assert.equal(sentMessages[0][1].width, 392);
 });

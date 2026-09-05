@@ -1,5 +1,5 @@
 import ActionButton from './ActionButton.js';
-import { appendRows as appendVirtualRows, disableVirtualRows } from '../virtualTable.js';
+import { appendRows as appendVirtualRows, disableVirtualRows, getRowId } from '../virtualTable.js';
 
 /**
  * <data-table> Web Component
@@ -45,15 +45,23 @@ class DataTable extends HTMLElement {
         const temp = document.createElement('tbody');
         temp.innerHTML = trHtml;
         const aligns = this._computeAligns();
-        const rows = Array.from(temp.querySelectorAll('tr'));
+        const records = Array.from(temp.querySelectorAll('tr'), row => ({
+            id: getRowId(row),
+            html: row.outerHTML,
+            selected: Boolean(row.querySelector('.row-checkbox')?.checked)
+        }));
+        temp.replaceChildren();
 
-        rows.forEach(tr => {
-            this._processRow(tr, aligns);
-        });
-
-        appendVirtualRows(this, rows, {
+        appendVirtualRows(this, records, {
             scrollContainer: this.closest('.modal-window-content') || this.shadowRoot.querySelector('.dt-body'),
-            rowHeight: 54
+            rowHeight: 54,
+            materializeRow: record => {
+                const rowContainer = document.createElement('tbody');
+                rowContainer.innerHTML = record.html;
+                const row = rowContainer.firstElementChild;
+                if (row) this._processRow(row, aligns);
+                return row;
+            }
         });
     }
 

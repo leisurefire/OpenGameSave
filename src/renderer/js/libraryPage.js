@@ -1,4 +1,5 @@
-import { showAlert, updateTranslations } from './utility.js';
+import { requestPopupMenu, showAlert, updateTranslations } from './utility.js';
+import { reconcileRenderedChildren } from './virtualTable.js';
 import libraryVirtualization from '../../shared/libraryVirtualization.js';
 
 const { calculateLibraryWindow } = libraryVirtualization;
@@ -118,43 +119,36 @@ function navigateToGuides(game) {
 }
 
 async function showGameMenu(game, button) {
-    if (button === window.activeMenuTrigger) {
-        window.api.send('hide-popup-menu');
-        button.setAttribute('aria-expanded', 'false');
-        window.activeMenuTrigger = null;
-        return;
-    }
-    const menuItems = [
-        {
-            label: await translate('main.play'),
-            icon: 'play',
-            action: 'launch-library-game',
-            data: { id: game.id, title: game.title }
-        },
-        {
-            label: await translate('main.open_install_directory'),
-            icon: 'folder-open',
-            action: 'open-library-game-directory',
-            data: { id: game.id, title: game.title }
+    return requestPopupMenu(button, async () => {
+        const menuItems = [
+            {
+                label: await translate('main.play'),
+                icon: 'play',
+                action: 'launch-library-game',
+                data: { id: game.id, title: game.title }
+            },
+            {
+                label: await translate('main.open_install_directory'),
+                icon: 'folder-open',
+                action: 'open-library-game-directory',
+                data: { id: game.id, title: game.title }
+            }
+        ];
+        if (game.guide) {
+            menuItems.push({
+                label: await translate('main.view_game_guides'),
+                icon: 'book-open',
+                action: 'open-game-guide',
+                data: { wikiPageId: game.guide.wikiPageId }
+            });
         }
-    ];
-    if (game.guide) {
-        menuItems.push({
-            label: await translate('main.view_game_guides'),
-            icon: 'book-open',
-            action: 'open-game-guide',
-            data: { wikiPageId: game.guide.wikiPageId }
-        });
-    }
-    const rect = button.getBoundingClientRect();
-    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
-    button.setAttribute('aria-expanded', 'true');
-    window.activeMenuTrigger = button;
-    window.api.send('show-popup-menu', {
-        items: menuItems,
-        x: rect.left,
-        y: rect.bottom + 3,
-        direction: 'down'
+        const rect = button.getBoundingClientRect();
+        return {
+            items: menuItems,
+            x: rect.left,
+            y: rect.bottom + 3,
+            direction: 'down'
+        };
     });
 }
 
@@ -165,8 +159,9 @@ function revokeImageObjectUrl(image) {
 }
 
 function releaseRenderedArtwork(container) {
-    container?.querySelectorAll('img[data-art-object-url]').forEach((image) => {
+    container?.querySelectorAll('img').forEach((image) => {
         revokeImageObjectUrl(image);
+        delete image.dataset.artRequestId;
         image.onload = null;
         image.onerror = null;
     });
@@ -247,6 +242,12 @@ function pumpArtLoads() {
 
 function loadArt(gameId, artType, image, expectedGameId = gameId) {
     if (!image || image.dataset.artLoaded === `${gameId}:${artType}`) return Promise.resolve();
+    // Hero selections share one image element. Keep only its latest queued
+    // request so rapid selection cannot retain an unbounded queue of closures.
+    for (let index = pendingArtLoads.length - 1; index >= 0; index -= 1) {
+        if (pendingArtLoads[index].image !== image) continue;
+        pendingArtLoads.splice(index, 1)[0].resolve();
+    }
     image.dataset.artLoaded = `${gameId}:${artType}`;
     return new Promise((resolve) => {
         const request = { gameId, artType, image, expectedGameId, resolve };
@@ -406,7 +407,9 @@ function getLibraryViewport(grid, scroll) {
 }
 
 function observeRenderedArtwork(grid) {
-    grid.querySelectorAll('[data-lazy-game-id]').forEach(image => artObserver?.observe(image));
+    grid.querySelectorAll('[data-lazy-game-id]').forEach(image => {
+        if (!image.dataset.artLoaded) artObserver?.observe(image);
+    });
 }
 
 function renderLibraryWindow(force = false) {
@@ -425,15 +428,20 @@ function renderLibraryWindow(force = false) {
     const windowKey = `${currentView}:${columnCount}:${windowRange.startIndex}:${windowRange.endIndex}`;
     if (!force && renderedWindowKey === windowKey) return;
 
-    artObserver?.disconnect();
-    releaseRenderedArtwork(grid);
-    const fragment = document.createDocumentFragment();
+    const existingCards = new Map(Array.from(grid.querySelectorAll('.library-card'), card => [card.dataset.gameId, card]));
+    const cards = [];
     visibleLibraryGames.slice(windowRange.startIndex, windowRange.endIndex).forEach((game, index) => {
-        fragment.appendChild(createCard(game, windowRange.startIndex + index));
+        const card = existingCards.get(game.id) || createCard(game, windowRange.startIndex + index);
+        existingCards.delete(game.id);
+        cards.push(card);
     });
+    for (const card of existingCards.values()) {
+        card.querySelectorAll('[data-lazy-game-id]').forEach(image => artObserver?.unobserve(image));
+        releaseRenderedArtwork(card);
+    }
     grid.style.paddingTop = `${windowRange.topPadding}px`;
     grid.style.paddingBottom = `${windowRange.bottomPadding}px`;
-    grid.replaceChildren(fragment);
+    reconcileRenderedChildren(grid, cards);
     renderedWindowKey = windowKey;
     discardDetachedArtLoads();
     observeRenderedArtwork(grid);
@@ -455,6 +463,8 @@ function scheduleLibraryWindowRender(force = false) {
 
 function clearRenderedGames() {
     const { grid } = getElements();
+    if (libraryWindowFrame !== null && libraryWindowFrame !== undefined) cancelAnimationFrame(libraryWindowFrame);
+    libraryWindowFrame = null;
     artObserver?.disconnect();
     releaseRenderedArtwork(grid);
     grid.replaceChildren();
@@ -479,7 +489,15 @@ function renderGames() {
     const selected = visibleLibraryGames.find(game => game.id === selectedGameId);
     if (visibleLibraryGames.length > 0) renderLibraryWindow(true);
     if (selected) selectGame(selected);
-    else elements.hero.classList.add('hidden');
+    else {
+        elements.hero.classList.add('hidden');
+        releaseRenderedArtwork(elements.hero);
+        elements.heroImage.removeAttribute('src');
+        delete elements.heroImage.dataset.artLoaded;
+        elements.heroPlay.onclick = null;
+        elements.heroFolder.onclick = null;
+        elements.heroGuide.onclick = null;
+    }
 }
 
 function renderFilters() {
@@ -556,6 +574,7 @@ async function refreshLibrary() {
             searchTitle: game.title.toLocaleLowerCase()
         })) : [];
         iconMap = platforms || {};
+        if (activePlatform !== 'All' && !games.some(game => game.platform === activePlatform)) activePlatform = 'All';
         if (!games.some(game => game.id === selectedGameId)) selectedGameId = games[0]?.id || null;
         renderFilters();
         renderGames();

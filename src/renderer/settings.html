@@ -15,7 +15,7 @@
         <div id="alert-container"></div>
     </div>
 
-    <form class="settings-form scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+    <main class="settings-form scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent" aria-label="Settings" data-i18n-aria-label="settings.title">
         <section class="settings-section" aria-labelledby="settings-application-heading">
             <h2 id="settings-application-heading" class="settings-section-title" data-i18n="settings.application">Application</h2>
             <div class="settings-card settings-list-card">
@@ -33,10 +33,10 @@
                 <div class="settings-row">
                     <div class="settings-row-copy">
                         <label for="max-backups" class="settings-row-title" data-i18n="settings.maxBackups">Maximum Backups Per Game</label>
-                        <p class="settings-row-description" data-i18n="settings.max_backups_hint">Maximum number of regular backups retained for each game</p>
+                        <p id="max-backups-description" class="settings-row-description" data-i18n="settings.max_backups_hint">Maximum number of regular backups retained for each game</p>
                     </div>
                     <div class="settings-number-control">
-                        <input type="number" id="max-backups" min="1" max="1000">
+                        <input type="number" id="max-backups" min="1" max="1000" aria-describedby="max-backups-description">
                     </div>
                 </div>
 
@@ -172,6 +172,6 @@
                 </button>
             </div>
         </section>
-    </form>
+    </main>
 </body>
 </html>

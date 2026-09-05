@@ -37,6 +37,28 @@ class FakeRowHost {
     constructor(scrollContainer) {
         this.children = [];
         this.parentElement = scrollContainer;
+        this.replacements = 0;
+        this.removedRows = [];
+    }
+
+    get childNodes() { return this.children; }
+
+    get firstChild() { return this.children[0] || null; }
+
+    removeChild(child) {
+        this.children.splice(this.children.indexOf(child), 1);
+        child.parentNode = null;
+        this.removedRows.push(child);
+    }
+
+    insertBefore(child, reference) {
+        child.parentNode?.removeChild(child);
+        this.children.splice(reference ? this.children.indexOf(reference) : this.children.length, 0, child);
+        child.parentNode = this;
+        Object.defineProperty(child, 'nextSibling', {
+            configurable: true,
+            get: () => this.children[this.children.indexOf(child) + 1] || null
+        });
     }
 
     appendChild(fragment) {
@@ -44,6 +66,7 @@ class FakeRowHost {
     }
 
     replaceChildren(fragment) {
+        this.replacements += 1;
         this.children = [...fragment.children];
     }
 
@@ -74,6 +97,14 @@ test('large virtual tables retain lightweight records and bound materialized DOM
     const previousDocument = global.document;
     const previousRequestAnimationFrame = global.requestAnimationFrame;
     const previousCancelAnimationFrame = global.cancelAnimationFrame;
+    const previousResizeObserver = global.ResizeObserver;
+    let resizeCallback;
+    let observerDisconnected = false;
+    global.ResizeObserver = class {
+        constructor(callback) { resizeCallback = callback; }
+        observe() {}
+        disconnect() { observerDisconnected = true; }
+    };
     global.document = { createDocumentFragment: () => new FakeFragment() };
     global.requestAnimationFrame = callback => {
         callback();
@@ -84,6 +115,7 @@ test('large virtual tables retain lightweight records and bound materialized DOM
         global.document = previousDocument;
         global.requestAnimationFrame = previousRequestAnimationFrame;
         global.cancelAnimationFrame = previousCancelAnimationFrame;
+        global.ResizeObserver = previousResizeObserver;
     });
 
     const virtualTable = await loadVirtualTableModule();
@@ -121,11 +153,44 @@ test('large virtual tables retain lightweight records and bound materialized DOM
     assert.ok(rowHost.children.length <= materializedLimit + 2);
     assert.equal(materializedCount, materializedLimit);
 
+    const initialRows = [...rowHost.children];
+    const initialReplacements = rowHost.replacements;
+    virtualTable.refreshVirtualRows(rowHost);
+    assert.equal(materializedCount, materializedLimit, 'unchanged viewport reuses every row');
+    assert.equal(rowHost.replacements, initialReplacements, 'unchanged viewport preserves focus and DOM');
+    scrollContainer.scrollTop = 30;
+    virtualTable.refreshVirtualRows(rowHost);
+    assert.equal(materializedCount, materializedLimit + 1, 'one row scroll materializes only the entering row');
+    assert.equal(rowHost.children[1], initialRows[2]);
+    assert.equal(state.renderedRowsByRecord.size, materializedLimit);
+    for (const row of initialRows.slice(2, -1)) {
+        assert.ok(!rowHost.removedRows.includes(row), 'overlapping rows remain attached while scrolling');
+    }
+
+    scrollContainer.scrollTop = 0;
+    const retainedRows = rowHost.children.slice(1, -2);
+    rowHost.removedRows.length = 0;
+    virtualTable.refreshVirtualRows(rowHost);
+    for (const row of retainedRows) {
+        assert.ok(!rowHost.removedRows.includes(row), 'scrolling upward also preserves overlapping focus targets');
+    }
+
+    const beforeSelection = rowHost.replacements;
+    virtualTable.setAllVirtualSelected(rowHost, true);
+    assert.equal(rowHost.replacements, beforeSelection, 'checkbox updates do not replace rows');
+    assert.ok([...state.renderedRowsById.values()].every(row => row.checkbox.checked));
+    virtualTable.setAllVirtualSelected(rowHost, false);
+
     let previousCount = materializedCount;
     virtualTable.applyVirtualFilter(rowHost, record => record.included);
     assert.equal(state.filteredRecords.length, 500);
     assert.equal(state.filteredIds.size, 500);
     assert.ok(materializedCount - previousCount <= materializedLimit);
+
+    scrollContainer.scrollTop = 50_000;
+    virtualTable.applyVirtualFilter(rowHost, record => record.rank < 3, { resetScroll: false });
+    assert.equal(state.renderedRowsById.size, 3, 'stale offsets after filtering cannot leave an empty viewport');
+    virtualTable.applyVirtualFilter(rowHost, record => record.included);
 
     previousCount = materializedCount;
     virtualTable.sortVirtualRows(rowHost, items => items.sort((left, right) => right.rank - left.rank));
@@ -164,9 +229,16 @@ test('large virtual tables retain lightweight records and bound materialized DOM
     assert.equal(virtualTable.findVirtualRecord(rowHost, '800').backgroundState, true);
     assert.equal(materializedCount, previousCount);
 
+    scrollContainer.scrollTop = 0;
+    scrollContainer.clientHeight = 100;
+    resizeCallback();
+    assert.ok(state.renderedRowsById.size >= 10, 'resizing fills the newly visible viewport');
+
     virtualTable.disableVirtualRows(rowHost);
     assert.equal(virtualTable.getVirtualState(rowHost), null);
     assert.equal(state.allRecords.length, 0);
     assert.equal(state.recordsById.size, 0);
     assert.equal(state.renderedRowsById.size, 0);
+    assert.equal(state.renderedRowsByRecord.size, 0);
+    assert.equal(observerDisconnected, true);
 });

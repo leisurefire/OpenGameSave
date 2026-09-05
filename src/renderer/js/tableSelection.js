@@ -8,6 +8,8 @@ import {
     updateVirtualSelection
 } from './virtualTable.js';
 
+const selectionRenderTokens = new WeakMap();
+
 export function getSelectedWikiIds(tabName) {
     const table = document.querySelector(`#${tabName}`);
     if (!table) return [];
@@ -35,6 +37,9 @@ export function updateSelectAllCheckbox(selectAllCheckbox, tableContainer) {
 export async function updateSelectedCountAndSize(tabName) {
     const selectedCountWidget = document.querySelector(`#${tabName}-selected-count`);
     const totalSizeWidget = document.querySelector(`#${tabName}-selected-size`);
+    if (!selectedCountWidget || !totalSizeWidget) return;
+    const renderToken = {};
+    selectionRenderTokens.set(selectedCountWidget, renderToken);
     const tableBody = document.querySelector(`#${tabName} tbody`);
     const selectedWikiIds = getSelectedWikiIds(tabName);
     const visibleIds = getFilteredVirtualRowIds(tableBody);
@@ -44,19 +49,22 @@ export async function updateSelectedCountAndSize(tabName) {
 
     selectedWikiIds.forEach((wikiId) => {
         if (!visibleIds.has(wikiId)) return;
-        const gameData = dataMap.get(wikiId) || dataMap.get(Number(wikiId));
+        const gameData = dataMap?.get(wikiId) || dataMap?.get(Number(wikiId));
         if (gameData) {
             totalSize += gameData.backup_size;
             totalSelected += 1;
         }
     });
-    selectedCountWidget.textContent = await window.i18n.translate('main.selected_games_count', {
-        count: totalSelected,
-        total: getFilteredVirtualRows(tableBody).length
-    });
-    totalSizeWidget.textContent = await window.i18n.translate(`main.total_${tabName}_size`, {
-        size: formatSize(totalSize)
-    });
+    const [countLabel, sizeLabel] = await Promise.all([
+        window.i18n.translate('main.selected_games_count', {
+            count: totalSelected,
+            total: getFilteredVirtualRows(tableBody).length
+        }),
+        window.i18n.translate(`main.total_${tabName}_size`, { size: formatSize(totalSize) })
+    ]);
+    if (selectionRenderTokens.get(selectedCountWidget) !== renderToken) return;
+    selectedCountWidget.textContent = countLabel;
+    totalSizeWidget.textContent = sizeLabel;
 }
 
 export function setupSelectAllCheckbox(tabName, selectAllCheckbox) {

@@ -1,6 +1,6 @@
 import { operationStartCheck, showAlert, updateTranslations, wrapNumberInput, autoResizeWindow } from './utility.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
-import { formatSize } from './formatting.js';
+import { formatBackupDate, formatSize } from './formatting.js';
 import { getLocalSaveOpenIconRole } from './icons.js';
 import './components/DataTable.js';
 
@@ -37,7 +37,7 @@ async function setWindowTitle(title) {
 
 async function setModalLoading(root) {
     const loadingText = await window.i18n.translate('main.loading');
-    root.innerHTML = `<div class="modal-loading-state">${createLoadingIndicator(loadingText)}</div>`;
+    root.innerHTML = `<div class="modal-loading-state" role="status" aria-live="polite">${createLoadingIndicator(loadingText)}</div>`;
 }
 
 async function requestConfirmModal(title, message) {
@@ -116,6 +116,10 @@ async function renderExportModal(root) {
         const count = document.getElementById('modal-export-count').value;
         const exportPath = document.getElementById('modal-export-path').value;
         const scope = document.querySelector('input[name="export-scope"]:checked').value;
+        if (!exportPath.trim()) {
+            await showAlert('warning', await window.i18n.translate('alert.empty_export_path'));
+            return;
+        }
         let wikiIds = null;
 
         if (scope !== 'all') {
@@ -172,6 +176,10 @@ async function renderImportModal(root, initData) {
         if (!start) return;
 
         const importPath = document.getElementById('modal-import-path').value;
+        if (!importPath.trim()) {
+            await showAlert('warning', await window.i18n.translate('alert.empty_import_path'));
+            return;
+        }
         window.api.send('import-backups', importPath);
         closeModalWindow();
     });
@@ -264,8 +272,9 @@ async function renderAccountModal(root) {
             const result = await window.api.invoke('save-settings', 'backupAllAccounts', isAllAccountsSelected);
             window.api.send('update-backup-table');
             if (Array.isArray(result?.watcherFailures) && result.watcherFailures.length > 0) {
+                const unknownError = await window.i18n.translate('alert.unknown_error');
                 const failureDetails = result.watcherFailures.map((failure) => (
-                    `${failure.wikiId}: ${failure.error || 'Unknown error'}`
+                    `${failure.wikiId}: ${failure.error || unknownError}`
                 ));
                 await showAlert(
                     'modal',
@@ -283,13 +292,6 @@ async function renderAccountModal(root) {
             showAlert('error', await window.i18n.translate('settings.save_settings_error'));
             confirmButton.disabled = false;
         }
-    });
-}
-
-function formatBackupDate(backupDate) {
-    return String(backupDate || '').replace(/^(\d{4})-(\d{1,2})-(\d{1,2})_(\d{1,2})-(\d{1,2})(?:-(\d{1,2}))?$/, (match, year, month, day, hour, minute, second) => {
-        const formatted = `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-        return second == null ? formatted : `${formatted}:${String(second).padStart(2, '0')}`;
     });
 }
 
@@ -322,12 +324,15 @@ async function renderManageBackupsModal(root, initData) {
         makePermanent: await window.i18n.translate('main.make_permanent'),
         removePermanent: await window.i18n.translate('main.remove_permanent'),
         enterBackupName: await window.i18n.translate('main.enter_backup_name'),
+        renameBackup: await window.i18n.translate('main.rename_backup'),
+        confirm: await window.i18n.translate('alert.confirm'),
+        noBackups: await window.i18n.translate('main.no_backups'),
         openBackupFolder: await window.i18n.translate('main.open_backup_folder')
     };
 
     const renderDateDisplay = (backup) => {
         const permanentIcon = backup.is_permanent ? '<span data-lucide-icon="star" class="text-yellow-500 mr-2"></span>' : '';
-        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-theme-accent transition-all ml-2" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="pencil"></span></button>` : '';
+        const renameIcon = backup.is_permanent ? `<button type="button" class="rename-backup-btn opacity-40 hover:opacity-100 hover:text-theme-accent transition-all ml-2" aria-label="${escapeHtml(labels.renameBackup)}" title="${escapeHtml(labels.renameBackup)}" data-backup-date="${escapeHtml(backup.date)}"><span data-lucide-icon="pencil"></span></button>` : '';
         if (backup.is_permanent && backup.custom_name) {
             return `${permanentIcon}<div class="flex flex-col"><span class="backup-custom-name font-bold text-theme-accent">${escapeHtml(backup.custom_name)}</span><span class="text-xs opacity-50">${escapeHtml(formatBackupDate(backup.date))}</span></div>${renameIcon}`;
         }
@@ -341,8 +346,8 @@ async function renderManageBackupsModal(root, initData) {
                 <td>
                     <div class="flex items-center">
                         <div class="rename-mode hidden items-center">
-                            <input type="text" class="backup-name-input" placeholder="${escapeHtml(labels.enterBackupName)}" />
-                            <button type="button" class="confirm-rename-btn" aria-label="${escapeHtml(labels.enterBackupName)}"><span data-lucide-icon="check"></span></button>
+                            <input type="text" class="backup-name-input" aria-label="${escapeHtml(labels.enterBackupName)}" placeholder="${escapeHtml(labels.enterBackupName)}" maxlength="120" />
+                            <button type="button" class="confirm-rename-btn" aria-label="${escapeHtml(labels.confirm)}"><span data-lucide-icon="check"></span></button>
                         </div>
                         <div class="backup-date-display flex items-center">${renderDateDisplay(backup)}</div>
                     </div>
@@ -364,7 +369,7 @@ async function renderManageBackupsModal(root, initData) {
             <div class="mb-6">
                 <h1 class="text-2xl font-bold text-theme-accent">${escapeHtml(gameTitle || labels.title)}</h1>
                 <div class="text-sm opacity-60 mt-1">
-                    <p><span class="opacity-60">${escapeHtml(labels.newestBackup)}:</span> <span class="newest-backup-value font-bold">${escapeHtml(gameData.latest_backup || '-')}</span></p>
+                    <p><span class="opacity-60">${escapeHtml(labels.newestBackup)}:</span> <span class="newest-backup-value font-bold">${escapeHtml(gameData.backups?.length ? gameData.latest_backup : labels.noBackups)}</span></p>
                     <p><span class="opacity-60">${escapeHtml(labels.backupCount)}:</span> <span class="backup-count-value font-bold">${escapeHtml((gameData.backups || []).length)}</span></p>
                 </div>
             </div>
@@ -384,6 +389,16 @@ async function renderManageBackupsModal(root, initData) {
     ]);
     root.querySelector('#manage-backups-table-container').appendChild(manageTable);
     manageTable.appendRows(rowsHtml);
+    const openBackupFolderButton = document.getElementById('modal-open-backup-folder');
+    if (!gameData.backups?.length) {
+        const emptyState = document.createElement('p');
+        emptyState.className = 'modal-loading-state';
+        emptyState.setAttribute('role', 'status');
+        emptyState.setAttribute('data-i18n', 'main.no_backups');
+        emptyState.textContent = labels.noBackups;
+        root.querySelector('#manage-backups-table-container').appendChild(emptyState);
+        openBackupFolderButton.disabled = true;
+    }
 
     const refreshMainTables = () => {
         window.api.send('update-backup-table');
@@ -400,7 +415,9 @@ async function renderManageBackupsModal(root, initData) {
 
         if (button.classList.contains('delete-backup-btn')) {
             const backupDate = button.dataset.backupDate;
-            const confirmMessage = (await window.i18n.translate('alert.confirm_delete_backup_message')).replace('{{backup_date}}', formatBackupDate(backupDate));
+            const confirmMessage = await window.i18n.translate('alert.confirm_delete_backup_message', {
+                backup_date: formatBackupDate(backupDate)
+            });
             const confirmed = await requestConfirmModal(await window.i18n.translate('alert.confirm_delete_backup_title'), confirmMessage);
             if (!confirmed) return;
             const success = await window.api.invoke('delete-backup', wikiId, backupDate);
@@ -560,7 +577,7 @@ async function renderAutoBackupModal(root, initData) {
                             <span class="modal-setting-title">${escapeHtml(labels.interval)}</span>
                         </label>
                         <div class="modal-setting-control">
-                            <input type="number" id="auto-backup-interval" value="${escapeHtml(currentInterval)}" min="1">
+                            <input type="number" id="auto-backup-interval" value="${escapeHtml(currentInterval)}" min="1" max="1440" step="1">
                         </div>
                     </div>
                 </div>
@@ -585,27 +602,42 @@ async function renderAutoBackupModal(root, initData) {
     const intervalInput = document.getElementById('auto-backup-interval');
     if (intervalInput) wrapNumberInput(intervalInput);
 
-    document.getElementById('modal-auto-backup-confirm').addEventListener('click', async () => {
-        if (isActive) {
-            const logs = await window.api.invoke('stop-auto-backup', wikiId);
-            closeModalWindow();
-            if (logs && logs.length > 0) {
-                const failedCount = logs.filter(log => !log.success).length;
-                const summaryMessage = await window.i18n.translate('main.auto_backup_summary', { total: logs.length, failed: failedCount });
-                if (failedCount > 0) {
-                    showMainAlert('modal', summaryMessage, logs.filter(log => !log.success).map(log => `[${log.timestamp}] ${log.error}`));
+    document.getElementById('modal-auto-backup-confirm').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        try {
+            if (isActive) {
+                const logs = await window.api.invoke('stop-auto-backup', wikiId);
+                closeModalWindow();
+                if (logs && logs.length > 0) {
+                    const failedCount = logs.filter(log => !log.success).length;
+                    const summaryMessage = await window.i18n.translate('main.auto_backup_summary', { total: logs.length, failed: failedCount });
+                    if (failedCount > 0) {
+                        showMainAlert('modal', summaryMessage, logs.filter(log => !log.success).map(log => `[${log.timestamp}] ${log.error}`));
+                    } else {
+                        showMainAlert('success', summaryMessage);
+                    }
                 } else {
-                    showMainAlert('success', summaryMessage);
+                    showMainAlert('info', await window.i18n.translate('main.auto_backup_disabled'));
                 }
             } else {
-                showMainAlert('info', await window.i18n.translate('main.auto_backup_disabled'));
+                const mode = root.querySelector('input[name="auto-backup-mode"]:checked').value;
+                const intervalMinutes = Number(document.getElementById('auto-backup-interval').value);
+                if (mode === 'interval' && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
+                    await showAlert('warning', await window.i18n.translate('alert.invalid_auto_backup_interval'));
+                    return;
+                }
+                await window.api.invoke('start-auto-backup', wikiId, mode, intervalMinutes);
+                closeModalWindow();
+                showMainAlert('success', await window.i18n.translate('main.auto_backup_enabled'));
             }
-        } else {
-            const mode = root.querySelector('input[name="auto-backup-mode"]:checked').value;
-            const intervalMinutes = parseInt(document.getElementById('auto-backup-interval').value, 10) || 30;
-            await window.api.invoke('start-auto-backup', wikiId, mode, intervalMinutes);
-            closeModalWindow();
-            showMainAlert('success', await window.i18n.translate('main.auto_backup_enabled'));
+        } catch (error) {
+            console.error('Failed to configure automatic backup:', error);
+            await showAlert('error', await window.i18n.translate('alert.auto_backup_change_failed'));
+        } finally {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
         }
     });
 }
@@ -651,7 +683,7 @@ async function renderLocalSaveModal(root, initData) {
     const rowsHtml = resolvedPaths.map((pathObj, index) => {
         const typeLabel = pathObj.type === 'reg'
             ? labels.registry
-            : (pathObj.type === 'file' ? labels.file : labels.folder);
+            : (pathObj.type === 'file' ? labels.file : pathObj.type === 'folder' ? labels.folder : labels.path);
         const openIconRole = getLocalSaveOpenIconRole(pathObj.type);
         return `
             <tr>
@@ -870,7 +902,7 @@ async function initModalWindowPage() {
     } else if (modalType === 'confirm') {
         await renderConfirmModal(root, initData);
     } else {
-        root.innerHTML = `<div class="modal-loading-state">Unknown modal: ${escapeHtml(modalType)}</div>`;
+        root.innerHTML = `<div class="modal-loading-state" role="alert" data-i18n="alert.modal_unavailable">${escapeHtml(await window.i18n.translate('alert.modal_unavailable'))}</div>`;
     }
 
     if (modalType !== 'manage-backups' && modalType !== 'local-save') {
@@ -879,9 +911,10 @@ async function initModalWindowPage() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    initModalWindowPage().catch((error) => {
+    initModalWindowPage().catch(async (error) => {
         console.error('Failed to initialize modal window:', error);
         const root = document.getElementById('modal-root');
-        root.innerHTML = `<div class="modal-loading-state text-red-400">${escapeHtml(error.message || String(error))}</div>`;
+        const message = await window.i18n.translate('alert.modal_load_failed').catch(() => 'Unable to load this window');
+        root.innerHTML = `<div class="modal-loading-state" role="alert" data-i18n="alert.modal_load_failed">${escapeHtml(message)}</div>`;
     });
 });

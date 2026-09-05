@@ -18,10 +18,13 @@
     padding: 24px;
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .settings-section {
+    min-width: 0;
     display: flex;
+    flex: 0 0 auto;
     flex-direction: column;
     gap: 10px;
 }
@@ -47,6 +50,12 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
+    flex-wrap: wrap;
+}
+
+.settings-section-heading-row > div {
+    min-width: 0;
+    flex: 1 1 240px;
 }
 
 .settings-card {
@@ -78,7 +87,11 @@
     cursor: pointer;
 }
 
-.settings-toggle-row:hover::before {
+.settings-toggle-row:has(toggle-switch[disabled]) {
+    cursor: not-allowed;
+}
+
+.settings-toggle-row:has(toggle-switch:not([disabled])):hover::before {
     position: absolute;
     inset: 3px -8px;
     z-index: 0;
@@ -101,6 +114,11 @@
     z-index: 1000;
 }
 
+.settings-row dropdown-select {
+    flex: 0 0 auto;
+    max-width: 100%;
+}
+
 #database-variant {
     width: 210px;
 }
@@ -108,6 +126,7 @@
 .settings-row-copy {
     min-width: 0;
     flex: 1 1 auto;
+    overflow-wrap: anywhere;
 }
 
 .settings-row-title {
@@ -150,10 +169,12 @@
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 0 11px;
-    color: color-mix(in srgb, var(--system-accent) 72%, white);
+    max-width: 100%;
+    padding: 6px 11px;
+    color: var(--color-accent-emphasis);
     font-size: 12px;
     font-weight: 500;
+    line-height: 18px;
 }
 
 .settings-row-action .lucide-icon {
@@ -167,10 +188,12 @@
     flex: 0 0 auto;
     align-items: center;
     gap: 7px;
-    padding: 0 11px;
-    color: rgba(255, 255, 255, 0.8);
+    max-width: 100%;
+    padding: 6px 11px;
+    color: var(--color-text-emphasis);
     font-size: 12px;
     font-weight: 500;
+    line-height: 18px;
 }
 
 .settings-section-action .lucide-icon {
@@ -187,7 +210,11 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    padding: 4px;
+    margin: -4px;
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .game-path-item {
@@ -226,7 +253,7 @@
     transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 
-.settings-icon-button:hover {
+.settings-icon-button:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.08);
     border-color: var(--color-control-border-hover);
@@ -238,13 +265,13 @@
     border-color: transparent;
 }
 
-.settings-icon-button.danger:hover {
+.settings-icon-button.danger:hover:not(:disabled) {
     color: var(--color-danger-foreground);
     background: var(--color-danger-surface-hover);
     border-color: transparent;
 }
 
-.settings-icon-button.danger:active {
+.settings-icon-button.danger:active:not(:disabled) {
     background: var(--color-danger-surface-active);
 }
 
@@ -270,7 +297,7 @@
     transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 
-.settings-add-path:hover {
+.settings-add-path:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.88);
     background: rgba(255, 255, 255, 0.03);
     border-color: rgba(255, 255, 255, 0.14);
@@ -299,5 +326,20 @@ input::-webkit-inner-spin-button {
 
     .settings-row-description {
         max-width: 310px;
+    }
+}
+
+@media (max-width: 460px) {
+    .settings-row:not(.settings-toggle-row) {
+        flex-wrap: wrap;
+    }
+
+    .settings-row:not(.settings-toggle-row) .settings-row-copy {
+        flex-basis: 100%;
+    }
+
+    .settings-row dropdown-select,
+    #database-variant {
+        width: 100%;
     }
 }

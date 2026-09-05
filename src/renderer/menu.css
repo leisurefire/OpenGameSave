@@ -5,6 +5,7 @@
 
 :root {
     color-scheme: dark;
+    --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     --color-text-primary: rgba(255, 255, 255, 0.9);
     --color-menu-surface: rgba(43, 43, 43, 0.99);
     --color-menu-border: rgba(255, 255, 255, 0.12);
@@ -38,15 +39,17 @@ body {
     background: transparent;
     user-select: none;
     -webkit-app-region: no-drag;
-    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-sans);
+    line-height: 1.4;
 }
 
 .menu-container {
     display: inline-flex;
     min-width: 180px;
     max-width: 360px;
+    max-height: 966px;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden auto;
     background: var(--color-menu-surface);
     backdrop-filter: blur(32px) saturate(110%);
     border: 1px solid var(--color-menu-border);
@@ -87,15 +90,16 @@ body {
 }
 
 #menu-content-wrapper {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
 }
 
 .menu-item {
     width: 100%;
-    min-width: max-content;
+    min-width: 0;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     min-height: var(--control-height);
@@ -104,16 +108,17 @@ body {
     color: var(--color-text-primary);
     background: transparent;
     border: 0;
-    font-family: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13.5px;
+    font-family: inherit;
+    font-size: 13px;
     font-weight: 400;
+    line-height: 20px;
     text-align: left;
     cursor: pointer;
     border-radius: var(--radius-control);
     transition: background-color 0.1s ease;
 }
 
-.menu-item:hover {
+.menu-item:hover:not(:disabled) {
     background-color: var(--color-menu-hover);
 }
 
@@ -123,23 +128,49 @@ body {
     background-color: var(--color-menu-hover);
 }
 
-.menu-item:active {
+.menu-item:active:not(:disabled) {
     background-color: var(--color-menu-active);
     color: rgba(255, 255, 255, 0.7);
 }
 
 .menu-item-icon {
     width: 16px;
-    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    flex: 0 0 16px;
+    align-items: center;
+    justify-content: center;
     opacity: 0.8;
 }
 
-.menu-item span {
-    flex: 0 1 auto;
+.menu-item > span:not(.menu-item-icon) {
+    flex: 1 1 auto;
     min-width: 0;
     color: inherit;
     text-align: left;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.menu-item-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.menu-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.menu-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.menu-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: var(--radius-control);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -220,11 +220,11 @@
 
         <!-- Save management: Backup -->
         <section id="backup" role="tabpanel" class="hidden">
-            <div id="backup-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
+            <div id="backup-loading" class="page-loading-state" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
             
                         <div id="backup-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.backup_complete">BACKUP COMPLETE</h2>
-                <span data-lucide-icon="circle-check" class="summary-success-icon text-theme-accent mb-8"></span>
+                <span data-lucide-icon="circle-check" class="summary-success-icon mb-8"></span>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="backup-summary-total-games"></p>
                     <p id="backup-summary-total-size"></p>
@@ -254,7 +254,7 @@
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
                             <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
-                            <input type="text" id="backup-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
+                            <input type="search" id="backup-search" class="search-input" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">
@@ -317,11 +317,11 @@
 
         <!-- Save management: Restore -->
         <section id="restore" role="tabpanel" class="hidden">
-            <div id="restore-loading" class="flex justify-center p-20 opacity-40" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
+            <div id="restore-loading" class="page-loading-state" data-i18n="main.loading" role="status" aria-live="polite">Loading...</div>
             
                         <div id="restore-summary" class="hidden text-center py-10 animate-fadeInShift">
                 <h2 class="text-4xl font-black mb-6" data-i18n="main.restore_complete">RESTORE COMPLETE</h2>
-                <span data-lucide-icon="circle-check" class="summary-success-icon text-theme-accent mb-8"></span>
+                <span data-lucide-icon="circle-check" class="summary-success-icon mb-8"></span>
                 <div class="space-y-2 text-lg opacity-80">
                     <p id="restore-summary-total-games"></p>
                     <p id="restore-summary-total-size"></p>
@@ -351,7 +351,7 @@
                     <div class="flex items-center gap-2 min-w-0">
                         <div class="relative search-field">
                             <span data-lucide-icon="search" class="search-field-icon absolute top-1/2 -translate-y-1/2 pointer-events-none"></span>
-                            <input type="text" id="restore-search" class="search-input w-80" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
+                            <input type="search" id="restore-search" class="search-input" data-i18n-placeholder="main.search_for_games" data-i18n-aria-label="main.search_for_games">
                         </div>
                     </div>
                     <div class="filter-actions">

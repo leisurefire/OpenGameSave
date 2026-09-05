@@ -47,6 +47,9 @@ function setupDatabaseUpdateButton(button, icon, text, databaseVariantSelect) {
                     showAlert('info', await window.i18n.translate('settings.database_up_to_date'));
                 }
             }
+        } catch (error) {
+            console.error('Failed to update the database:', error);
+            await showAlert('error', await window.i18n.translate('alert.error_during_db_update'));
         } finally {
             await setActionButtonState({
                 button,
@@ -241,6 +244,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     showAlert('error', await window.i18n.translate('settings.save_settings_error'));
                 }
             }
+        }).catch(async (error) => {
+            console.error('Failed to read or save settings:', error);
+            await showAlert('error', await window.i18n.translate('settings.save_settings_error'));
         });
         return autoSaveQueue;
     }
@@ -260,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Failed to change language:', error);
             languageSelect.value = previousLanguage;
+            await showAlert('error', await window.i18n.translate('settings.language_change_failed'));
         } finally {
             languageSelect.disabled = false;
         }
@@ -289,8 +296,14 @@ document.addEventListener('DOMContentLoaded', () => {
         maxBackupsSaveTimer = setTimeout(autoSave, 250);
     });
 
-    autoDetectButton.addEventListener('click', () => {
-        window.api.invoke('get-detected-game-paths').then(async (value) => {
+    autoDetectButton.addEventListener('click', async () => {
+        const label = autoDetectButton.querySelector('[data-i18n]');
+        autoDetectButton.disabled = true;
+        autoDetectButton.setAttribute('aria-busy', 'true');
+        label.dataset.i18n = 'settings.detecting_paths';
+        try {
+            label.textContent = await window.i18n.translate('settings.detecting_paths');
+            const value = await window.api.invoke('get-detected-game-paths');
             if (value && value.length > 0) {
                 let added = false;
                 value.forEach(path => {
@@ -299,11 +312,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         added = true;
                     }
                 });
-                if (added) autoSave();
+                if (added) await autoSave();
+                else await showAlert('info', await window.i18n.translate('settings.detected_paths_already_added'));
             } else {
-                showAlert('warning', await window.i18n.translate('settings.noPathsDetected'));
+                await showAlert('warning', await window.i18n.translate('settings.noPathsDetected'));
             }
-        });
+        } catch (error) {
+            console.error('Failed to detect game paths:', error);
+            await showAlert('error', await window.i18n.translate('settings.detect_paths_failed'));
+        } finally {
+            autoDetectButton.disabled = false;
+            autoDetectButton.removeAttribute('aria-busy');
+            label.dataset.i18n = 'settings.autoDetect';
+            label.textContent = await window.i18n.translate('settings.autoDetect');
+        }
     });
 
     addNewPathButton.addEventListener('click', () => {

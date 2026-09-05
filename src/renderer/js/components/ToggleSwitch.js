@@ -18,14 +18,19 @@
  */
 class ToggleSwitch extends HTMLElement {
     static get observedAttributes() {
-        return ['disabled', 'aria-label'];
+        return ['disabled', 'aria-label', 'checked'];
     }
 
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
-        this._checked = false;
+        this._checked = this.hasAttribute('checked');
         this._render();
+        this.shadowRoot.querySelector('.toggle-button').addEventListener('click', () => {
+            if (this.disabled) return;
+            this.checked = !this.checked;
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+        });
     }
 
     get checked() {
@@ -34,6 +39,7 @@ class ToggleSwitch extends HTMLElement {
 
     set checked(value) {
         this._checked = !!value;
+        this.toggleAttribute('checked', this._checked);
         this._updateVisual();
     }
 
@@ -46,15 +52,19 @@ class ToggleSwitch extends HTMLElement {
     }
 
     connectedCallback() {
-        this.shadowRoot.querySelector('.toggle-button').addEventListener('click', () => {
-            if (this.disabled) return;
-            this.checked = !this.checked;
-            this.dispatchEvent(new Event('change', { bubbles: true }));
-        });
         this._updateVisual();
     }
 
-    attributeChangedCallback() {
+    focus(options) {
+        this.shadowRoot.querySelector('.toggle-button')?.focus(options);
+    }
+
+    click() {
+        this.shadowRoot.querySelector('.toggle-button')?.click();
+    }
+
+    attributeChangedCallback(name) {
+        if (name === 'checked') this._checked = this.hasAttribute('checked');
         this._updateVisual();
     }
 
@@ -79,7 +89,7 @@ class ToggleSwitch extends HTMLElement {
                 }
 
                 :host([disabled]) {
-                    opacity: 0.55;
+                    opacity: 0.5;
                     cursor: not-allowed;
                 }
 
@@ -88,14 +98,15 @@ class ToggleSwitch extends HTMLElement {
                     width: 34px;
                     height: 20px;
                     padding: 2px;
+                    box-sizing: border-box;
                     background: rgba(255, 255, 255, 0.17);
                     border: 0;
-                    border-radius: 999px;
+                    border-radius: var(--radius-pill, 999px);
                     cursor: pointer;
                     transition: background-color 140ms ease, box-shadow 140ms ease;
                 }
 
-                .toggle-button:hover {
+                .toggle-button:hover:not(:disabled) {
                     background: rgba(255, 255, 255, 0.23);
                 }
 
@@ -103,9 +114,11 @@ class ToggleSwitch extends HTMLElement {
                     background: var(--system-accent, #16c60c);
                 }
 
-                .toggle-button.checked:hover {
+                .toggle-button.checked:hover:not(:disabled) {
                     filter: brightness(1.08);
                 }
+
+                .toggle-button:disabled { cursor: not-allowed; }
 
                 .toggle-button:focus-visible {
                     outline: 2px solid var(--color-focus-ring, #7de875);
@@ -131,6 +144,16 @@ class ToggleSwitch extends HTMLElement {
                 @media (prefers-reduced-motion: reduce) {
                     .toggle-button,
                     .toggle-thumb { transition: none; }
+                }
+
+                @media (forced-colors: active) {
+                    .toggle-button { border: 1px solid ButtonText; }
+                    .toggle-button.checked { background: Highlight; }
+                    .toggle-thumb { background: ButtonText; }
+                    .toggle-button.checked .toggle-thumb { background: HighlightText; }
+                    .toggle-button:disabled { border-color: GrayText; }
+                    .toggle-button:disabled .toggle-thumb { background: GrayText; }
+                    .toggle-button:focus-visible { outline-color: Highlight; }
                 }
             </style>
             <button type="button" class="toggle-button" role="switch" aria-checked="false">

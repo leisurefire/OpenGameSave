@@ -39,6 +39,20 @@ test('library virtualization clamps stale scroll offsets after filtering', () =>
     assert.ok(range.startIndex >= 0);
 });
 
+test('library virtualization rejects fractional counts that would divide by zero', () => {
+    const range = calculateLibraryWindow({
+        itemCount: 100,
+        columnCount: 0.5,
+        rowStride: 60,
+        viewportStart: 30,
+        viewportSize: 120,
+        maxRenderedItems: 0.5
+    });
+    assert.ok(Object.values(range).every(Number.isFinite));
+    assert.equal(range.totalRows, 100);
+    assert.ok(range.endIndex > range.startIndex);
+});
+
 test('library page renders only the calculated window instead of mapping the full result set', () => {
     const source = fs.readFileSync(
         path.join(__dirname, '..', 'src/renderer/js/libraryPage.js'),

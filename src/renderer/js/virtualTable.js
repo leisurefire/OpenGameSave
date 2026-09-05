@@ -4,6 +4,18 @@ const DEFAULT_BUFFER = 8;
 
 const virtualTableStates = new WeakMap();
 
+export function reconcileRenderedChildren(container, children) {
+    const retainedChildren = new Set(children);
+    for (const child of Array.from(container.childNodes)) {
+        if (!retainedChildren.has(child)) container.removeChild(child);
+    }
+    let reference = container.firstChild;
+    for (const child of children) {
+        if (child === reference) reference = reference.nextSibling;
+        else container.insertBefore(child, reference);
+    }
+}
+
 export function getRowId(rowOrRecord) {
     for (const candidate of [rowOrRecord?.id, rowOrRecord?.wikiId]) {
         if (candidate !== undefined && candidate !== null && String(candidate).trim()) {
@@ -156,6 +168,7 @@ export function updateVirtualRecord(rowHost, rowId, updater, { refilter = true }
     }
 
     const isRendered = state.renderedRowsById.has(targetId);
+    state.renderedRowsByRecord.delete(record);
     if (refilter) rebuildFilteredRecords(state);
     if (refilter || isRendered) renderVirtualRows(rowHost);
     return true;
@@ -188,6 +201,7 @@ export function disableVirtualRows(rowHost) {
     if (!state) return;
 
     state.scrollContainer?.removeEventListener('scroll', state.onScroll);
+    state.resizeObserver?.disconnect();
     if (state.renderFrame !== null) cancelAnimationFrame(state.renderFrame);
     virtualTableStates.delete(rowHost);
 
@@ -195,6 +209,7 @@ export function disableVirtualRows(rowHost) {
     state.filteredRecords.length = 0;
     state.recordsById.clear();
     state.renderedRowsById.clear();
+    state.renderedRowsByRecord.clear();
     state.filteredIds.clear();
     state.selectedIds.clear();
 }
@@ -220,18 +235,28 @@ function enableVirtualRows(rowHost, rowsOrRecords, options = {}) {
         filteredIds: new Set(records.map(record => getRowId(record)).filter(Boolean)),
         recordsById: new Map(records.map(record => [getRowId(record), record]).filter(([rowId]) => rowId)),
         renderedRowsById: new Map(),
+        renderedRowsByRecord: new Map(),
         selectedIds,
         filterPredicate: null,
         materializeRow,
-        rowHeight: options.rowHeight || DEFAULT_ROW_HEIGHT,
-        buffer: options.buffer ?? DEFAULT_BUFFER,
+        rowHeight: Number.isFinite(options.rowHeight) && options.rowHeight > 0
+            ? options.rowHeight : DEFAULT_ROW_HEIGHT,
+        buffer: Number.isFinite(options.buffer) && options.buffer >= 0
+            ? Math.floor(options.buffer) : DEFAULT_BUFFER,
         createSpacer: options.createSpacer || createTableSpacer,
         renderFrame: null,
+        firstVisible: -1,
+        lastVisible: -1,
+        renderedCount: -1,
         onScroll: () => scheduleVirtualRows(rowHost)
     };
 
     virtualTableStates.set(rowHost, state);
     scrollContainer?.addEventListener('scroll', state.onScroll, { passive: true });
+    if (typeof ResizeObserver === 'function' && scrollContainer) {
+        state.resizeObserver = new ResizeObserver(() => scheduleVirtualRows(rowHost));
+        state.resizeObserver.observe(scrollContainer);
+    }
     if (scrollContainer) {
         scrollContainer.scrollTop = 0;
     }
@@ -278,33 +303,56 @@ function renderVirtualRows(rowHost) {
 
     const { scrollContainer, filteredRecords, selectedIds, rowHeight, buffer } = state;
     const viewportHeight = scrollContainer?.clientHeight || 0;
-    const scrollTop = scrollContainer?.scrollTop || 0;
+    // Filtering/removal can leave the old scroll offset beyond the new extent
+    // until layout runs. Clamp it before choosing rows so the viewport stays filled.
+    const scrollTop = Math.min(
+        Math.max(0, scrollContainer?.scrollTop || 0),
+        Math.max(0, filteredRecords.length * rowHeight - viewportHeight)
+    );
     const firstVisible = Math.min(
         filteredRecords.length,
         Math.max(0, Math.floor(scrollTop / rowHeight) - buffer)
     );
-    const visibleCount = Math.ceil(viewportHeight / rowHeight) + buffer * 2;
+    const visibleCount = Math.max(1, Math.ceil(viewportHeight / rowHeight)
+        + buffer * 2 + (scrollTop % rowHeight > 0 ? 1 : 0));
     const lastVisible = Math.min(filteredRecords.length, firstVisible + visibleCount);
-    const fragment = document.createDocumentFragment();
-
-    state.renderedRowsById.clear();
-    fragment.appendChild(state.createSpacer(rowHost, firstVisible * rowHeight));
+    const sameRange = state.firstVisible === firstVisible && state.lastVisible === lastVisible
+        && state.renderedCount === filteredRecords.length;
+    const nextRows = new Map();
+    let rowsChanged = !sameRange;
     for (let index = firstVisible; index < lastVisible; index += 1) {
         const record = filteredRecords[index];
-        const row = state.materializeRow(record);
+        const cachedRow = state.renderedRowsByRecord.get(record);
+        const row = cachedRow || state.materializeRow(record);
         if (!row) continue;
+        if (!cachedRow || row !== rowHost.children[index - firstVisible + 1]) rowsChanged = true;
         const checkbox = row.querySelector?.('.row-checkbox');
         const rowId = getRowId(record) || getRowId(row);
         if (checkbox && rowId) {
             checkbox.checked = selectedIds.has(rowId);
         }
         row.style.display = '';
-        if (rowId) state.renderedRowsById.set(rowId, row);
-        fragment.appendChild(row);
+        nextRows.set(record, row);
     }
-    fragment.appendChild(state.createSpacer(rowHost, (filteredRecords.length - lastVisible) * rowHeight));
+    if (!rowsChanged) return;
 
-    rowHost.replaceChildren(fragment);
+    const children = [];
+    state.renderedRowsById.clear();
+    children.push(state.createSpacer(rowHost, firstVisible * rowHeight));
+    for (const [record, row] of nextRows) {
+        const rowId = getRowId(record) || getRowId(row);
+        if (rowId) state.renderedRowsById.set(rowId, row);
+        children.push(row);
+    }
+    children.push(state.createSpacer(rowHost, (filteredRecords.length - lastVisible) * rowHeight));
+
+    state.renderedRowsByRecord = nextRows;
+    state.firstVisible = firstVisible;
+    state.lastVisible = lastVisible;
+    state.renderedCount = filteredRecords.length;
+    // Keep overlapping rows attached so scrolling preserves keyboard focus,
+    // image decode state, and custom-element lifecycle state.
+    reconcileRenderedChildren(rowHost, children);
 }
 
 function createTableSpacer(rowHost, height) {

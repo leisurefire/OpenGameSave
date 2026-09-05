@@ -2,6 +2,10 @@ import { showToast } from './toast.js';
 import { getFilteredVirtualSelectedIds, getVirtualState } from './virtualTable.js';
 import { renderIcon } from './icons.js';
 
+let activePopupMenuRequestId = 0;
+let appUpdateRenderId = 0;
+const translationRenderTokens = new WeakMap();
+
 function receiveIfAllowed(channel, callback) {
     if (window.api.can('receive', channel)) window.api.receive(channel, callback);
 }
@@ -19,6 +23,7 @@ receiveIfAllowed('update-progress', (progressId, progressTitle, percentage) => {
 });
 
 receiveIfAllowed('menu-hidden', (state = {}) => {
+    if (state.rendererRequestId !== undefined && state.rendererRequestId !== activePopupMenuRequestId) return;
     const trigger = window.activeMenuTrigger;
     trigger?.setAttribute('aria-expanded', 'false');
     window.activeMenuTrigger = null;
@@ -81,31 +86,51 @@ function setupTitlebarMenus() {
     document.querySelectorAll('[data-titlebar-menu]').forEach((button) => {
         button.setAttribute('aria-haspopup', 'menu');
         button.setAttribute('aria-expanded', 'false');
-        button.addEventListener('click', async (event) => {
+        button.addEventListener('click', (event) => {
             event.stopPropagation();
-            if (button === window.activeMenuTrigger) {
-                window.api.send('hide-popup-menu');
-                return;
-            }
-            const items = await getTitlebarMenuItems(button.dataset.titlebarMenu);
-            const rect = button.getBoundingClientRect();
-            window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
-            button.setAttribute('aria-expanded', 'true');
-            window.activeMenuTrigger = button;
-            window.api.send('show-popup-menu', {
-                items,
-                x: rect.left,
-                y: rect.bottom + 3,
-                direction: 'down'
+            void requestPopupMenu(button, async () => {
+                const items = await getTitlebarMenuItems(button.dataset.titlebarMenu);
+                const rect = button.getBoundingClientRect();
+                return { items, x: rect.left, y: rect.bottom + 3, direction: 'down' };
             });
         });
     });
+}
+
+export async function requestPopupMenu(button, createPayload) {
+    const requestId = ++activePopupMenuRequestId;
+    if (button === window.activeMenuTrigger) {
+        button.setAttribute('aria-expanded', 'false');
+        window.activeMenuTrigger = null;
+        window.api.send('hide-popup-menu');
+        return;
+    }
+    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
+    window.activeMenuTrigger = button;
+    const isCurrent = () => requestId === activePopupMenuRequestId && window.activeMenuTrigger === button;
+    try {
+        const payload = await createPayload();
+        if (!isCurrent()) return;
+        if (!button.isConnected) {
+            window.activeMenuTrigger = null;
+            return;
+        }
+        button.setAttribute('aria-expanded', 'true');
+        window.api.send('show-popup-menu', { ...payload, rendererRequestId: requestId });
+    } catch (error) {
+        if (!isCurrent()) return;
+        button.setAttribute('aria-expanded', 'false');
+        window.activeMenuTrigger = null;
+        window.api.send('hide-popup-menu');
+        console.error('Failed to open popup menu:', error);
+    }
 }
 
 async function applyAppUpdateState(state) {
     const updateButton = document.getElementById('app-update-download');
     const updateIcon = document.getElementById('app-update-download-icon');
     if (!updateButton || !updateIcon || !state) return;
+    const renderId = ++appUpdateRenderId;
 
     const canShow = state.canAutoUpdate === true && !!state.availableVersion &&
         ['available', 'downloading', 'downloaded', 'installing', 'error'].includes(state.status);
@@ -121,18 +146,18 @@ async function applyAppUpdateState(state) {
             : state.status === 'error'
                 ? 'settings.app_update_retry'
                 : 'settings.app_update_installing';
+    updateButton.disabled = isBusy;
+    updateButton.dataset.state = state.status;
+    updateButton.style.setProperty('--update-progress', `${percent}%`);
+    updateIcon.classList.toggle('is-spinning', isBusy);
+    renderIcon(updateIcon, isBusy ? 'loader-circle' : 'download');
     const label = await window.i18n.translate(i18nKey, {
         version: state.availableVersion,
         percent
     });
-
-    updateButton.disabled = isBusy;
-    updateButton.dataset.state = state.status;
-    updateButton.style.setProperty('--update-progress', `${percent}%`);
+    if (renderId !== appUpdateRenderId) return;
     updateButton.title = label;
     updateButton.setAttribute('aria-label', label);
-    updateIcon.classList.toggle('is-spinning', isBusy);
-    renderIcon(updateIcon, isBusy ? 'loader-circle' : 'download');
 }
 
 function setupAppUpdateButton() {
@@ -143,9 +168,10 @@ function setupAppUpdateButton() {
         event.stopPropagation();
         if (updateButton.disabled) return;
         updateButton.disabled = true;
+        const requestRenderId = appUpdateRenderId;
         try {
             const state = await window.api.invoke('download-app-update');
-            await applyAppUpdateState(state);
+            if (requestRenderId === appUpdateRenderId) await applyAppUpdateState(state);
             if (state?.status === 'error') {
                 const errorKey = state.error === 'app-busy'
                     ? 'settings.app_update_busy'
@@ -155,12 +181,15 @@ function setupAppUpdateButton() {
         } catch (error) {
             console.error('Failed to download application update:', error);
             showAlert('error', await window.i18n.translate('settings.app_update_failed'));
-            updateButton.disabled = false;
+            if (requestRenderId === appUpdateRenderId) updateButton.disabled = false;
         }
     });
 
+    const initialRenderId = appUpdateRenderId;
     window.api.invoke('get-app-update-state')
-        .then(applyAppUpdateState)
+        .then(state => {
+            if (initialRenderId === appUpdateRenderId) return applyAppUpdateState(state);
+        })
         .catch((error) => console.error('Failed to load application update state:', error));
 }
 
@@ -175,12 +204,25 @@ function setupHomeActions() {
     }
 }
 
+function translateLatest(element, field, translation, apply) {
+    let tokens = translationRenderTokens.get(element);
+    if (!tokens) {
+        tokens = new Map();
+        translationRenderTokens.set(element, tokens);
+    }
+    const token = {};
+    tokens.set(field, token);
+    return translation.then(value => {
+        if (tokens.get(field) === token) apply(value);
+    });
+}
+
 export async function updateTranslations(container) {
     const translationTasks = [];
 
     const documentElement = container.documentElement || container.ownerDocument?.documentElement;
     if (documentElement) {
-        translationTasks.push(window.i18n.translate('meta.locale').then((locale) => {
+        translationTasks.push(translateLatest(documentElement, 'lang', window.i18n.translate('meta.locale'), (locale) => {
             if (/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale)) {
                 documentElement.lang = locale;
             }
@@ -189,8 +231,8 @@ export async function updateTranslations(container) {
 
     container.querySelectorAll('[data-i18n]').forEach((el) => {
         const key = el.getAttribute('data-i18n');
-        translationTasks.push(window.i18n.translate(key).then((translation) => {
-            if (translation) {
+        translationTasks.push(translateLatest(el, 'data-i18n', window.i18n.translate(key), (translation) => {
+            if (translation && el.getAttribute('data-i18n') === key) {
                 // Priority 1: Specifically marked span for dynamic content protection
                 const textContentElement = el.querySelector('.text-content');
                 if (textContentElement) {
@@ -210,22 +252,29 @@ export async function updateTranslations(container) {
 
     container.querySelectorAll('[data-i18n-placeholder]').forEach((element) => {
         const i18nKey = element.getAttribute('data-i18n-placeholder');
-        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
-            element.setAttribute('placeholder', translation);
+        translationTasks.push(translateLatest(element, 'placeholder', window.i18n.translate(i18nKey), (translation) => {
+            if (element.getAttribute('data-i18n-placeholder') === i18nKey) element.setAttribute('placeholder', translation);
         }));
     });
 
     container.querySelectorAll('[data-i18n-title]').forEach((element) => {
         const i18nKey = element.getAttribute('data-i18n-title');
-        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
-            if (translation) element.setAttribute('title', translation);
+        translationTasks.push(translateLatest(element, 'title', window.i18n.translate(i18nKey), (translation) => {
+            if (translation && element.getAttribute('data-i18n-title') === i18nKey) element.setAttribute('title', translation);
         }));
     });
 
     container.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
         const i18nKey = element.getAttribute('data-i18n-aria-label');
-        translationTasks.push(window.i18n.translate(i18nKey).then((translation) => {
-            if (translation) element.setAttribute('aria-label', translation);
+        translationTasks.push(translateLatest(element, 'aria-label', window.i18n.translate(i18nKey), (translation) => {
+            if (translation && element.getAttribute('data-i18n-aria-label') === i18nKey) element.setAttribute('aria-label', translation);
+        }));
+    });
+
+    container.querySelectorAll('[data-i18n-alt]').forEach((element) => {
+        const i18nKey = element.getAttribute('data-i18n-alt');
+        translationTasks.push(translateLatest(element, 'alt', window.i18n.translate(i18nKey), (translation) => {
+            if (translation && element.getAttribute('data-i18n-alt') === i18nKey) element.setAttribute('alt', translation);
         }));
     });
 

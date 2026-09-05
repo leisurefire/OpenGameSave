@@ -14,6 +14,11 @@ class ActionButton extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open', delegatesFocus: true });
         this._render();
+        this.addEventListener('click', event => {
+            if (!this.disabled) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }, true);
     }
 
     static get observedAttributes() {
@@ -33,10 +38,26 @@ class ActionButton extends HTMLElement {
         wrapper.className = variant === 'danger' ? 'btn-wrapper btn-danger' : 'btn-wrapper btn-default';
     }
 
+    get disabled() {
+        return this.hasAttribute('disabled');
+    }
+
+    set disabled(value) {
+        this.toggleAttribute('disabled', Boolean(value));
+    }
+
+    focus(options) {
+        this.shadowRoot.querySelector('.btn-wrapper')?.focus(options);
+    }
+
+    click() {
+        this.shadowRoot.querySelector('.btn-wrapper')?.click();
+    }
+
     _updateState() {
         const button = this.shadowRoot.querySelector('.btn-wrapper');
         if (!button) return;
-        button.disabled = this.hasAttribute('disabled');
+        button.disabled = this.disabled;
         const label = this.getAttribute('aria-label');
         if (label) button.setAttribute('aria-label', label);
         else button.removeAttribute('aria-label');
@@ -68,7 +89,7 @@ class ActionButton extends HTMLElement {
                     width: 100%;
                     height: 100%;
                     box-sizing: border-box;
-                    font-size: 11.5px;
+                    font-size: var(--text-xs, 12px);
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
                     border-radius: var(--radius-control, 8px);
@@ -100,8 +121,8 @@ class ActionButton extends HTMLElement {
                 }
 
                 .btn-default:active:not(:disabled) {
-                    background: rgba(255, 255, 255, 0.03);
-                    color: rgba(255, 255, 255, 0.7);
+                    background: var(--color-win-surface-active, rgba(255, 255, 255, 0.025));
+                    color: var(--color-text-secondary, rgba(255, 255, 255, 0.68));
                 }
 
                 .btn-danger {
@@ -121,6 +142,16 @@ class ActionButton extends HTMLElement {
                 /* Slotted content (icons + text) from light DOM */
                 ::slotted(*) {
                     pointer-events: none;
+                }
+
+                @media (prefers-reduced-motion: reduce) {
+                    .btn-wrapper { transition: none; }
+                }
+
+                @media (forced-colors: active) {
+                    .btn-wrapper { border-color: ButtonText; }
+                    .btn-wrapper:disabled { color: GrayText; border-color: GrayText; }
+                    .btn-wrapper:focus-visible { outline-color: Highlight; }
                 }
             </style>
             <button type="button" class="btn-wrapper ${variantClass}">

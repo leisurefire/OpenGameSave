@@ -19,19 +19,23 @@ const PROVIDERS = Object.freeze({
 });
 
 let activeProvider = 'github';
+let providerSelectionId = 0;
 let webDAVConfigLoaded = false;
 let webDAVPasswordDirty = false;
+let syncStatusRequestId = 0;
+let syncOperationInProgress = false;
 
 async function setTranslatedText(element, key) {
     if (!element) return;
     element.dataset.i18n = key;
-    element.textContent = await window.i18n.translate(key);
+    const label = await window.i18n.translate(key);
+    if (element.dataset.i18n === key) element.textContent = label;
 }
 
-async function loadSyncSettings() {
+async function loadSyncSettings(isCurrent = () => true) {
     const settings = await window.api.invoke('get-settings');
     const backupPathInput = document.getElementById('backup-path');
-    if (backupPathInput) backupPathInput.value = settings.backupPath || '';
+    if (backupPathInput && isCurrent()) backupPathInput.value = settings.backupPath || '';
     return settings;
 }
 
@@ -125,8 +129,10 @@ async function updateProviderUI() {
 }
 
 async function selectProvider(providerId, { persist = true } = {}) {
-    if (!PROVIDERS[providerId]) return;
+    if (syncOperationInProgress || !PROVIDERS[providerId]) return;
+    providerSelectionId += 1;
     if (providerId === activeProvider) {
+        if (persist) await window.api.invoke('save-settings', 'syncProvider', providerId);
         await updateProviderUI();
         return;
     }
@@ -137,32 +143,41 @@ async function selectProvider(providerId, { persist = true } = {}) {
 }
 
 async function refreshSyncStatus() {
-    await loadSyncSettings();
+    const requestId = ++syncStatusRequestId;
+    const provider = activeProvider;
+    const isCurrent = () => requestId === syncStatusRequestId && provider === activeProvider;
+    await loadSyncSettings(isCurrent);
+    if (!isCurrent()) return;
     const pathInput = document.getElementById('backup-path');
     const statusMessage = document.getElementById('sync-status-message');
     const statusDetails = document.getElementById('sync-status-details');
-    const status = await window.api.invoke('sync-provider-status', activeProvider, pathInput.value);
-    const ready = activeProvider === 'github'
+    const status = await window.api.invoke('sync-provider-status', provider, pathInput.value);
+    if (!isCurrent()) return;
+    const ready = provider === 'github'
         ? Boolean(status.isGitRepo && status.hasRemote)
         : Boolean(status.ready);
 
-    statusMessage.textContent = status.message || '';
-    statusMessage.dataset.ready = String(ready);
-    if (activeProvider === 'github') {
+    let details;
+    if (provider === 'github') {
         const remoteUrl = formatRemoteUrl(status.remoteUrl);
-        statusDetails.textContent = remoteUrl
+        details = remoteUrl
             ? `${await window.i18n.translate('main.github_sync_remote_repository')}${remoteUrl}${status.branch ? ` (${status.branch})` : ''}`
             : '';
     } else {
         const location = status.endpoint ? `${status.endpoint}${status.remotePath || ''}` : '';
-        statusDetails.textContent = location
+        details = location
             ? `${await window.i18n.translate('main.webdav_remote_location')}${location}`
             : '';
     }
+    if (!isCurrent()) return;
+    statusMessage.textContent = status.message || '';
+    statusMessage.dataset.ready = String(ready);
+    statusDetails.textContent = details;
     return status;
 }
 
 function setSyncBusy(isBusy) {
+    syncOperationInProgress = isBusy;
     const controls = [
         document.getElementById('backup-path-select'),
         document.getElementById('backup-path-open'),
@@ -200,6 +215,7 @@ async function formatWebDAVConflictDetails(conflicts) {
 }
 
 async function saveWebDAVConfig() {
+    if (syncOperationInProgress) return;
     const config = {
         url: document.getElementById('webdav-url').value.trim(),
         username: document.getElementById('webdav-username').value.trim(),
@@ -222,15 +238,15 @@ async function saveWebDAVConfig() {
 }
 
 async function runSync(direction) {
-    const canStart = await operationStartCheck('sync');
-    if (!canStart) return;
-
-    const pathInput = document.getElementById('backup-path');
-    const progressTitle = await window.i18n.translate(direction === 'upload' ? 'alert.sync_uploading' : 'alert.sync_downloading');
+    if (syncOperationInProgress) return;
+    const provider = activeProvider;
+    const backupPath = document.getElementById('backup-path').value;
     const progressId = 'cloud-sync';
     setSyncBusy(true);
 
     try {
+        if (!await operationStartCheck('sync')) return;
+        const progressTitle = await window.i18n.translate(direction === 'upload' ? 'alert.sync_uploading' : 'alert.sync_downloading');
         const progressContainer = document.getElementById('progress-container');
         if (!document.getElementById(progressId)) {
             const progressElement = document.createElement('div');
@@ -238,19 +254,19 @@ async function runSync(direction) {
             progressElement.className = 'app-progress floating-surface animate-fadeIn';
             progressElement.innerHTML = '<div class="app-progress-header"><span class="sync-progress-title"></span><span class="sync-progress-provider"></span></div><div class="sync-progress-hint text-xs opacity-60"></div>';
             progressElement.querySelector('.sync-progress-title').textContent = progressTitle;
-            progressElement.querySelector('.sync-progress-provider').textContent = PROVIDERS[activeProvider].badge;
-            progressElement.querySelector('.sync-progress-hint').textContent = await window.i18n.translate(PROVIDERS[activeProvider].progressHintKey);
+            progressElement.querySelector('.sync-progress-provider').textContent = PROVIDERS[provider].badge;
+            progressElement.querySelector('.sync-progress-hint').textContent = await window.i18n.translate(PROVIDERS[provider].progressHintKey);
             progressContainer.appendChild(progressElement);
         }
 
-        const result = await window.api.invoke('sync-provider-run', activeProvider, direction, pathInput.value);
+        const result = await window.api.invoke('sync-provider-run', provider, direction, backupPath);
         document.getElementById(progressId)?.remove();
         const messageKey = direction === 'upload' ? 'alert.sync_upload_success' : 'alert.sync_download_success';
         showAlert('success', await window.i18n.translate(messageKey, {
             games: result.games,
             size: formatSize(result.size || 0)
         }));
-        if (activeProvider === 'webdav' && result.conflicts?.length > 0) {
+        if (provider === 'webdav' && result.conflicts?.length > 0) {
             showAlert('modal', await window.i18n.translate('alert.webdav_conflicts_preserved', {
                 count: result.conflicts.length
             }), await formatWebDAVConflictDetails(result.conflicts));
@@ -268,6 +284,7 @@ async function setupSyncTab() {
     const backupPathButton = document.getElementById('backup-path-select');
     if (!backupPathButton || backupPathButton.dataset.listenerAdded) return;
     backupPathButton.dataset.listenerAdded = 'true';
+    const initialSelectionId = providerSelectionId;
 
     const availableProviders = await window.api.invoke('sync-provider-list');
     const availableProviderIds = new Set(availableProviders.map(provider => provider.id));
@@ -286,7 +303,9 @@ async function setupSyncTab() {
     });
 
     const settings = await loadSyncSettings();
-    activeProvider = availableProviderIds.has(settings.syncProvider) ? settings.syncProvider : 'github';
+    if (providerSelectionId === initialSelectionId) {
+        activeProvider = availableProviderIds.has(settings.syncProvider) ? settings.syncProvider : 'github';
+    }
     await updateProviderUI();
     await refreshSyncStatus();
 }

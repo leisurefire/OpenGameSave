@@ -13,17 +13,24 @@ class DropdownSelect extends HTMLElement {
         this._value = '';
         this._options = [];
         this._activeIndex = -1;
+        this._typeAhead = '';
+        this._typeAheadTime = 0;
         this._listboxId = `dropdown-listbox-${++nextDropdownId}`;
         this._handleDocumentPointerDown = this._handleDocumentPointerDown.bind(this);
         this._optionObserver = new MutationObserver(() => this._readOptions());
         this._render();
+        this.addEventListener('focusout', event => {
+            if (!this.contains(event.relatedTarget) && !this.shadowRoot.contains(event.relatedTarget)) {
+                this._closeMenu();
+            }
+        });
     }
 
     connectedCallback() {
         this._readOptions();
         this._optionObserver.observe(this, {
             attributes: true,
-            attributeFilter: ['selected', 'value'],
+            attributeFilter: ['selected', 'value', 'disabled', 'label'],
             characterData: true,
             childList: true,
             subtree: true
@@ -32,6 +39,7 @@ class DropdownSelect extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this._closeMenu();
         this._optionObserver.disconnect();
         document.removeEventListener('pointerdown', this._handleDocumentPointerDown, true);
     }
@@ -69,8 +77,9 @@ class DropdownSelect extends HTMLElement {
     _readOptions() {
         this._options = Array.from(this.querySelectorAll('option')).map(option => ({
             value: option.value,
-            label: option.textContent.trim(),
-            selected: option.selected || option.hasAttribute('selected')
+            label: (option.getAttribute('label') ?? option.textContent).trim(),
+            selected: option.selected || option.hasAttribute('selected'),
+            disabled: option.disabled || Boolean(option.closest('optgroup')?.disabled)
         }));
 
         const currentOption = this._options.find(option => option.value === this._value);
@@ -78,6 +87,12 @@ class DropdownSelect extends HTMLElement {
         this._value = selectedOption?.value || '';
         this._renderOptions();
         this._updateSelection();
+        if (!this._menu.hidden) {
+            this._activeIndex = this._findEnabledIndex(this._options.findIndex(option => option.value === this._value), 1);
+            if (this._activeIndex < 0) this._activeIndex = this._findEnabledIndex(0, 1);
+            if (this._activeIndex < 0) this._closeMenu();
+            else this._updateActiveOption();
+        }
     }
 
     _render() {
@@ -96,7 +111,7 @@ class DropdownSelect extends HTMLElement {
 
                 :host([disabled]) {
                     opacity: 0.5;
-                    pointer-events: none;
+                    cursor: not-allowed;
                 }
 
                 :host([open]) {
@@ -105,6 +120,7 @@ class DropdownSelect extends HTMLElement {
 
                 .select-trigger {
                     width: 100%;
+                    box-sizing: border-box;
                     min-height: var(--control-height, 34px);
                     display: flex;
                     align-items: center;
@@ -114,16 +130,16 @@ class DropdownSelect extends HTMLElement {
                     color: inherit;
                     font: inherit;
                     text-align: left;
-                    background: rgba(255, 255, 255, 0.055);
+                    background: var(--color-control-surface, rgba(255, 255, 255, 0.05));
                     border: 1px solid var(--color-control-border, rgba(255, 255, 255, 0.045));
                     border-radius: var(--radius-control-lg, 10px);
                     cursor: pointer;
                     transition: background-color 120ms ease, border-color 120ms ease;
                 }
 
-                .select-trigger:hover,
+                .select-trigger:hover:not(:disabled),
                 .select-trigger[aria-expanded="true"] {
-                    background: rgba(255, 255, 255, 0.075);
+                    background: var(--color-control-surface-hover, rgba(255, 255, 255, 0.08));
                     border-color: var(--color-control-border-hover, rgba(255, 255, 255, 0.085));
                 }
 
@@ -142,7 +158,7 @@ class DropdownSelect extends HTMLElement {
                 .chevron {
                     display: inline-flex;
                     flex: 0 0 auto;
-                    color: rgba(255, 255, 255, 0.52);
+                    color: var(--color-text-tertiary, rgba(255, 255, 255, 0.55));
                     transition: transform 120ms ease;
                 }
 
@@ -156,9 +172,13 @@ class DropdownSelect extends HTMLElement {
                     right: 0;
                     z-index: 100;
                     width: max(100%, 210px);
+                    box-sizing: border-box;
+                    max-height: min(280px, var(--select-menu-available-height, 280px));
+                    overflow-y: auto;
+                    overscroll-behavior: contain;
                     padding: 4px;
-                    background: rgba(43, 43, 43, 0.99);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    background: var(--color-win-surface-bright, rgba(36, 36, 36, 0.98));
+                    border: 1px solid var(--color-card-border, rgba(255, 255, 255, 0.085));
                     border-radius: var(--radius-win, 12px);
                     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
                     transform-origin: top right;
@@ -177,13 +197,14 @@ class DropdownSelect extends HTMLElement {
 
                 .select-option {
                     width: 100%;
+                    box-sizing: border-box;
                     min-height: var(--control-height, 34px);
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     gap: 12px;
                     padding: 6px 9px;
-                    color: rgba(255, 255, 255, 0.88);
+                    color: var(--color-text-emphasis, rgba(255, 255, 255, 0.88));
                     font: inherit;
                     text-align: left;
                     background: transparent;
@@ -192,13 +213,22 @@ class DropdownSelect extends HTMLElement {
                     cursor: pointer;
                 }
 
-                .select-option:hover,
-                .select-option.is-active {
-                    background: rgba(255, 255, 255, 0.07);
+                .select-option:hover:not(:disabled),
+                .select-option.is-active:not(:disabled) {
+                    background: var(--color-control-surface-hover, rgba(255, 255, 255, 0.08));
                 }
 
                 .select-option[aria-selected="true"] {
-                    color: rgba(255, 255, 255, 0.98);
+                    color: var(--color-text-heading, rgba(255, 255, 255, 0.94));
+                }
+
+                .select-trigger:disabled,
+                .select-option:disabled {
+                    cursor: not-allowed;
+                }
+
+                .select-option:disabled {
+                    color: var(--color-text-muted, rgba(255, 255, 255, 0.42));
                 }
 
                 .check,
@@ -219,7 +249,14 @@ class DropdownSelect extends HTMLElement {
 
                 @media (prefers-reduced-motion: reduce) {
                     .select-menu { animation: none; }
-                    .chevron { transition: none; }
+                    .chevron, .select-trigger { transition: none; }
+                }
+
+                @media (forced-colors: active) {
+                    .select-trigger, .select-menu { border-color: ButtonText; }
+                    .select-trigger:disabled, .select-option:disabled { color: GrayText; }
+                    .select-option.is-active { outline: 1px solid Highlight; outline-offset: -1px; }
+                    .select-trigger:focus-visible { outline-color: Highlight; }
                 }
             </style>
             <button class="select-trigger" type="button" role="combobox" aria-haspopup="listbox"
@@ -248,6 +285,8 @@ class DropdownSelect extends HTMLElement {
             button.type = 'button';
             button.className = 'select-option';
             button.setAttribute('role', 'option');
+            button.tabIndex = -1;
+            button.disabled = option.disabled;
             button.id = `${this._listboxId}-option-${index}`;
             button.dataset.index = String(index);
 
@@ -258,10 +297,12 @@ class DropdownSelect extends HTMLElement {
             button.append(label, check);
 
             button.addEventListener('pointerenter', () => {
+                if (option.disabled) return;
                 this._activeIndex = index;
                 this._updateActiveOption();
             });
             button.addEventListener('click', () => this._selectIndex(index, true));
+            button.addEventListener('pointerdown', event => { event.preventDefault(); });
             this._menu.appendChild(button);
         });
     }
@@ -274,14 +315,20 @@ class DropdownSelect extends HTMLElement {
             return;
         }
 
+        const selectedIndex = this._options.findIndex(option => option.value === this._value);
+        this._activeIndex = this._findEnabledIndex(Math.max(0, selectedIndex), 1);
+        if (this._activeIndex < 0) this._activeIndex = this._findEnabledIndex(0, 1);
+        if (this._activeIndex < 0) return;
+
         this._menu.hidden = false;
         this.setAttribute('open', '');
         this._trigger.setAttribute('aria-expanded', 'true');
-        this._activeIndex = Math.max(0, this._options.findIndex(option => option.value === this._value));
-
         const hostRect = this.getBoundingClientRect();
         const estimatedHeight = Math.min(this._options.length * 34 + 10, 280);
-        const shouldOpenUp = hostRect.bottom + estimatedHeight + 12 > window.innerHeight && hostRect.top > estimatedHeight + 12;
+        const availableBelow = Math.max(0, window.innerHeight - hostRect.bottom - 12);
+        const availableAbove = Math.max(0, hostRect.top - 12);
+        const shouldOpenUp = availableBelow < estimatedHeight && availableAbove > availableBelow;
+        this._menu.style.setProperty('--select-menu-available-height', `${shouldOpenUp ? availableAbove : availableBelow}px`);
         this._menu.classList.toggle('open-up', shouldOpenUp);
         this._updateActiveOption();
     }
@@ -292,12 +339,13 @@ class DropdownSelect extends HTMLElement {
         this._trigger.setAttribute('aria-expanded', 'false');
         this._trigger.removeAttribute('aria-activedescendant');
         this._activeIndex = -1;
+        this._typeAhead = '';
         this._updateActiveOption();
     }
 
     _selectIndex(index, emitChange) {
         const option = this._options[index];
-        if (!option) return;
+        if (this.disabled || !option || option.disabled) return;
         const changed = this._value !== option.value;
         this._value = option.value;
         this._updateSelection();
@@ -331,6 +379,7 @@ class DropdownSelect extends HTMLElement {
         const activeOption = this._menu?.querySelector(`.select-option[data-index="${this._activeIndex}"]`);
         if (!this._menu?.hidden && activeOption) {
             this._trigger?.setAttribute('aria-activedescendant', activeOption.id);
+            activeOption.scrollIntoView({ block: 'nearest' });
         } else {
             this._trigger?.removeAttribute('aria-activedescendant');
         }
@@ -344,11 +393,23 @@ class DropdownSelect extends HTMLElement {
     _updateAccessibleName() {
         if (!this._trigger) return;
         const label = this.getAttribute('aria-label');
-        if (label) this._trigger.setAttribute('aria-label', label);
-        else this._trigger.removeAttribute('aria-label');
+        for (const element of [this._trigger, this._menu]) {
+            if (label) element.setAttribute('aria-label', label);
+            else element.removeAttribute('aria-label');
+        }
     }
 
     _handleKeyDown(event) {
+        if (this.disabled) return;
+        if (event.key === 'Tab') {
+            this._closeMenu();
+            return;
+        }
+        if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            event.preventDefault();
+            this._handleTypeAhead(event.key);
+            return;
+        }
         if (!['ArrowDown', 'ArrowUp', 'Enter', ' ', 'Escape', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
 
@@ -363,18 +424,46 @@ class DropdownSelect extends HTMLElement {
         }
 
         if (event.key === 'ArrowDown') {
-            this._activeIndex = Math.min(this._options.length - 1, this._activeIndex + 1);
+            const nextIndex = this._findEnabledIndex(this._activeIndex + 1, 1);
+            if (nextIndex >= 0) this._activeIndex = nextIndex;
         } else if (event.key === 'ArrowUp') {
-            this._activeIndex = Math.max(0, this._activeIndex - 1);
+            const nextIndex = this._findEnabledIndex(this._activeIndex - 1, -1);
+            if (nextIndex >= 0) this._activeIndex = nextIndex;
         } else if (event.key === 'Home') {
-            this._activeIndex = 0;
+            this._activeIndex = this._findEnabledIndex(0, 1);
         } else if (event.key === 'End') {
-            this._activeIndex = this._options.length - 1;
+            this._activeIndex = this._findEnabledIndex(this._options.length - 1, -1);
         } else if (event.key === 'Enter' || event.key === ' ') {
             this._selectIndex(this._activeIndex, true);
             return;
         }
         this._updateActiveOption();
+    }
+
+    _findEnabledIndex(start, direction) {
+        for (let index = start; index >= 0 && index < this._options.length; index += direction) {
+            if (!this._options[index].disabled) return index;
+        }
+        return -1;
+    }
+
+    _handleTypeAhead(key) {
+        const now = Date.now();
+        this._typeAhead = now - this._typeAheadTime > 700 ? key : this._typeAhead + key;
+        this._typeAheadTime = now;
+        const query = [...this._typeAhead].every(character => character === key) ? key : this._typeAhead;
+        const start = this._menu.hidden
+            ? this._options.findIndex(option => option.value === this._value) : this._activeIndex;
+        for (let offset = 1; offset <= this._options.length; offset += 1) {
+            const index = (start + offset) % this._options.length;
+            const option = this._options[index];
+            if (!option.disabled && option.label.toLocaleLowerCase().startsWith(query.toLocaleLowerCase())) {
+                if (this._menu.hidden) this._toggleMenu(true);
+                this._activeIndex = index;
+                this._updateActiveOption();
+                return;
+            }
+        }
     }
 
     _handleDocumentPointerDown(event) {

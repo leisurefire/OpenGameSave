@@ -11,41 +11,41 @@
 
 <body class="mica-effect about-container select-none" style="visibility:hidden">
 
-    <div class="about-hero flex items-center w-full max-w-lg justify-center">
-        <img src="../assets/logo.png" alt="App Logo" class="about-logo shadow-2xl">
-        <div class="text-left">
+    <header class="about-hero">
+        <img src="../assets/logo.png" alt="App Logo" data-i18n-alt="about.app_logo" class="about-logo shadow-2xl" width="64" height="64">
+        <div class="about-hero-copy">
             <h1 class="about-title tracking-tight" data-i18n="main.title">OpenGameSave</h1>
-            <div class="mt-1 space-y-0.5 opacity-60 text-xs">
+            <div class="about-version-list">
                 <p><span data-i18n="about.current_version">Current version:</span> <span id="current-version" class="font-mono"></span></p>
                 <p><span data-i18n="about.latest_version">Latest version:</span> <span id="latest-version" class="font-mono" data-i18n="main.loading" aria-live="polite">Loading...</span></p>
             </div>
-            <button id="update-button" class="hidden mt-3 primary-button px-4 py-1.5 text-[10px] font-bold" data-i18n="about.update">UPDATE NOW</button>
+            <button id="update-button" type="button" class="hidden about-update-button primary-button" data-i18n="about.update">Update now</button>
         </div>
-    </div>
+    </header>
 
-    <div class="about-details surface-effect w-full max-w-md space-y-3">
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.github">GitHub</span>
-            <button id="github-link" type="button" class="about-link-button">leisurefire/OpenGameSave</button>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.developers">Developers</span>
-            <button id="author-link" type="button" class="about-link-button">leisurefire</button>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.former_developers">Former developers</span>
-            <span class="text-content">Yongcan Yang</span>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.license">License</span>
-            <button id="app-license-link" class="about-link-button">GPL-3.0-only</button>
-        </p>
-        <p class="text-sm flex justify-between">
-            <span class="opacity-40" data-i18n="about.third_party">Third-party & data sources</span>
-            <button id="notices-toggle" class="about-link-button" data-i18n="about.view_notices"
-                aria-controls="about-notices" aria-expanded="false">View notices</button>
-        </p>
-    </div>
+    <dl class="about-details surface-effect">
+        <div class="about-detail-row">
+            <dt data-i18n="about.github">GitHub</dt>
+            <dd><button id="github-link" type="button" class="about-link-button">leisurefire/OpenGameSave</button></dd>
+        </div>
+        <div class="about-detail-row">
+            <dt data-i18n="about.developers">Developers</dt>
+            <dd><button id="author-link" type="button" class="about-link-button">leisurefire</button></dd>
+        </div>
+        <div class="about-detail-row">
+            <dt data-i18n="about.former_developers">Former developers</dt>
+            <dd class="text-content">Yongcan Yang</dd>
+        </div>
+        <div class="about-detail-row">
+            <dt data-i18n="about.license">License</dt>
+            <dd><button id="app-license-link" type="button" class="about-link-button">GPL-3.0-only</button></dd>
+        </div>
+        <div class="about-detail-row">
+            <dt data-i18n="about.third_party">Third-party & data sources</dt>
+            <dd><button id="notices-toggle" type="button" class="about-link-button" data-i18n="about.view_notices"
+                aria-controls="about-notices" aria-expanded="false">View notices</button></dd>
+        </div>
+    </dl>
 
     <section id="about-notices" class="about-notices surface-effect hidden" aria-labelledby="about-notices-title">
         <div class="about-notices-header">
@@ -55,19 +55,19 @@
         <p data-i18n="about.guide_notice_intro">The guide catalog stores reviewed names, links, and original summaries. It does not redistribute linked articles or media.</p>
         <ul>
             <li>
-                <button class="about-source-link" data-external-url="https://overlab.cn/about/creative-commons">春语实验室 / OverLab</button>
+                <button type="button" class="about-source-link" data-external-url="https://overlab.cn/about/creative-commons">春语实验室 / OverLab</button>
                 <span data-i18n="about.overlab_license">External links only. Original articles are CC BY-NC-SA 4.0; Blizzard-owned material remains Blizzard copyright.</span>
             </li>
             <li>
-                <button class="about-source-link" data-external-url="https://liquipedia.net/commons/Liquipedia:Copyrights">Liquipedia</button>
+                <button type="button" class="about-source-link" data-external-url="https://liquipedia.net/commons/Liquipedia:Copyrights">Liquipedia</button>
                 <span data-i18n="about.liquipedia_license">External links only. Wiki text is CC BY-SA 3.0; media may use separate terms.</span>
             </li>
             <li>
-                <button class="about-source-link" data-external-url="https://ow.blizzard.cn/">Blizzard / NetEase</button>
+                <button type="button" class="about-source-link" data-external-url="https://ow.blizzard.cn/">Blizzard / NetEase</button>
                 <span data-i18n="about.blizzard_license">Official pages are linked, not redistributed. Their names and content remain the property of their respective owners.</span>
             </li>
             <li>
-                <span class="about-source-name">Installed game artwork</span>
+                <span class="about-source-name" data-i18n="about.installed_game_artwork">Installed game artwork</span>
                 <span data-i18n="about.game_art_notice">Artwork is read from trusted launcher caches first. Missing images may be fetched through size-limited, allowlisted official Steam, Epic, GOG, or Blizzard resources; artwork is not bundled.</span>
             </li>
             <li>
@@ -77,9 +77,12 @@
         </ul>
     </section>
 
-    <footer class="about-footer text-[10px] opacity-30 font-medium uppercase">
+    <footer class="about-footer">
         <span data-i18n="about.tagline">By Gamers. For Gamers.</span>
     </footer>
 
+    <div class="notification-region" aria-live="polite" aria-atomic="false">
+        <div id="alert-container"></div>
+    </div>
 </body>
 </html>

@@ -24,6 +24,7 @@ function createBaseRow(gameTitle, backupSize, newestBackupTime, wikiPageId, deta
             </button>
         </td>`;
     row.querySelector('.game-title').textContent = gameTitle;
+    row.querySelector('.row-checkbox').setAttribute('aria-label', gameTitle);
     row.querySelector('.newest-backup-time').textContent = newestBackupTime || '';
     row.querySelector('.dropdown-menu-button').setAttribute('aria-label', moreLabel);
     return row;

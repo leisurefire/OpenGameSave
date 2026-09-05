@@ -17,24 +17,39 @@ let menuParentWindow = null;
 let isMenuOpen = false;
 let activeMenuItems = [];
 let activeMenuRequestId = null;
+let activeRendererRequestId = null;
 let nextMenuRequestId = 0;
 
 function detachMenuParentListeners() {
-    if (!menuParentWindow || menuParentWindow.isDestroyed()) {
+    if (!menuParentWindow) {
         menuParentWindow = null;
         return;
     }
     menuParentWindow.removeListener('blur', hideMenuWindowAfterParentBlur);
     menuParentWindow.removeListener('move', hideMenuWindowAfterParentMove);
+    menuParentWindow.removeListener('closed', hideMenuWindowAfterParentMove);
     menuParentWindow = null;
+}
+
+function sendActiveMenuItems(targetWindow) {
+    if (!targetWindow || targetWindow !== menuWindow || targetWindow.isDestroyed()
+        || activeMenuRequestId === null || activeMenuItems.length === 0) return;
+    targetWindow.webContents.send('set-menu-items', {
+        items: activeMenuItems,
+        direction: targetWindow.menuDirection,
+        locale: i18next.t('meta.locale'),
+        requestId: activeMenuRequestId
+    });
 }
 
 function hideMenuWindow({ restoreFocus = false } = {}) {
     const hadActiveMenu = isMenuOpen || activeMenuItems.length > 0;
     const parentWindow = menuParentWindow;
+    const rendererRequestId = activeRendererRequestId;
     isMenuOpen = false;
     activeMenuItems = [];
     activeMenuRequestId = null;
+    activeRendererRequestId = null;
     detachMenuParentListeners();
     if (menuWindow && !menuWindow.isDestroyed()) {
         if (menuWindow.isVisible()) menuWindow.hide();
@@ -49,7 +64,10 @@ function hideMenuWindow({ restoreFocus = false } = {}) {
     if (!notificationWindow || notificationWindow.isDestroyed()) return;
 
     if (restoreFocus && notificationWindow.isVisible()) notificationWindow.focus();
-    notificationWindow.webContents.send('menu-hidden', { restoreFocus });
+    notificationWindow.webContents.send('menu-hidden', {
+        restoreFocus,
+        ...(rendererRequestId === null ? {} : { rendererRequestId })
+    });
 }
 
 function hideMenuWindowAfterParentBlur() {
@@ -82,6 +100,7 @@ function destroyMenuWindow() {
     isMenuOpen = false;
     activeMenuItems = [];
     activeMenuRequestId = null;
+    activeRendererRequestId = null;
 }
 
 function createMenuWindow() {
@@ -117,17 +136,21 @@ function createMenuWindow() {
     registerRendererWindow(newMenuWindow, 'menu', rendererRoot);
     hardenBrowserWindow(newMenuWindow, rendererRoot);
     menuWindow = newMenuWindow;
+    const onLoad = () => sendActiveMenuItems(newMenuWindow);
+    const menuWebContents = newMenuWindow.webContents;
+    menuWebContents.on('did-finish-load', onLoad);
     newMenuWindow.loadFile(path.join(__dirname, '../renderer/menu.html'));
     newMenuWindow.once('ready-to-show', () => {
-        if (newMenuWindow.isDestroyed()) return;
+        if (newMenuWindow !== menuWindow || newMenuWindow.isDestroyed() || isMenuOpen) return;
         newMenuWindow.setBounds(MENU_HIDDEN_BOUNDS, false);
         newMenuWindow.showInactive();
     });
     newMenuWindow.on('blur', hideMenuWindowAfterMenuBlur);
     newMenuWindow.on('closed', () => {
+        menuWebContents.removeListener('did-finish-load', onLoad);
         if (menuWindow === newMenuWindow) {
+            hideMenuWindow();
             menuWindow = null;
-            isMenuOpen = false;
         }
     });
 }
@@ -147,36 +170,28 @@ function showPopupMenu(event, payload = {}) {
     menuParentWindow = parentWindow;
     menuParentWindow.on('blur', hideMenuWindowAfterParentBlur);
     menuParentWindow.on('move', hideMenuWindowAfterParentMove);
+    menuParentWindow.on('closed', hideMenuWindowAfterParentMove);
 
     menuWindow.targetScreenX = Math.round(parentContentBounds.x + x);
     menuWindow.targetScreenY = Math.round(parentContentBounds.y + y);
     menuWindow.menuDirection = direction;
     activeMenuItems = items;
     activeMenuRequestId = ++nextMenuRequestId;
-    const requestId = activeMenuRequestId;
-    const sendItems = () => {
-        if (!menuWindow?.isDestroyed()) {
-            menuWindow.webContents.send('set-menu-items', {
-                items,
-                direction: menuWindow.menuDirection,
-                locale: i18next.t('meta.locale'),
-                requestId
-            });
-        }
-    };
-    if (menuWindow.webContents.isLoading()) menuWindow.webContents.once('did-finish-load', sendItems);
-    else sendItems();
+    activeRendererRequestId = Number.isSafeInteger(payload.rendererRequestId) && payload.rendererRequestId > 0
+        ? payload.rendererRequestId
+        : null;
+    if (!menuWindow.webContents.isLoading()) sendActiveMenuItems(menuWindow);
 }
 
 function resizeAndShowMenu(event, size) {
     if (!menuWindow || menuWindow.isDestroyed() || event.sender !== menuWindow.webContents) return;
+    if (size?.requestId !== activeMenuRequestId || activeMenuItems.length === 0) return;
     if (size?.dismiss === true) {
         hideMenuWindow({ restoreFocus: true });
         return;
     }
-    if (size?.requestId !== activeMenuRequestId || activeMenuItems.length === 0) return;
-    const width = Math.min(Math.max(Math.ceil(size?.width || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
-    const height = Math.min(Math.max(Math.ceil(size?.height || 1), 1), 1000);
+    const width = Math.min(Math.max(Math.ceil(Number(size?.width) || MENU_MIN_WIDTH), MENU_MIN_WIDTH), MENU_MAX_WIDTH);
+    const height = Math.min(Math.max(Math.ceil(Number(size?.height) || 1), 1), 1000);
     const clampInset = value => Math.min(Math.max(Math.ceil(Number(value) || 0), 0), 48);
     const inset = {
         top: clampInset(size?.inset?.top),
@@ -203,8 +218,9 @@ function registerMenuWindowIpc() {
     ipcMain.on('hide-popup-menu', () => hideMenuWindow());
     ipcMain.on('show-popup-menu', showPopupMenu);
     ipcMain.on('resize-and-show-menu', resizeAndShowMenu);
-    ipcMain.on('menu-item-click', (event, action, data) => {
-        if (!menuWindow || event.sender !== menuWindow.webContents) return;
+    ipcMain.on('menu-item-click', (event, action, data, requestId) => {
+        if (!menuWindow || event.sender !== menuWindow.webContents
+            || requestId !== activeMenuRequestId || activeMenuRequestId === null) return;
         const authorizedItem = activeMenuItems.find(item => (
             item?.action === action && isDeepStrictEqual(item?.data, data)
         ));

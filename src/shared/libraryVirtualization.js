@@ -4,8 +4,8 @@ const DEFAULT_OVERSCAN_ROWS = 3;
 const DEFAULT_MAX_RENDERED_ITEMS = 120;
 
 function positiveInteger(value, fallback) {
-    const number = Number(value);
-    return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+    const number = Math.floor(Number(value));
+    return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function nonNegativeNumber(value, fallback = 0) {

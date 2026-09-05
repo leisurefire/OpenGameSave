@@ -1,13 +1,20 @@
 import { renderIcon } from './icons.js';
 import { createLoadingIndicator } from './loadingIndicator.js';
 
+const actionButtonRenderTokens = new WeakMap();
+
 export async function setActionButtonState({ button, icon, text, iconName, i18nKey, busy }) {
+    const renderToken = {};
+    actionButtonRenderTokens.set(button, renderToken);
     button.disabled = busy;
     button.classList.toggle('cursor-not-allowed', busy);
     icon.classList.toggle('is-spinning', busy);
     renderIcon(icon, busy ? 'loader-circle' : iconName);
     text.setAttribute('data-i18n', i18nKey);
-    text.textContent = await window.i18n.translate(i18nKey);
+    const label = await window.i18n.translate(i18nKey);
+    if (actionButtonRenderTokens.get(button) === renderToken && text.getAttribute('data-i18n') === i18nKey) {
+        text.textContent = label;
+    }
 }
 
 export async function showLoadingIndicator(tabName) {

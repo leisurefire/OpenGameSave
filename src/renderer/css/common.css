@@ -11,6 +11,7 @@ html {
     line-height: 1.4;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
 }
 
 *,
@@ -42,7 +43,7 @@ html {
 .lucide-icon {
     width: 16px;
     height: 16px;
-    flex: 0 0 16px;
+    flex: 0 0 auto;
     pointer-events: none;
 }
 
@@ -57,10 +58,10 @@ html {
 
 .loading-indicator {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 10px;
-    color: rgba(255, 255, 255, 0.48);
+    justify-content: center;
+    gap: 9px;
+    color: var(--color-text-secondary);
     font-size: 12px;
     font-weight: 500;
 }
@@ -129,6 +130,9 @@ select,
 }
 
 button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
 .cursor-not-allowed {
     cursor: not-allowed !important;
     opacity: 0.5;
@@ -136,6 +140,12 @@ button:disabled,
 
 button {
     border-radius: var(--radius-win-sm) !important;
+    font: inherit;
+}
+
+input,
+select,
+textarea {
     font: inherit;
 }
 
@@ -194,6 +204,10 @@ button {
 
 input[type="text"],
 input[type="number"],
+input[type="password"],
+input[type="url"],
+input[type="email"],
+input[type="search"],
 select {
     background: rgba(255, 255, 255, 0.045) !important;
     border: 1px solid var(--color-control-border) !important;
@@ -219,13 +233,10 @@ select option {
     color: #ffffff;
 }
 
-input[type="text"]:focus,
-input[type="number"]:focus {
+input:is([type="text"], [type="number"], [type="password"], [type="url"], [type="email"], [type="search"]):focus {
     border-bottom-color: var(--color-theme-accent-bright) !important;
-    border-bottom-width: 2px !important;
+    box-shadow: inset 0 -1px var(--color-theme-accent-bright);
     background: rgba(30, 30, 30, 0.8) !important;
-    outline: none;
-    padding-bottom: 5px; /* Compensate for thicker border */
 }
 
 input[type="checkbox"],
@@ -274,7 +285,7 @@ input[type="radio"] {
     border-top: 1px solid var(--color-control-border);
 }
 
-.number-input-stepper:hover {
+.number-input-stepper:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.84);
     background: rgba(255, 255, 255, 0.055);
 }
@@ -287,7 +298,9 @@ input[type="radio"] {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
+input[type]:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 [role="tab"]:focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
@@ -303,6 +316,7 @@ select:focus-visible,
 
 .app-toast {
     display: flex;
+    text-align: left;
     width: min(360px, calc(100vw - 24px));
     min-height: 50px;
     align-items: center;
@@ -358,7 +372,7 @@ select:focus-visible,
 }
 
 .app-toast[data-status="success"] .app-toast-icon {
-    color: var(--color-accent-emphasis);
+    color: var(--color-status-success);
 }
 
 .app-toast[data-status="warning"] .app-toast-icon {
@@ -442,4 +456,15 @@ select:focus-visible,
     background: var(--system-accent);
     border-radius: inherit;
     transition: width 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
 }
