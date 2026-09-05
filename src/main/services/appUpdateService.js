@@ -282,7 +282,7 @@ async function downloadAppUpdate() {
         bytesPerSecond: 0,
         error: null
     });
-    downloadPromise = autoUpdater.downloadUpdate()
+    downloadPromise = Promise.resolve().then(() => autoUpdater.downloadUpdate())
         .then(() => {
             setAppUpdateState({ status: 'downloaded', percent: 100, error: null });
             if (!installTimer) {

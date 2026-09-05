@@ -40,6 +40,19 @@ test('release selection ignores database releases and requires complete assets',
         '0.8.0-beta.2');
 });
 
+test('release ordering preserves large numeric prerelease identifiers', () => {
+    const older = '0.8.0-beta.9007199254740992';
+    const newer = '0.8.0-beta.9007199254740993';
+    assert.ok(compareAppVersions(newer, older) > 0);
+    assert.ok(compareAppVersions(older, newer) < 0);
+    assert.equal(selectLatestAppRelease([appRelease(older), appRelease(newer)], {
+        includePrerelease: true
+    }).version, newer);
+    const longIdentifier = '9'.repeat(310);
+    assert.ok(compareAppVersions(`0.8.0-beta.1${longIdentifier}`, `0.8.0-beta.${longIdentifier}`) > 0);
+    assert.equal(compareAppVersions(newer, newer), 0);
+});
+
 test('release resolver increments stable and prerelease channels independently', () => {
     const releases = [appRelease('0.7.2'), appRelease('0.7.3-beta.1')];
     const prerelease = resolveNextReleaseVersion({

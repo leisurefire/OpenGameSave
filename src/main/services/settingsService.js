@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
+const { isDeepStrictEqual } = require('util');
 
 const i18next = require('i18next');
 
@@ -236,7 +237,7 @@ function saveSettings(keyOrUpdates, value) {
 
         const requestedKeys = Object.keys(sanitizedUpdates);
         const changedKeys = requestedKeys
-            .filter(key => !Object.is(settings[key], sanitizedUpdates[key]));
+            .filter(key => !isDeepStrictEqual(settings[key], sanitizedUpdates[key]));
         const hasPendingRetry = Object.entries(SIDE_EFFECT_KEYS)
             .some(([name, keys]) => pendingSideEffects.has(name) && includesAnyKey(requestedKeys, keys));
         if (changedKeys.length === 0 && !hasPendingRetry) return [];

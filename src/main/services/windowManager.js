@@ -12,6 +12,9 @@ const activeModalWindows = [];
 const modalWindowPages = new WeakMap();
 const modalWindowData = new WeakMap();
 const modalWindowLoadPromises = new WeakMap();
+const modalWindowLoadStates = new WeakMap();
+const reusableModalWindows = new Map();
+const closingModalWindows = new WeakSet();
 const isWindows = process.platform === 'win32';
 const rendererRoot = path.join(__dirname, '../renderer');
 const PUBLIC_MODAL_PAGES = new Set(['export', 'import', 'account', 'auto-backup', 'manage-backups', 'local-save', 'scan-full']);
@@ -157,7 +160,7 @@ const modalWindowDefinitions = {
 const getTopModalOwner = () => {
     for (let index = activeModalWindows.length - 1; index >= 0; index -= 1) {
         const candidate = activeModalWindows[index];
-        if (candidate && !candidate.isDestroyed()) {
+        if (candidate && !candidate.isDestroyed() && !closingModalWindows.has(candidate)) {
             return candidate;
         }
     }
@@ -200,7 +203,7 @@ const unregisterActiveModalWindow = (browserWindow) => {
 };
 
 const showModalWindow = (browserWindow) => {
-    if (!browserWindow || browserWindow.isDestroyed()) {
+    if (!browserWindow || browserWindow.isDestroyed() || closingModalWindows.has(browserWindow)) {
         return;
     }
 
@@ -234,17 +237,39 @@ const loadModalWindowPage = async (browserWindow, pageName, initialData = {}) =>
 };
 
 const startModalWindowLoad = (browserWindow, pageName, initialData = {}) => {
-    const previousLoad = modalWindowLoadPromises.get(browserWindow) || Promise.resolve();
-    const loadPromise = previousLoad
-        .catch(() => {
-            // Keep the per-window load queue moving even if an earlier preload
-            // was interrupted or failed.
-        })
-        .then(() => loadModalWindowPage(browserWindow, pageName, initialData))
+    const existingState = modalWindowLoadStates.get(browserWindow);
+    if (existingState) {
+        // Rapid selection changes need one pending navigation, not a retained
+        // promise chain and a full renderer reload for every obsolete value.
+        existingState.pending = { pageName, initialData };
+        return existingState.promise;
+    }
+    const state = { pending: { pageName, initialData }, promise: null };
+    const loadPromise = Promise.resolve().then(async () => {
+        while (state.pending && !browserWindow.isDestroyed() && !closingModalWindows.has(browserWindow)) {
+            const next = state.pending;
+            state.pending = null;
+            try {
+                await loadModalWindowPage(browserWindow, next.pageName, next.initialData);
+            } catch (error) {
+                // A superseded navigation can fail independently of the newest
+                // selection. Keep draining that one pending load before failing
+                // the shared request or destroying an initially hidden window.
+                if (!state.pending || browserWindow.isDestroyed() || closingModalWindows.has(browserWindow)) throw error;
+                console.error(`Superseded modal window load failed for "${next.pageName}":`, error);
+            }
+        }
+    })
         .catch((error) => {
             console.error(`Failed to load modal window page "${pageName}":`, error);
             throw error;
+        })
+        .finally(() => {
+            state.pending = null;
+            modalWindowLoadStates.delete(browserWindow);
         });
+    state.promise = loadPromise;
+    modalWindowLoadStates.set(browserWindow, state);
     modalWindowLoadPromises.set(browserWindow, loadPromise);
     return loadPromise;
 };
@@ -310,6 +335,8 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
     // can finish its own cleanup.
     let _isClosing = false;
     browserWindow.on('close', (e) => {
+        closingModalWindows.add(browserWindow);
+        if (reusableModalWindows.get(pageName) === browserWindow) reusableModalWindows.delete(pageName);
         if (!_isClosing && !browserWindow.isDestroyed() && browserWindow.isVisible()) {
             e.preventDefault();
             _isClosing = true;
@@ -323,6 +350,8 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
     });
 
     browserWindow.on('closed', () => {
+        closingModalWindows.add(browserWindow);
+        if (reusableModalWindows.get(pageName) === browserWindow) reusableModalWindows.delete(pageName);
         unregisterActiveModalWindow(browserWindow);
     });
 
@@ -330,22 +359,21 @@ const createModalWindow = (pageName, { showWhenReady = true, initialData = {} } 
 };
 
 const openModalWindow = async (pageName, initialData = {}) => {
-    const existingVisibleWindow = activeModalWindows.find((browserWindow) => {
-        return browserWindow && !browserWindow.isDestroyed() && modalWindowPages.get(browserWindow) === pageName;
-    });
-
-    if (existingVisibleWindow) {
+    let modalWindow = reusableModalWindows.get(pageName);
+    if (modalWindow && !modalWindow.isDestroyed() && !closingModalWindows.has(modalWindow)) {
         if (dynamicModalPages.has(pageName)) {
-            await startModalWindowLoad(existingVisibleWindow, pageName, initialData);
+            await startModalWindowLoad(modalWindow, pageName, initialData);
         } else {
-            await waitForModalWindowLoad(existingVisibleWindow);
+            await waitForModalWindowLoad(modalWindow);
         }
-        existingVisibleWindow.focus();
-        return;
+    } else {
+        modalWindow = createModalWindow(pageName, { showWhenReady: false, initialData });
+        // Include windows still loading so repeated clicks cannot create an
+        // unbounded number of hidden BrowserWindows and renderer processes.
+        reusableModalWindows.set(pageName, modalWindow);
+        await waitForModalWindowLoad(modalWindow);
     }
-
-    const modalWindow = createModalWindow(pageName, { showWhenReady: false, initialData });
-    await waitForModalWindowLoad(modalWindow);
+    if (modalWindow.isDestroyed() || closingModalWindows.has(modalWindow)) return;
     showModalWindow(modalWindow);
     modalWindow.moveTop();
 };

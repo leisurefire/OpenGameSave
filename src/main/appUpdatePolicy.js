@@ -32,7 +32,11 @@ function comparePrerelease(left, right) {
 
         const leftNumeric = /^\d+$/.test(left[index]);
         const rightNumeric = /^\d+$/.test(right[index]);
-        if (leftNumeric && rightNumeric) return Number(left[index]) - Number(right[index]);
+        if (leftNumeric && rightNumeric) {
+            // SemVer numeric identifiers have no upper bound. Converting them to
+            // Number loses ordering above MAX_SAFE_INTEGER (or returns Infinity).
+            return left[index].length - right[index].length || (left[index] < right[index] ? -1 : 1);
+        }
         if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
         return left[index] < right[index] ? -1 : 1;
     }

@@ -110,6 +110,29 @@ test('a committed setting retries a failed runtime side effect without rewriting
     }
 });
 
+test('equivalent structured settings do not rewrite the file or refresh the library', async (context) => {
+    const root = temporaryDirectory(context, 'ogs-settings-noop-');
+    const deliveredChannels = [];
+    const settingsService = requireWithMocks('src/main/services/settingsService.js', {
+        electron: createElectronMock(root),
+        i18next: { changeLanguage: async () => {} },
+        './windowManager': { getMainWin: () => ({
+            webContents: { send: channel => deliveredChannels.push(channel) }
+        }) }
+    });
+    settingsService.loadSettings();
+    await settingsService.saveSettings('gameInstalls', [root]);
+    deliveredChannels.length = 0;
+    const writes = context.mock.method(fs.promises, 'writeFile', async () => {
+        throw new Error('Unchanged settings must not be written');
+    });
+    assert.deepEqual(await settingsService.saveSettings({
+        gameInstalls: [root], pinnedGames: [], autoBackupGames: {}
+    }), []);
+    assert.equal(writes.mock.callCount(), 0);
+    assert.deepEqual(deliveredChannels, []);
+});
+
 test('a failed library refresh notification remains pending until delivery succeeds', async (context) => {
     const root = temporaryDirectory(context, 'ogs-settings-library-side-effect-');
     let deliveryAvailable = false;

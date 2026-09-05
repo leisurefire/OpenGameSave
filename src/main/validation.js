@@ -311,7 +311,7 @@ function normalizeAutoBackupInterval(intervalMinutes) {
 }
 
 function normalizeAutoBackupGames(value, fallback = {}) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...fallback };
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return Object.assign(Object.create(null), fallback);
     const normalized = Object.create(null);
     let count = 0;
     for (const [rawWikiId, config] of Object.entries(value)) {
