@@ -66,6 +66,31 @@ test('chunked downloads abort as soon as they exceed the snapshot size', async (
     );
 });
 
+test('a missing upload file rejects through the upload stream', async () => {
+    const client = {
+        putFileContents: async (_remotePath, source) => {
+            for await (const chunk of source) assert.ok(Buffer.isBuffer(chunk));
+            return true;
+        }
+    };
+    await assert.rejects(
+        putImmutableResource(client, '/objects/missing', path.join(os.tmpdir(), `ogs-missing-${Date.now()}`), 1),
+        { code: 'ENOENT' }
+    );
+});
+
+test('a server declining an immutable upload releases its unconsumed source', async () => {
+    let source;
+    const client = {
+        putFileContents: async (_remotePath, data) => {
+            source = data;
+            return false;
+        }
+    };
+    assert.equal(await putImmutableResource(client, '/objects/existing', __filename, 1), false);
+    assert.equal(source.destroyed, true);
+});
+
 test('remote object hash mismatches are classified as repairable integrity failures', async () => {
     const payload = Buffer.from('altered');
     const client = {

@@ -68,17 +68,32 @@ function validateFiles(rawFiles) {
 
     const seen = new Set();
     const seenFolded = new Map();
+    const directoryPaths = new Set();
     const digestSizes = new Map();
     let totalSize = 0;
     const files = rawFiles.map((file) => {
         const relativePath = normalizeManifestPath(file?.path);
         const foldedPath = caseFoldPath(relativePath);
         if (seen.has(relativePath)) throw new Error('Duplicate path in WebDAV manifest');
-        if (seenFolded.has(foldedPath) && seenFolded.get(foldedPath) !== relativePath) {
-            throw new Error('Case-folding path collision in WebDAV manifest');
+        const segments = relativePath.split('/');
+        if (segments.length === 3 && segments[2] !== 'backup_info.json') {
+            throw new Error('WebDAV backup data folders cannot be files');
         }
+        let prefix = '';
+        for (let index = 0; index < segments.length; index += 1) {
+            prefix = prefix ? `${prefix}/${segments[index]}` : segments[index];
+            const foldedPrefix = caseFoldPath(prefix);
+            if (seenFolded.has(foldedPrefix) && seenFolded.get(foldedPrefix) !== prefix) {
+                throw new Error('Case-folding path collision in WebDAV manifest');
+            }
+            seenFolded.set(foldedPrefix, prefix);
+            if (index < segments.length - 1) {
+                if (seen.has(prefix)) throw new Error('File and directory path collision in WebDAV manifest');
+                directoryPaths.add(foldedPrefix);
+            }
+        }
+        if (directoryPaths.has(foldedPath)) throw new Error('File and directory path collision in WebDAV manifest');
         seen.add(relativePath);
-        seenFolded.set(foldedPath, relativePath);
 
         const size = Number(file?.size);
         const mtimeMs = Number(file?.mtimeMs);

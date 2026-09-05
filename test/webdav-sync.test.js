@@ -91,3 +91,18 @@ test('current pointer revisions are typed and cannot be ambiguous', () => {
         deviceId: DEVICE_ID
     }));
 });
+
+test('manifest validation rejects directory aliases and file-directory overlaps before download', () => {
+    const describe = relativePath => ({ path: relativePath, size: 1, mtimeMs: 1, sha256: DIGEST });
+    assert.throws(() => validateManifest(makeSnapshot([
+        describe(`${BACKUP_ROOT}/path1/Saves/first.dat`),
+        describe(`${BACKUP_ROOT}/path1/saves/second.dat`)
+    ])), /Case-folding/);
+    for (const paths of [
+        [`${BACKUP_ROOT}/path1/save`, `${BACKUP_ROOT}/path1/save/nested.dat`],
+        [`${BACKUP_ROOT}/path1/save/nested.dat`, `${BACKUP_ROOT}/path1/save`]
+    ]) {
+        assert.throws(() => validateManifest(makeSnapshot(paths.map(describe))), /File and directory/);
+    }
+    assert.throws(() => validateManifest(makeSnapshot([describe(`${BACKUP_ROOT}/path1`)])), /folders cannot be files/);
+});

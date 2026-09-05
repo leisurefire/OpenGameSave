@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createHash, randomUUID } = require('crypto');
-const { Transform } = require('stream');
-const { Writable } = require('stream');
+const { Readable, Transform, Writable } = require('stream');
 const { pipeline } = require('stream/promises');
 
 const { joinRemotePath } = require('./webdavManifest');
@@ -233,15 +232,21 @@ function makeUploadSource(data, onActivity) {
         return data;
     }
     if (typeof data === 'string') {
-        const activityTransform = new Transform({
-            transform(chunk, encoding, callback) {
-                onActivity();
-                callback(null, chunk);
+        // Async iteration forwards file errors and closes the source when the
+        // consumer aborts. A bare pipe leaves its upstream file open on failure.
+        return Readable.from((async function* () {
+            const source = fs.createReadStream(data, {
+                flags: fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
+            });
+            try {
+                for await (const chunk of source) {
+                    onActivity();
+                    yield chunk;
+                }
+            } finally {
+                source.destroy();
             }
-        });
-        return fs.createReadStream(data, {
-            flags: fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)
-        }).pipe(activityTransform);
+        })(), { objectMode: false });
     }
     if (typeof data === 'function') return data(onActivity);
     throw new Error('Unsupported WebDAV upload source');
@@ -289,8 +294,12 @@ async function putImmutableResource(client, remotePath, data, size) {
             idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT_MS);
         };
         resetIdleTimer();
+        let uploadSource;
+        const abortSource = () => uploadSource?.destroy?.();
         try {
-            return await client.putFileContents(remotePath, makeUploadSource(data, resetIdleTimer), {
+            uploadSource = makeUploadSource(data, resetIdleTimer);
+            signal.addEventListener('abort', abortSource, { once: true });
+            return await client.putFileContents(remotePath, uploadSource, {
                 contentLength: size,
                 headers: {
                     'Content-Length': String(size),
@@ -301,6 +310,8 @@ async function putImmutableResource(client, remotePath, data, size) {
             });
         } finally {
             clearTimeout(idleTimer);
+            signal.removeEventListener('abort', abortSource);
+            uploadSource?.destroy?.();
         }
     }, { attempts: 4, timeoutMs: TRANSFER_TIMEOUT_MS });
 }

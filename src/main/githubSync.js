@@ -406,25 +406,37 @@ async function writeExternalMetadataAtomically({ metadataPath, externalMetadata 
 async function markPulledBackupMetadataExternal(repoRoot, changedPaths) {
     const metadataPaths = [];
     const comparisonPaths = new Set();
+    const errors = [];
     for (const gitPath of changedPaths) {
-        const metadataPath = resolveChangedBackupMetadataPath(repoRoot, gitPath);
-        if (!metadataPath) continue;
-        const comparisonPath = process.platform === 'win32' ? metadataPath.toLowerCase() : metadataPath;
-        // Multiple payload files from one backup intentionally resolve to the
-        // same metadata file. Validate and rewrite that owner only once.
-        if (comparisonPaths.has(comparisonPath)) continue;
-        comparisonPaths.add(comparisonPath);
-        metadataPaths.push(metadataPath);
+        try {
+            const metadataPath = resolveChangedBackupMetadataPath(repoRoot, gitPath);
+            if (!metadataPath) continue;
+            const comparisonPath = process.platform === 'win32' ? metadataPath.toLowerCase() : metadataPath;
+            // Multiple payload files from one backup intentionally resolve to the
+            // same metadata file. Validate and rewrite that owner only once.
+            if (comparisonPaths.has(comparisonPath)) continue;
+            comparisonPaths.add(comparisonPath);
+            metadataPaths.push(metadataPath);
+        } catch (error) {
+            errors.push(error);
+        }
     }
 
-    // Validate every affected metadata file before mutating any of them. An
-    // invalid remote change must stop the sync before retention or upload can run.
-    const rewrites = [];
+    // Git has already installed every pulled file. A malformed sibling must
+    // not leave valid remote payloads trusted as local after this sync fails.
+    // Downgrade every valid owner, then report errors before retention/upload.
     for (const metadataPath of metadataPaths) {
-        const rewrite = await prepareExternalMetadataRewrite(repoRoot, metadataPath);
-        if (rewrite) rewrites.push(rewrite);
+        try {
+            const rewrite = await prepareExternalMetadataRewrite(repoRoot, metadataPath);
+            if (rewrite) await writeExternalMetadataAtomically(rewrite);
+        } catch (error) {
+            errors.push(error);
+        }
     }
-    for (const rewrite of rewrites) await writeExternalMetadataAtomically(rewrite);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+        throw new AggregateError(errors, `Remote backup validation failed: ${errors[0].message}`);
+    }
 }
 
 async function pullRepo(repoRoot, { auditTrackedBackups = false } = {}) {

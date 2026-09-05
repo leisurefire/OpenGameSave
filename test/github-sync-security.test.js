@@ -439,6 +439,32 @@ test('invalid remotely changed metadata aborts download before retention', async
     assert.equal(unchanged.provenance, 'local');
 });
 
+test('invalid remote siblings do not leave other pulled payloads trusted after sync fails', async (context) => {
+    const fixture = await createBackupMetadataFixture(context);
+    const invalidBackupDate = '2026-08-29_13-30';
+    const invalidMetadataPath = path.join(fixture.repoRoot, fixture.wikiId, invalidBackupDate, 'backup_info.json');
+    await fs.promises.mkdir(path.dirname(invalidMetadataPath), { recursive: true });
+    await fs.promises.writeFile(invalidMetadataPath, JSON.stringify({ backup_paths: 'invalid' }));
+    const events = [];
+    const changedPaths = [
+        `${fixture.wikiId}/${invalidBackupDate}/backup_info.json`,
+        `${fixture.wikiId}/${fixture.backupDate}/nested/backup_info.json`,
+        `${fixture.wikiId}/${fixture.backupDate}/path1/remote-payload.dll`
+    ];
+    const { githubSync, calls } = loadGithubSync({
+        repoRoot: fixture.repoRoot,
+        fsAdapter: fs,
+        gitCommand: createPullGitCommand(`${changedPaths.join('\0')}\0`),
+        onPrune: async () => events.push('prune')
+    });
+
+    await assert.rejects(githubSync.uploadBackupsToGitHub(fixture.repoRoot), /Remote backup validation failed/);
+
+    assert.equal(JSON.parse(await fs.promises.readFile(fixture.metadataPath, 'utf8')).provenance, 'external');
+    assert.deepEqual(events, []);
+    assert.equal(calls.some(({ args }) => args.includes('add') || args.includes('push')), false);
+});
+
 test('a truncated non-NUL Git path list fails closed before retention', async () => {
     const events = [];
     const gitCommand = createPullGitCommand('1234/2026-08-29_12-30/backup_info.json');

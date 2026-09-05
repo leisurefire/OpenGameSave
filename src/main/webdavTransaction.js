@@ -11,9 +11,11 @@ const {
 } = require('./validation');
 const { normalizeManifestPath } = require('./webdavManifest');
 
-const JOURNAL_VERSION = 1;
+const JOURNAL_VERSION = 2;
 const JOURNAL_NAME = 'journal.json';
+const JOURNAL_UPDATES_NAME = 'journal-updates.jsonl';
 const MAX_JOURNAL_SIZE = 32 * 1024 * 1024;
+const MAX_JOURNAL_UPDATES_SIZE = 64 * 1024 * 1024;
 
 function getTransactionBase(syncRoot) {
     const resolvedRoot = path.resolve(syncRoot);
@@ -32,7 +34,23 @@ async function ensureRegularDirectory(directoryPath) {
     if (!stats.isDirectory() || stats.isSymbolicLink()) throw new Error('Unsafe WebDAV transaction directory');
 }
 
-async function writeJournal(transaction) {
+async function writeJournal(transaction, entryIndex = null) {
+    if (transaction.journalCreated) {
+        // Persist only the changed entry. Rewriting the complete file list for
+        // every rename turns a large restore into quadratic I/O and allocation.
+        const entry = entryIndex === null ? null : transaction.entries[entryIndex];
+        const update = entry
+            ? { index: entryIndex, state: entry.state, hadOriginal: entry.hadOriginal }
+            : { state: transaction.state };
+        const handle = await fs.promises.open(path.join(transaction.transactionRoot, JOURNAL_UPDATES_NAME), 'a', 0o600);
+        try {
+            await handle.writeFile(`${JSON.stringify(update)}\n`, 'utf8');
+            await handle.sync();
+        } finally {
+            await handle.close();
+        }
+        return;
+    }
     const journalPath = path.join(transaction.transactionRoot, JOURNAL_NAME);
     const temporaryPath = `${journalPath}.${randomUUID()}.tmp`;
     const payload = JSON.stringify({
@@ -41,6 +59,9 @@ async function writeJournal(transaction) {
         state: transaction.state,
         entries: transaction.entries
     }, null, 2);
+    if (Buffer.byteLength(payload, 'utf8') > MAX_JOURNAL_SIZE) {
+        throw new Error('WebDAV transaction journal is too large');
+    }
     try {
         const fileHandle = await fs.promises.open(temporaryPath, 'wx', 0o600);
         try {
@@ -50,6 +71,7 @@ async function writeJournal(transaction) {
             await fileHandle.close();
         }
         await fs.promises.rename(temporaryPath, journalPath);
+        transaction.journalCreated = true;
     } finally {
         await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
     }
@@ -98,9 +120,6 @@ async function beginWebDAVTransaction(syncRoot, files, { replaceTreePaths = [] }
     await assertDiskSpace(transactionBase, files.reduce((total, file) => total + file.size, 0));
 
     const transactionRoot = resolveInside(transactionBase, randomUUID());
-    await ensureRegularDirectory(transactionRoot);
-    await ensureRegularDirectory(path.join(transactionRoot, 'staged'));
-    await ensureRegularDirectory(path.join(transactionRoot, 'previous'));
     const normalizedTreePaths = new Set(replaceTreePaths.map((relativePath) => {
         const normalizedPath = normalizeTransactionPath(relativePath);
         if (normalizedPath.split('/').length !== 2) throw new Error('Invalid WebDAV replacement tree');
@@ -125,7 +144,15 @@ async function beginWebDAVTransaction(syncRoot, files, { replaceTreePaths = [] }
                 hadOriginal: null
             })))
     };
-    await writeJournal(transaction);
+    try {
+        await ensureRegularDirectory(transactionRoot);
+        await ensureRegularDirectory(path.join(transactionRoot, 'staged'));
+        await ensureRegularDirectory(path.join(transactionRoot, 'previous'));
+        await writeJournal(transaction);
+    } catch (error) {
+        await fs.promises.rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+    }
     return transaction;
 }
 
@@ -137,12 +164,16 @@ async function pathStats(filePath) {
 }
 
 async function rollbackTransaction(transaction) {
-    for (const entry of [...transaction.entries].reverse()) {
+    for (let index = transaction.entries.length - 1; index >= 0; index -= 1) {
+        const entry = transaction.entries[index];
         const destinationPath = resolveInside(transaction.syncRoot, ...entry.path.split('/'));
         const stagedPath = entry.operation === 'replace-tree'
             ? getStagedTreePath(transaction, entry.path)
             : getStagedPath(transaction, entry.path);
         const previousPath = getPreviousPath(transaction, entry.path);
+        await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
+        await assertNoSymlinkAncestors(transaction.transactionRoot, previousPath, fs);
+        await assertNoSymlinkAncestors(transaction.transactionRoot, stagedPath, fs);
         const previousStats = await pathStats(previousPath);
         if (previousStats) {
             const isExpectedType = entry.operation === 'replace-tree'
@@ -170,6 +201,14 @@ async function rollbackTransaction(transaction) {
     await fs.promises.rm(transaction.transactionRoot, { recursive: true, force: true });
 }
 
+async function cleanupCommittedTransaction(transaction) {
+    // The directory name remains a durable commit marker even if cleanup
+    // removes the journal and then fails halfway through removing old files.
+    const cleanupRoot = `${transaction.transactionRoot}.committed`;
+    await fs.promises.rename(transaction.transactionRoot, cleanupRoot);
+    await fs.promises.rm(cleanupRoot, { recursive: true, force: true });
+}
+
 async function installWebDAVTransaction(transaction) {
     await fs.promises.mkdir(transaction.syncRoot, { recursive: true });
     const rootStats = await fs.promises.lstat(transaction.syncRoot);
@@ -180,7 +219,7 @@ async function installWebDAVTransaction(transaction) {
     await writeJournal(transaction);
 
     try {
-        for (const entry of transaction.entries) {
+        for (const [entryIndex, entry] of transaction.entries.entries()) {
             const destinationPath = resolveInside(transaction.syncRoot, ...entry.path.split('/'));
             const previousPath = getPreviousPath(transaction, entry.path);
             await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
@@ -193,12 +232,12 @@ async function installWebDAVTransaction(transaction) {
 
             entry.hadOriginal = Boolean(existingStats);
             entry.state = existingStats ? 'moving-previous' : 'installing';
-            await writeJournal(transaction);
+            await writeJournal(transaction, entryIndex);
             if (existingStats) {
                 await fs.promises.mkdir(path.dirname(previousPath), { recursive: true });
                 await fs.promises.rename(destinationPath, previousPath);
                 entry.state = 'previous-moved';
-                await writeJournal(transaction);
+                await writeJournal(transaction, entryIndex);
             }
             if (isTreeReplacement) {
                 const stagedTreePath = getStagedTreePath(transaction, entry.path);
@@ -209,10 +248,10 @@ async function installWebDAVTransaction(transaction) {
                 await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
                 await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
                 entry.state = 'installing';
-                await writeJournal(transaction);
+                await writeJournal(transaction, entryIndex);
                 await fs.promises.rename(stagedTreePath, destinationPath);
                 entry.state = 'installed';
-                await writeJournal(transaction);
+                await writeJournal(transaction, entryIndex);
                 continue;
             }
             const stagedPath = getStagedPath(transaction, entry.path);
@@ -223,15 +262,14 @@ async function installWebDAVTransaction(transaction) {
             await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
             await assertNoSymlinkAncestors(transaction.syncRoot, destinationPath, fs);
             entry.state = 'installing';
-            await writeJournal(transaction);
+            await writeJournal(transaction, entryIndex);
             await fs.promises.rename(stagedPath, destinationPath);
             await fs.promises.utimes(destinationPath, new Date(entry.mtimeMs), new Date(entry.mtimeMs));
             entry.state = 'installed';
-            await writeJournal(transaction);
+            await writeJournal(transaction, entryIndex);
         }
         transaction.state = 'committed';
         await writeJournal(transaction);
-        await fs.promises.rm(transaction.transactionRoot, { recursive: true, force: true });
     } catch (error) {
         try {
             await rollbackTransaction(transaction);
@@ -240,6 +278,9 @@ async function installWebDAVTransaction(transaction) {
         }
         throw error;
     }
+    // Once committed, cleanup must never roll back an installation: removal may
+    // already have deleted part of the previous data. Recovery retries cleanup.
+    await cleanupCommittedTransaction(transaction).catch(() => undefined);
 }
 
 function validateJournal(rawJournal, expectedRoot, transactionRoot) {
@@ -248,7 +289,7 @@ function validateJournal(rawJournal, expectedRoot, transactionRoot) {
         ? journalRoot.toLowerCase() === expectedRoot.toLowerCase()
         : journalRoot === expectedRoot;
     if (!rawJournal || typeof rawJournal !== 'object' || Array.isArray(rawJournal)
-        || rawJournal.version !== JOURNAL_VERSION || !rootsMatch
+        || ![1, JOURNAL_VERSION].includes(rawJournal.version) || !rootsMatch
         || !['downloading', 'installing', 'committed'].includes(rawJournal.state)
         || !Array.isArray(rawJournal.entries) || rawJournal.entries.length > 100000) {
         throw new Error('Invalid WebDAV transaction journal');
@@ -281,11 +322,11 @@ function validateJournal(rawJournal, expectedRoot, transactionRoot) {
             hadOriginal: entry.hadOriginal
         };
     });
-    const replacementTrees = entries
+    const replacementTrees = new Set(entries
         .filter(entry => entry.operation === 'replace-tree')
-        .map(entry => `${entry.path}/`);
+        .map(entry => entry.path));
     if (entries.some(entry => entry.operation !== 'replace-tree'
-        && replacementTrees.some(prefix => entry.path.startsWith(prefix)))) {
+        && replacementTrees.has(entry.path.split('/').slice(0, 2).join('/')))) {
         throw new Error('Invalid overlapping WebDAV transaction journal entries');
     }
     return {
@@ -308,6 +349,36 @@ async function readJournal(transactionRoot, expectedRoot) {
     } catch (_) {
         throw new Error('Invalid WebDAV transaction journal');
     }
+    const updatesPath = resolveInside(transactionRoot, JOURNAL_UPDATES_NAME);
+    const updateStats = await pathStats(updatesPath);
+    if (updateStats) {
+        if (!updateStats.isFile() || updateStats.isSymbolicLink() || updateStats.size > MAX_JOURNAL_UPDATES_SIZE) {
+            throw new Error('Invalid WebDAV transaction updates');
+        }
+        const updates = await fs.promises.readFile(updatesPath, 'utf8');
+        // A crash may leave an incomplete final append. Its operation could not
+        // have started because each complete record is synced before mutation.
+        const completeUpdates = updates.slice(0, updates.lastIndexOf('\n') + 1);
+        for (const line of completeUpdates.split('\n')) {
+            if (!line) continue;
+            let update;
+            try { update = JSON.parse(line); } catch (_) {
+                throw new Error('Invalid WebDAV transaction updates');
+            }
+            if (!update || typeof update !== 'object' || Array.isArray(update)) {
+                throw new Error('Invalid WebDAV transaction updates');
+            }
+            if (Object.hasOwn(update, 'index')) {
+                if (!Number.isInteger(update.index) || !parsed.entries?.[update.index]) {
+                    throw new Error('Invalid WebDAV transaction update index');
+                }
+                parsed.entries[update.index].state = update.state;
+                parsed.entries[update.index].hadOriginal = update.hadOriginal;
+            } else {
+                parsed.state = update.state;
+            }
+        }
+    }
     return validateJournal(parsed, expectedRoot, transactionRoot);
 }
 
@@ -322,9 +393,13 @@ async function recoverWebDAVTransactions(syncRoot) {
     for (const entry of entries) {
         if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Unsafe item in WebDAV transaction directory');
         const transactionRoot = resolveInside(transactionBase, entry.name);
+        if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.committed$/i.test(entry.name)) {
+            await fs.promises.rm(transactionRoot, { recursive: true, force: true });
+            continue;
+        }
         const transaction = await readJournal(transactionRoot, resolvedRoot);
         if (transaction.state === 'committed') {
-            await fs.promises.rm(transactionRoot, { recursive: true, force: true });
+            await cleanupCommittedTransaction(transaction);
         } else {
             await rollbackTransaction(transaction);
         }
