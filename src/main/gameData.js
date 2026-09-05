@@ -184,7 +184,7 @@ class GameData {
         if (fs.existsSync(epicDataPath)) {
             try {
                 const files = fs.readdirSync(epicDataPath, { withFileTypes: true })
-                    .filter(dirent => dirent.isFile())
+                    .filter(dirent => dirent.isFile() && /^(?:OC_)?([a-f0-9]+)\.dat$/i.test(dirent.name))
                     .map(dirent => dirent.name);
 
                 let latestUserId = null;

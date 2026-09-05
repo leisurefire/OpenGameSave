@@ -148,7 +148,7 @@ async function startAutoBackupInternal(wikiId, mode, intervalMinutes, options = 
                 void triggerSilentBackup(safeWikiId, entry);
             }, intervalMs);
         } else {
-            entry.watcher = await createFileWatcher(safeWikiId, entry);
+            entry.watcher = await createFileWatcher(safeWikiId, entry, games[0]);
         }
 
         assertCurrentStart(safeWikiId, generation);
@@ -228,12 +228,10 @@ async function stopAutoBackup(wikiId, showSummary = true, options = {}) {
 /**
  * Set up file watcher for a game's save paths
  */
-async function createFileWatcher(wikiId, entry) {
+async function createFileWatcher(wikiId, entry, knownGameData = null) {
     try {
-        const { games } = await getGameDataFromDB(false, wikiId);
-        if (!games || games.length === 0) throw new Error('Game data is no longer available');
-
-        const gameData = games[0];
+        const gameData = knownGameData || (await getGameDataFromDB(false, wikiId)).games?.[0];
+        if (!gameData) throw new Error('Game data is no longer available');
         if (!gameData.resolved_paths || gameData.resolved_paths.length === 0) throw new Error('Game has no save paths to watch');
 
         const pathsToWatch = [];

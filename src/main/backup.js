@@ -36,6 +36,7 @@ const {
 } = require('./databaseManifest');
 
 const DB_RELEASE_API_URL = 'https://api.github.com/repos/leisurefire/OpenGameSave/releases/tags/database';
+const PATCH_BATCH_SIZE = 500;
 const DATABASE_READ_WORKER_TASKS = new Set([
     'getGameDataFromDB',
     'getAllGameDataFromDB',
@@ -73,7 +74,15 @@ function createBackupWorkerContext() {
     const currentSettings = getSettings();
 
     return {
-        settings: currentSettings,
+        settings: {
+            backupAllAccounts: currentSettings.backupAllAccounts,
+            backupPath: currentSettings.backupPath,
+            gameInstalls: currentSettings.gameInstalls,
+            language: currentSettings.language,
+            maxBackups: currentSettings.maxBackups,
+            saveUninstalledGames: currentSettings.saveUninstalledGames,
+            uninstalledGames: currentSettings.uninstalledGames
+        },
         gameData: {
             steamPath: currentGameData.steamPath,
             ubisoftPath: currentGameData.ubisoftPath,
@@ -183,40 +192,47 @@ async function applyPatch(dbPath, rawPatch, expectedVersion, expectedFromVersion
 
         // upsert
         if (patch.upsert && patch.upsert.length > 0) {
-            for (const row of patch.upsert) {
-                await dbRun(db,
-                    `INSERT OR REPLACE INTO games
+            const upsertGame = db.prepare(`INSERT OR REPLACE INTO games
                         (wiki_page_id, title, zh_CN, install_folder, steam_id, gog_id, platform, save_location)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        row.wiki_page_id,
-                        row.title,
-                        row.zh_CN !== undefined ? row.zh_CN : null,
-                        row.install_folder,
-                        row.steam_id !== undefined ? row.steam_id : null,
-                        row.gog_id !== undefined ? row.gog_id : null,
-                        row.platform,
-                        row.save_location
-                    ]
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+            for (const [index, row] of patch.upsert.entries()) {
+                upsertGame.run(
+                    row.wiki_page_id,
+                    row.title,
+                    row.zh_CN !== undefined ? row.zh_CN : null,
+                    row.install_folder,
+                    row.steam_id !== undefined ? row.steam_id : null,
+                    row.gog_id !== undefined ? row.gog_id : null,
+                    row.platform,
+                    row.save_location
                 );
+                if ((index + 1) % PATCH_BATCH_SIZE === 0) await new Promise(resolve => { setImmediate(resolve); });
             }
         }
 
         // delete
-        if (patch.delete && patch.delete.length > 0) {
-            const placeholders = patch.delete.map(() => '?').join(',');
+        for (let offset = 0; offset < patch.delete.length; offset += PATCH_BATCH_SIZE) {
+            const batch = patch.delete.slice(offset, offset + PATCH_BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(',');
             await dbRun(db,
                 `DELETE FROM games WHERE wiki_page_id IN (${placeholders})`,
-                patch.delete
+                batch
             );
+            await new Promise(resolve => { setImmediate(resolve); });
         }
 
-        for (const row of patch.metadata_upsert || []) {
-            await dbRun(db, 'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [row.key, row.value]);
+        if (patch.metadata_upsert.length > 0) {
+            const upsertMetadata = db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
+            for (const [index, row] of patch.metadata_upsert.entries()) {
+                upsertMetadata.run(row.key, row.value);
+                if ((index + 1) % PATCH_BATCH_SIZE === 0) await new Promise(resolve => { setImmediate(resolve); });
+            }
         }
-        if (patch.metadata_delete?.length > 0) {
-            const placeholders = patch.metadata_delete.map(() => '?').join(',');
-            await dbRun(db, `DELETE FROM metadata WHERE key IN (${placeholders})`, patch.metadata_delete);
+        for (let offset = 0; offset < patch.metadata_delete.length; offset += PATCH_BATCH_SIZE) {
+            const batch = patch.metadata_delete.slice(offset, offset + PATCH_BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(',');
+            await dbRun(db, `DELETE FROM metadata WHERE key IN (${placeholders})`, batch);
+            await new Promise(resolve => { setImmediate(resolve); });
         }
 
         // 更新版本号（不能用参数绑定）

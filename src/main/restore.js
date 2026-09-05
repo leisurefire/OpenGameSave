@@ -86,8 +86,7 @@ async function restoreGame(wikiId, requestedBackupDate, userActionForAll) {
             const destinationPath = authorization.destination;
 
             if (!fsOriginal.existsSync(sourcePath)) {
-                console.warn(`Source path does not exist: ${sourcePath}`);
-                continue;
+                throw new Error(`Backup source path is missing: ${sourcePath}`);
             }
             const sourceStats = fsOriginal.lstatSync(sourcePath);
             if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {

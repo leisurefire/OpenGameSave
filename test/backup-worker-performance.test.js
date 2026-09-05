@@ -256,3 +256,52 @@ test('UID expansion has a total combination budget before wildcard fallback', as
         glob.globIterateSync = originalGlobIterateSync;
     }
 });
+
+test('save wildcards prefer the requested directory when a nested directory also matches', async (context) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-direct-glob-'));
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(root, 'nested'));
+    fs.writeFileSync(path.join(root, 'current.sav'), 'current');
+    fs.writeFileSync(path.join(root, 'nested', 'old.sav'), 'old');
+    setWorkerContext({ allUserIds: {}, gameData: {}, placeholderMapping: {}, settings: {} });
+    const resolved = await resolveTemplatedBackupPath(path.join(root, '*.sav'), null);
+    assert.deepEqual(resolved.map(item => path.resolve(item.resolved)), [path.join(root, 'current.sav')]);
+});
+
+test('missing install placeholders do not probe null or undefined relative paths', async () => {
+    setWorkerContext({ allUserIds: {}, gameData: {}, placeholderMapping: {}, settings: {} });
+    const originalLstat = fs.lstatSync;
+    let probedPaths = 0;
+    fs.lstatSync = () => {
+        probedPaths += 1;
+        throw new Error('Unresolved placeholder must not touch the filesystem');
+    };
+    try {
+        assert.deepEqual(await resolveTemplatedBackupPath('{{p|game}}/save.dat', null), []);
+        assert.deepEqual(await resolveTemplatedBackupPath('{{p|steam}}/save.dat', null), []);
+        assert.equal(probedPaths, 0);
+    } finally {
+        fs.lstatSync = originalLstat;
+    }
+});
+
+test('account fallback skips vanished paths and accepts pre-epoch modification times', async () => {
+    setWorkerContext({ allUserIds: {}, gameData: {}, placeholderMapping: {}, settings: {} });
+    const originalLstat = fs.lstatSync;
+    const originalGlob = glob.globIterateSync;
+    const root = path.join(os.tmpdir(), 'ogs-account-fallback');
+    const missing = path.join(root, 'missing', 'save.dat');
+    const existing = path.join(root, 'existing', 'save.dat');
+    glob.globIterateSync = () => [missing, existing];
+    fs.lstatSync = target => {
+        if (target === missing) throw Object.assign(new Error('removed during traversal'), { code: 'ENOENT' });
+        return { mtimeMs: -1000, isSymbolicLink: () => false, isDirectory: () => false, isFile: () => true };
+    };
+    try {
+        const resolved = await resolveTemplatedBackupPath(path.join(root, '{{p|uid}}', 'save.dat'), null);
+        assert.deepEqual(resolved.map(item => item.resolved), [existing]);
+    } finally {
+        fs.lstatSync = originalLstat;
+        glob.globIterateSync = originalGlob;
+    }
+});

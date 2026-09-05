@@ -37,17 +37,22 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function createFinalTemplate(resolvedPath, placeholderMappings) {
-    let finalTemplate = resolvedPath.replace(/\\/g, '/');
-    const sortedMappings = Object.entries(placeholderMappings)
+function createFinalTemplateFormatter(placeholderMappings) {
+    const replacements = Object.entries(placeholderMappings)
         .filter(([, resolvedValue]) => typeof resolvedValue === 'string' && resolvedValue.length > 0)
-        .sort((a, b) => b[1].length - a[1].length);
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([placeholder, resolvedValue]) => ({
+            pattern: new RegExp(escapeRegExp(resolvedValue.replace(/\\/g, '/')), 'gi'),
+            replace: () => placeholder
+        }));
 
-    for (const [placeholder, resolvedValue] of sortedMappings) {
-        const normalizedValue = resolvedValue.replace(/\\/g, '/');
-        finalTemplate = finalTemplate.replace(new RegExp(escapeRegExp(normalizedValue), 'gi'), placeholder);
-    }
-    return finalTemplate;
+    return resolvedPath => {
+        let finalTemplate = resolvedPath.replace(/\\/g, '/');
+        for (const { pattern, replace } of replacements) {
+            finalTemplate = finalTemplate.replace(pattern, replace);
+        }
+        return finalTemplate;
+    };
 }
 
 function* generateUidCombinations(
@@ -88,6 +93,7 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
             replacement = getContext().placeholderMapping[normalizedMatch];
         }
 
+        if (typeof replacement !== 'string' || replacement.length === 0) return normalizedMatch;
         if (replacement !== normalizedMatch) {
             placeholderMappings[normalizedMatch] = replacement;
         }
@@ -109,9 +115,10 @@ async function resolveTemplatedBackupPath(templatedPath, gameInstallPath, isRegi
 }
 
 async function fillPathUid(templatedPath, basePath, placeholderMappings) {
+    const formatFinalTemplate = createFinalTemplateFormatter(placeholderMappings);
     const toResolvedPathObject = resolvedPath => ({
         template: templatedPath,
-        finalTemplate: createFinalTemplate(resolvedPath, placeholderMappings),
+        finalTemplate: formatFinalTemplate(resolvedPath),
         resolved: resolvedPath
     });
 
@@ -157,6 +164,8 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     }
 
     if (!basePath.includes('{{p|uid}}') && !basePath.includes('{{p|xbox_uid}}')) {
+        const directPaths = tryPathAndReturnPaths(basePath);
+        if (directPaths?.length) return directPaths;
         const pathParts = path.parse(basePath);
         if (pathParts.base.includes('*')) {
             const subdirectoryPath = path.join(pathParts.dir, '*', pathParts.base);
@@ -165,7 +174,7 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
                 return subDirFiles;
             }
         }
-        return tryPathAndReturnPaths(basePath) || [];
+        return [];
     }
 
     if (getSettings().backupAllAccounts) {
@@ -220,15 +229,17 @@ async function fillPathUid(templatedPath, basePath, placeholderMappings) {
     if (wildcardResolvedPaths.length === 0) return [];
 
     const latestPath = await findLatestModifiedPath(wildcardResolvedPaths);
+    if (!latestPath) return [];
     return [{
         template: templatedPath,
-        finalTemplate: createFinalTemplate(latestPath, placeholderMappings),
+        finalTemplate: formatFinalTemplate(latestPath),
         resolved: latestPath
     }];
 }
 
 async function fillRegistryPathUid(templatedPath, basePath, placeholderMappings) {
     const uidPlaceholderPattern = /\{\{p\|(?:uid|xbox_uid)\}\}/i;
+    const formatFinalTemplate = createFinalTemplateFormatter(placeholderMappings);
 
     function getSafeRegistryPath(candidatePath) {
         try {
@@ -319,7 +330,7 @@ async function fillRegistryPathUid(templatedPath, basePath, placeholderMappings)
 
     const toResolvedPathObject = resolvedPath => ({
         template: templatedPath,
-        finalTemplate: createFinalTemplate(resolvedPath, placeholderMappings),
+        finalTemplate: formatFinalTemplate(resolvedPath),
         resolved: resolvedPath
     });
 
@@ -361,10 +372,17 @@ async function fillRegistryPathUid(templatedPath, basePath, placeholderMappings)
 
 async function findLatestModifiedPath(paths) {
     let latestPath = null;
-    let latestTime = 0;
+    let latestTime = -Infinity;
 
     for (const filePath of paths) {
-        const stats = fsOriginal.statSync(filePath);
+        let stats;
+        try {
+            stats = fsOriginal.lstatSync(filePath);
+        } catch (error) {
+            if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') continue;
+            throw error;
+        }
+        if (stats.isSymbolicLink() || (!stats.isDirectory() && !stats.isFile())) continue;
         if (stats.mtimeMs > latestTime) {
             latestTime = stats.mtimeMs;
             latestPath = filePath;

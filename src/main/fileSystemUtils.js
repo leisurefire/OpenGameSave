@@ -4,13 +4,22 @@ const { randomUUID } = require('crypto');
 
 const fse = require('fs-extra');
 const { format, parse } = require('date-fns');
-const { normalizeBackupDate, validateBackupMetadata } = require('./validation');
+const { isPathInside, normalizeBackupDate, validateBackupMetadata } = require('./validation');
 
-const directorySizeCache = new Map();
+const directorySizeCaches = new WeakMap();
 const DIRECTORY_SIZE_CACHE_TTL_MS = 2000;
 const DIRECTORY_SIZE_CACHE_MAX_ENTRIES = 256;
 
-function getCachedDirectorySize(cacheKey, mtimeMs) {
+function getDirectorySizeCache(fsAdapter) {
+    let cache = directorySizeCaches.get(fsAdapter);
+    if (!cache) {
+        cache = new Map();
+        directorySizeCaches.set(fsAdapter, cache);
+    }
+    return cache;
+}
+
+function getCachedDirectorySize(directorySizeCache, cacheKey, mtimeMs) {
     const cached = directorySizeCache.get(cacheKey);
     if (!cached || cached.mtimeMs !== mtimeMs || Date.now() - cached.timestamp >= DIRECTORY_SIZE_CACHE_TTL_MS) {
         return null;
@@ -20,7 +29,7 @@ function getCachedDirectorySize(cacheKey, mtimeMs) {
     return cached.size;
 }
 
-function cacheDirectorySize(cacheKey, mtimeMs, size) {
+function cacheDirectorySize(directorySizeCache, cacheKey, mtimeMs, size) {
     directorySizeCache.set(cacheKey, { mtimeMs, size, timestamp: Date.now() });
     while (directorySizeCache.size > DIRECTORY_SIZE_CACHE_MAX_ENTRIES) {
         directorySizeCache.delete(directorySizeCache.keys().next().value);
@@ -31,8 +40,10 @@ function calculateDirectorySize(directoryPath, ignoreConfig = true, fsAdapter = 
     try {
         const stats = fsAdapter.lstatSync(directoryPath);
         if (stats.isSymbolicLink()) return 0;
-        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
-        const cachedSize = getCachedDirectorySize(cacheKey, stats.mtimeMs);
+        if (stats.isFile()) return stats.size;
+        const directorySizeCache = getDirectorySizeCache(fsAdapter);
+        const cacheKey = `${ignoreConfig ? '1' : '0'}:${path.resolve(directoryPath)}`;
+        const cachedSize = getCachedDirectorySize(directorySizeCache, cacheKey, stats.mtimeMs);
         if (cachedSize !== null) return cachedSize;
 
         let totalSize = stats.isFile() ? stats.size : 0;
@@ -51,7 +62,7 @@ function calculateDirectorySize(directoryPath, ignoreConfig = true, fsAdapter = 
             }
         }
 
-        cacheDirectorySize(cacheKey, stats.mtimeMs, totalSize);
+        cacheDirectorySize(directorySizeCache, cacheKey, stats.mtimeMs, totalSize);
         return totalSize;
     } catch (error) {
         console.error(`Error calculating directory size for ${directoryPath}:`, error);
@@ -64,8 +75,10 @@ async function calculateDirectorySizeAsync(directoryPath, ignoreConfig = true, f
     try {
         const stats = await fsAdapter.promises.lstat(directoryPath);
         if (stats.isSymbolicLink()) return 0;
-        const cacheKey = `${ignoreConfig ? '1' : '0'}:${directoryPath}`;
-        const cachedSize = getCachedDirectorySize(cacheKey, stats.mtimeMs);
+        if (stats.isFile()) return stats.size;
+        const directorySizeCache = getDirectorySizeCache(fsAdapter);
+        const cacheKey = `${ignoreConfig ? '1' : '0'}:${path.resolve(directoryPath)}`;
+        const cachedSize = getCachedDirectorySize(directorySizeCache, cacheKey, stats.mtimeMs);
         if (cachedSize !== null) return cachedSize;
 
         let totalSize = stats.isFile() ? stats.size : 0;
@@ -84,7 +97,7 @@ async function calculateDirectorySizeAsync(directoryPath, ignoreConfig = true, f
             }
         }
 
-        cacheDirectorySize(cacheKey, stats.mtimeMs, totalSize);
+        cacheDirectorySize(directorySizeCache, cacheKey, stats.mtimeMs, totalSize);
         return totalSize;
     } catch (error) {
         console.error(`Error calculating directory size for ${directoryPath}:`, error);
@@ -112,14 +125,25 @@ function ensureWritable(pathToCheck, fsAdapter = fs) {
 }
 
 function copyFolder(source, target, fsAdapter = fs) {
+    if (isPathInside(source, target)) {
+        throw new Error('Copy destination must be outside the source directory');
+    }
     const sourceStats = fsAdapter.lstatSync(source);
     if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
         throw new Error(`Refusing to copy a non-directory or symbolic link: ${source}`);
+    }
+    fsAdapter.mkdirSync(target, { recursive: true });
+    if (isPathInside(fsAdapter.realpathSync(source), fsAdapter.realpathSync(target))) {
+        throw new Error('Copy destination must be outside the source directory');
     }
     const pendingDirectories = [[source, target]];
     while (pendingDirectories.length > 0) {
         const [currentSource, currentTarget] = pendingDirectories.pop();
         fsAdapter.mkdirSync(currentTarget, { recursive: true });
+        if (fsAdapter.lstatSync(currentSource).isSymbolicLink()
+            || fsAdapter.lstatSync(currentTarget).isSymbolicLink()) {
+            throw new Error('Refusing to copy through a symbolic link');
+        }
         const entries = fsAdapter.readdirSync(currentSource, { withFileTypes: true });
         for (const entry of entries) {
             const sourcePath = path.join(currentSource, entry.name);
@@ -139,14 +163,25 @@ function copyFolder(source, target, fsAdapter = fs) {
 }
 
 async function copyFolderAsync(source, target, fsAdapter = fs) {
+    if (isPathInside(source, target)) {
+        throw new Error('Copy destination must be outside the source directory');
+    }
     const sourceStats = await fsAdapter.promises.lstat(source);
     if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
         throw new Error(`Refusing to copy a non-directory or symbolic link: ${source}`);
+    }
+    await fsAdapter.promises.mkdir(target, { recursive: true });
+    if (isPathInside(await fsAdapter.promises.realpath(source), await fsAdapter.promises.realpath(target))) {
+        throw new Error('Copy destination must be outside the source directory');
     }
     const pendingDirectories = [[source, target]];
     while (pendingDirectories.length > 0) {
         const [currentSource, currentTarget] = pendingDirectories.pop();
         await fsAdapter.promises.mkdir(currentTarget, { recursive: true });
+        if ((await fsAdapter.promises.lstat(currentSource)).isSymbolicLink()
+            || (await fsAdapter.promises.lstat(currentTarget)).isSymbolicLink()) {
+            throw new Error('Refusing to copy through a symbolic link');
+        }
         const entries = await fsAdapter.promises.readdir(currentSource, { withFileTypes: true });
         for (const entry of entries) {
             const sourcePath = path.join(currentSource, entry.name);
@@ -266,7 +301,10 @@ function getNewestBackup(wikiPageId, { backupPath, noBackupsLabel, fsAdapter = f
         return noBackupsLabel;
     }
 
-    const latestBackup = backups.sort((a, b) => b.localeCompare(a))[0];
+    let latestBackup = backups[0];
+    for (let index = 1; index < backups.length; index += 1) {
+        if (backups[index] > latestBackup) latestBackup = backups[index];
+    }
     const backupFormat = latestBackup.length === 19 ? 'yyyy-MM-dd_HH-mm-ss' : 'yyyy-MM-dd_HH-mm';
     return format(parse(latestBackup, backupFormat, new Date()), 'yyyy/MM/dd HH:mm:ss');
 }

@@ -43,6 +43,7 @@ async function backupGame(gameObj) {
     }
     const backupInstancePath = resolveInside(gameBackupPath, backupInstanceFolder);
     let backupInstanceCreated = false;
+    let snapshotComplete = false;
 
     try {
         fsOriginal.mkdirSync(backupRoot, { recursive: true });
@@ -88,10 +89,12 @@ async function backupGame(gameObj) {
                 if (stats.isDirectory()) {
                     dataType = 'folder';
                     fsOriginalCopyFolder(resolvedPath, targetPath);
-                } else {
+                } else if (stats.isFile()) {
                     dataType = 'file';
                     const targetFilePath = path.join(targetPath, path.basename(resolvedPath));
                     fsOriginal.copyFileSync(resolvedPath, targetFilePath);
+                } else {
+                    throw new Error(`Refusing to back up unsupported file type: ${resolvedPath}`);
                 }
 
                 backupConfig.backup_paths.push({
@@ -104,6 +107,7 @@ async function backupGame(gameObj) {
         }
 
         await fse.writeJson(resolveInside(backupInstancePath, 'backup_info.json'), validateBackupMetadata(backupConfig), { spaces: 4, mode: 0o600 });
+        snapshotComplete = true;
 
         const nonPermanentBackups = [];
         const backupFolders = fsOriginal.readdirSync(gameBackupPath, { withFileTypes: true })
@@ -122,6 +126,10 @@ async function backupGame(gameObj) {
             const backupConfigPath = resolveInside(gameBackupPath, backup, 'backup_info.json');
             if (fsOriginal.existsSync(backupConfigPath)) {
                 try {
+                    const metadataStats = fsOriginal.lstatSync(backupConfigPath);
+                    if (!metadataStats.isFile() || metadataStats.isSymbolicLink() || metadataStats.size > 1024 * 1024) {
+                        throw new Error('Backup metadata is not a regular bounded file');
+                    }
                     const existingConfig = validateBackupMetadata(await fse.readJson(backupConfigPath));
                     if (!existingConfig.is_permanent) {
                         nonPermanentBackups.push(backup);
@@ -136,14 +144,25 @@ async function backupGame(gameObj) {
             }
         }
 
-        const maxBackups = getSettings().maxBackups;
+        const configuredMaxBackups = getSettings().maxBackups;
+        const maxBackups = Number.isSafeInteger(configuredMaxBackups) && configuredMaxBackups > 0
+            ? configuredMaxBackups : 10;
         if (nonPermanentBackups.length > maxBackups) {
-            const backupsToDelete = nonPermanentBackups.slice(0, nonPermanentBackups.length - maxBackups);
+            const backupsToDelete = nonPermanentBackups.filter(backup => backup !== backupInstanceFolder)
+                .slice(0, nonPermanentBackups.length - maxBackups);
             for (const backup of backupsToDelete) {
-                fsOriginal.rmSync(path.join(gameBackupPath, backup), { recursive: true, force: true });
+                try {
+                    fsOriginal.rmSync(path.join(gameBackupPath, backup), { recursive: true, force: true });
+                } catch (error) {
+                    console.warn(`Backup completed, but retention could not remove ${backup}: ${error.message}`);
+                }
             }
         }
     } catch (error) {
+        if (snapshotComplete) {
+            console.warn(`Backup completed, but retention cleanup failed: ${error.message}`);
+            return null;
+        }
         if (backupInstanceCreated) {
             await fsOriginal.promises.rm(backupInstancePath, { recursive: true, force: true }).catch(() => undefined);
         }
@@ -256,9 +275,15 @@ function registryKeyExists(registryPath) {
 
 async function rollbackRegistryChanges(applied, rollbackRoot) {
     const errors = [];
-    for (const restorePath of [...applied].reverse()) {
+    for (let index = applied.length - 1; index >= 0; index -= 1) {
+        const restorePath = applied[index];
         try {
             if (restorePath.hadPreviousValue) {
+                // reg import merges values. Remove the failed replacement first
+                // so new values and subkeys do not survive a rollback.
+                if (await registryKeyExists(restorePath.destinationPath)) {
+                    await execFilePromise('reg.exe', ['delete', restorePath.destinationPath, '/f'], { windowsHide: true });
+                }
                 await execFilePromise('reg.exe', ['import', restorePath.previousPath], { windowsHide: true });
             } else if (await registryKeyExists(restorePath.destinationPath)) {
                 await execFilePromise('reg.exe', ['delete', restorePath.destinationPath, '/f'], { windowsHide: true });
@@ -326,7 +351,9 @@ async function applyRegistryRestoreTransaction(registryPaths, backupRoot) {
         async commit() {
             if (finished) return;
             finished = true;
-            await fsOriginal.promises.rm(rollbackRoot, { recursive: true, force: true });
+            await fsOriginal.promises.rm(rollbackRoot, { recursive: true, force: true }).catch((error) => {
+                console.warn(`Registry restore completed; recovery data retained at ${rollbackRoot}: ${error.message}`);
+            });
         },
         async rollback() {
             if (finished) return;

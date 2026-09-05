@@ -16,12 +16,13 @@ class WorkerTaskPool {
         this.queue = [];
         this.closed = false;
         this.shutdownPromise = null;
+        this.terminations = new Set();
     }
 
     run(message, onMessage = null) {
         if (this.closed) return Promise.reject(new Error(`${this.name} pool is shut down`));
 
-        const hasImmediateCapacity = [...this.workers].some(state => state.current === null)
+        const hasImmediateCapacity = this.findIdleWorker()
             || this.workers.size < this.maxWorkers;
         if (!hasImmediateCapacity && this.queue.length >= this.maxQueue) {
             return Promise.reject(new Error(`${this.name} queue is full`));
@@ -31,6 +32,13 @@ class WorkerTaskPool {
             this.queue.push({ message, onMessage, resolve, reject });
             this.drain();
         });
+    }
+
+    findIdleWorker() {
+        for (const state of this.workers) {
+            if (state.current === null) return state;
+        }
+        return null;
     }
 
     createWorkerState() {
@@ -51,7 +59,7 @@ class WorkerTaskPool {
         if (this.closed) return;
 
         while (this.queue.length > 0) {
-            let state = [...this.workers].find(candidate => candidate.current === null);
+            let state = this.findIdleWorker();
             if (!state && this.workers.size < this.maxWorkers) {
                 try {
                     state = this.createWorkerState();
@@ -66,6 +74,9 @@ class WorkerTaskPool {
             state.current = task;
             try {
                 state.worker.postMessage(task.message);
+                // postMessage has cloned the input; keep only completion and
+                // progress callbacks while this task runs.
+                task.message = null;
             } catch (error) {
                 state.current = null;
                 task.reject(error);
@@ -108,16 +119,24 @@ class WorkerTaskPool {
             state.current.reject(error instanceof Error ? error : new Error(String(error)));
             state.current = null;
         }
-        try {
-            Promise.resolve(state.worker.terminate()).catch(() => undefined);
-        } catch {
-            // The worker has already stopped.
-        }
+        this.trackTermination(state.worker);
         if (this.closed) return;
         // Only replace a crashed worker when work is waiting. Eagerly spawning
         // here creates an infinite crash/restart loop when the worker bundle or
         // runtime is systematically broken.
         this.drain();
+    }
+
+    trackTermination(worker) {
+        let termination;
+        try {
+            termination = Promise.resolve(worker.terminate()).catch(() => undefined);
+        } catch {
+            termination = Promise.resolve();
+        }
+        this.terminations.add(termination);
+        termination.then(() => this.terminations.delete(termination));
+        return termination;
     }
 
     shutdown() {
@@ -128,18 +147,16 @@ class WorkerTaskPool {
 
         const states = [...this.workers];
         this.workers.clear();
-        const terminations = states.map((state) => {
+        for (const state of states) {
             if (state.current) {
                 state.current.reject(shutdownError);
                 state.current = null;
             }
-            try {
-                return Promise.resolve(state.worker.terminate()).catch(() => undefined);
-            } catch {
-                return Promise.resolve();
-            }
-        });
-        this.shutdownPromise = Promise.all(terminations).then(() => undefined);
+            this.trackTermination(state.worker);
+        }
+        // A crashed worker leaves the scheduling set before its native thread
+        // finishes stopping. Include that existing cleanup in the shutdown.
+        this.shutdownPromise = Promise.all([...this.terminations]).then(() => undefined);
         return this.shutdownPromise;
     }
 }

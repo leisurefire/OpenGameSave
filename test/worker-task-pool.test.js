@@ -160,6 +160,31 @@ test('task errors keep the worker reusable without treating them as crashes', as
     await pool.shutdown();
 });
 
+test('shutdown awaits termination already started by a worker crash', async () => {
+    const { createdWorkers, pool } = createPool({ maxWorkers: 1 });
+    const active = pool.run({ task: 'active' });
+    const failed = assert.rejects(active, /worker crashed/);
+    let releaseTermination;
+    const termination = new Promise(resolve => { releaseTermination = resolve; });
+    createdWorkers[0].terminate = () => {
+        createdWorkers[0].terminateCalls += 1;
+        return termination;
+    };
+    createdWorkers[0].emit('error', new Error('worker crashed'));
+    await failed;
+    let stopped = false;
+    const stopping = pool.shutdown().then(() => { stopped = true; });
+    try {
+        await new Promise(resolve => { setImmediate(resolve); });
+        assert.equal(stopped, false, 'crashed workers can still hold handles until termination completes');
+        assert.equal(createdWorkers[0].terminateCalls, 1);
+    } finally {
+        releaseTermination(0);
+        await stopping;
+    }
+    assert.equal(stopped, true);
+});
+
 test('shutdown rejects active and queued work, terminates workers, and closes the pool', async () => {
     const { createdWorkers, pool } = createPool({ maxWorkers: 1 });
     const active = pool.run({ task: 'active' });

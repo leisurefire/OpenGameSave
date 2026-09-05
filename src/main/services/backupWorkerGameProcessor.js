@@ -13,12 +13,17 @@ const { getPlatformSaveLocations, getSavePlatformKey } = require('./platformServ
 
 async function resolveFileSaveLocations(dbGameRow, resolvedPaths) {
     let totalBackupSize = 0;
+    const seenPaths = new Set();
     const platformSaveLocations = getPlatformSaveLocations(dbGameRow.save_location);
 
     for (const templatedPath of platformSaveLocations) {
         const resolvedPathObjs = await resolveTemplatedBackupPath(templatedPath, dbGameRow.install_path, false);
 
         for (const resolvedPathObj of resolvedPathObjs) {
+            const absolutePath = path.resolve(resolvedPathObj.resolved);
+            const pathKey = process.platform === 'win32' ? absolutePath.toLowerCase() : absolutePath;
+            if (seenPaths.has(pathKey)) continue;
+            seenPaths.add(pathKey);
             if (!fsOriginal.existsSync(resolvedPathObj.resolved)) continue;
 
             const backupSize = calculateDirectorySize(resolvedPathObj.resolved);

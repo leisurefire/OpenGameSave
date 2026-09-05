@@ -40,7 +40,7 @@ function createListing(entries) {
     return stream;
 }
 
-function loadArchiveService(entries) {
+function loadArchiveService(entries, createStream = createListing) {
     return requireWithMocks('src/main/services/backupArchiveService.js', {
         'original-fs': {
             promises: {
@@ -51,7 +51,7 @@ function loadArchiveService(entries) {
                 })
             }
         },
-        'node-7z': { list: () => createListing(entries) },
+        'node-7z': { list: () => createStream(entries) },
         '7zip-bin': { path7za: '7za' },
         '../fileSystemUtils': {},
         '../gameOperationLock': {},
@@ -82,4 +82,29 @@ test('a bounded regular archive listing passes inspection', async () => {
         { file: '1234/2026-08-29_12-30/backup_info.json', size: 256 }
     ]);
     assert.equal(await service.inspectImportArchive(ARCHIVE_PATH), ARCHIVE_PATH);
+});
+
+test('rejected archive inspections stop their child process and wait for its exit', async () => {
+    let killed = false;
+    let closed = false;
+    let resumed = false;
+    const service = loadArchiveService([{ file: '../outside', size: 0 }], entries => {
+        const stream = createListing(entries);
+        const child = new EventEmitter();
+        child.kill = () => {
+            killed = true;
+            process.nextTick(() => {
+                closed = true;
+                child.emit('close');
+            });
+        };
+        stream._childProcess = child;
+        stream.resume = () => { resumed = true; };
+        return stream;
+    });
+
+    await assert.rejects(service.inspectImportArchive(ARCHIVE_PATH), /Archive path escapes|absolute path/);
+    assert.equal(killed, true);
+    assert.equal(closed, true);
+    assert.equal(resumed, true);
 });

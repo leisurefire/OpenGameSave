@@ -28,6 +28,54 @@ const { getMainWin } = require('./windowManager');
 
 const MAX_ARCHIVE_ENTRIES = 100000;
 const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 20 * 1024 * 1024 * 1024;
+const ARCHIVE_LIST_TIMEOUT_MS = 5 * 60 * 1000;
+const ARCHIVE_EXTRACT_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
+async function waitForArchiveStream(stream, timeoutMs) {
+    const child = stream._childProcess;
+    let childClosed = !child;
+    const childCompletion = child ? new Promise(resolve => {
+        child.once('close', () => {
+            childClosed = true;
+            resolve();
+        });
+    }) : Promise.resolve();
+    let timer;
+    // node-7z may emit a second error from the child close callback after the
+    // readable is destroyed. Keep the listener until the process has exited.
+    let rejectStream;
+    const onError = error => rejectStream(error);
+    try {
+        await new Promise((resolve, reject) => {
+            rejectStream = reject;
+            stream.once('end', resolve);
+            stream.on('error', onError);
+            timer = setTimeout(() => {
+                stream.destroy(new Error('Archive operation timed out'));
+            }, timeoutMs);
+            // node-7z does not implement backpressure. Drain extraction entries
+            // so they cannot accumulate in its object-mode readable buffer.
+            stream.resume?.();
+        });
+    } finally {
+        clearTimeout(timer);
+        let shutdownTimer;
+        try {
+            if (!childClosed) child.kill('SIGKILL');
+            await Promise.race([
+                childCompletion,
+                new Promise((_, reject) => {
+                    shutdownTimer = setTimeout(() => reject(new Error('Archive process did not exit after cancellation')), 10000);
+                })
+            ]);
+        } finally {
+            clearTimeout(shutdownTimer);
+            // If shutdown failed, retain the handler for a delayed node-7z
+            // close callback, which may emit a second error.
+            if (childClosed) stream.removeListener('error', onError);
+        }
+    }
+}
 
 function sendToMainWindow(...args) {
     const mainWindow = getMainWin();
@@ -104,10 +152,7 @@ async function inspectImportArchive(gsmPath) {
             listStream.destroy(error);
         }
     });
-    await new Promise((resolve, reject) => {
-        listStream.once('end', resolve);
-        listStream.once('error', reject);
-    });
+    await waitForArchiveStream(listStream, ARCHIVE_LIST_TIMEOUT_MS);
     if (entryCount === 0) throw new Error('Archive is empty');
     return archivePath;
 }
@@ -327,10 +372,7 @@ async function importBackups(gsmPath) {
             }
         });
 
-        await new Promise((resolve, reject) => {
-            extractStream.once('end', resolve);
-            extractStream.once('error', reject);
-        });
+        await waitForArchiveStream(extractStream, ARCHIVE_EXTRACT_TIMEOUT_MS);
 
         const extractedBackups = await collectExtractedBackups(tempExtractPath);
         await fsOriginal.promises.mkdir(destinationPath, { recursive: true });

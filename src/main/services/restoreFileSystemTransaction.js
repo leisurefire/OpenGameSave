@@ -156,6 +156,7 @@ async function restoreFileSystemPathsTransactionally(items, {
 
         for (const item of staged) {
             await assertNoSymlinkAncestors(item.allowedRoot, item.destinationPath, fsAdapter);
+            await assertNoSymlinkAncestors(item.allowedRoot, item.replacementPath, fsAdapter);
             const parentPath = path.dirname(item.destinationPath);
             const parentExisted = Boolean(await lstatIfPresent(parentPath, fsAdapter));
             await fsAdapter.promises.mkdir(parentPath, { recursive: true });
@@ -182,8 +183,14 @@ async function restoreFileSystemPathsTransactionally(items, {
         }
     } catch (error) {
         const rollbackErrors = [];
-        for (const item of [...committed].reverse()) {
+        for (let index = committed.length - 1; index >= 0; index -= 1) {
+            const item = committed[index];
             try {
+                // A game or another process may replace an ancestor while a
+                // later destination is being activated. Rollback must recheck
+                // both sides before removing data or moving recovery copies.
+                await assertNoSymlinkAncestors(item.allowedRoot, item.destinationPath, fsAdapter);
+                await assertNoSymlinkAncestors(item.allowedRoot, item.previousPath, fsAdapter);
                 if (item.replacementActivated) {
                     await fsAdapter.promises.rm(item.destinationPath, { recursive: true, force: true });
                 }
@@ -203,9 +210,16 @@ async function restoreFileSystemPathsTransactionally(items, {
         throw error;
     } finally {
         if (!preserveRecoveryData) {
-            await Promise.all([...transactionRoots.values()].map(transactionRoot =>
-                fsAdapter.promises.rm(transactionRoot, { recursive: true, force: true })
-            ));
+            await Promise.all([...transactionRoots.entries()].map(async ([allowedRoot, transactionRoot]) => {
+                try {
+                    await assertNoSymlinkAncestors(allowedRoot, transactionRoot, fsAdapter);
+                    await fsAdapter.promises.rm(transactionRoot, { recursive: true, force: true });
+                } catch (cleanupError) {
+                    // Cleanup cannot undo an already committed restore, nor
+                    // replace the original failure after a successful rollback.
+                    console.warn(`Restore recovery data retained at ${transactionRoot}: ${cleanupError.message}`);
+                }
+            }));
         }
     }
 }

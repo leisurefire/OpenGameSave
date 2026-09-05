@@ -41,5 +41,7 @@ parentPort.on('message', async (message) => {
                 stack: error.stack || ''
             }
         });
+    } finally {
+        setWorkerContext(null);
     }
 });

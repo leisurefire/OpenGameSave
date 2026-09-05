@@ -46,6 +46,19 @@ test('backup worker recognizes a real save file for the current platform', async
     assert.equal(game.backup_size, saveContents.byteLength);
 });
 
+test('duplicate save templates contribute one path and one size total', async (context) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-duplicate-save-'));
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const source = path.join(root, 'save.dat');
+    fs.writeFileSync(source, 'one save');
+    setWorkerContext({ allUserIds: {}, gameData: {}, placeholderMapping: {}, settings: {} });
+    const game = await processGame({
+        save_location: { [getSavePlatformKey()]: [source, source, path.join(root, '.', 'save.dat')] }
+    });
+    assert.equal(game.resolved_paths.length, 1);
+    assert.equal(game.backup_size, 8);
+});
+
 test('database-backed worker query returns an installed game with a current-platform save', async (context) => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'ogs-worker-database-'));
     context.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
@@ -183,4 +196,9 @@ test('database metadata mounts only reviewed XgpSaveTools candidates without an 
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.games.map(game => game.wiki_page_id), ['701']);
     assert.equal(result.games[0].resolved_paths.length, 1);
+    const singleGame = await getGameDataFromDB({ wikiId: '701' });
+    assert.deepEqual(singleGame.errors, []);
+    assert.deepEqual(singleGame.games.map(game => game.wiki_page_id), ['701']);
+    const unreviewed = await getGameDataFromDB({ wikiId: '702' });
+    assert.deepEqual(unreviewed.games, []);
 });

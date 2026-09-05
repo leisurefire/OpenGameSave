@@ -82,19 +82,24 @@ async function processAndPushGame(row, games) {
     }
 }
 
-async function processXboxCandidateGames(db, games, errors) {
+async function getXboxCandidateWikiIds(db) {
     const metadata = await dbGet(db, 'SELECT value FROM metadata WHERE key = ?', [XGP_WIKI_IDS_METADATA_KEY]);
     let wikiIds;
     try {
         wikiIds = JSON.parse(metadata?.value || '[]');
     } catch (_) {
-        return;
+        return [];
     }
     if (!Array.isArray(wikiIds) || wikiIds.length === 0 || wikiIds.length > 1000
         || wikiIds.some(value => !Number.isSafeInteger(Number(value)) || Number(value) < 0)) {
-        return;
+        return [];
     }
+    return wikiIds;
+}
 
+async function processXboxCandidateGames(db, games, errors) {
+    const wikiIds = await getXboxCandidateWikiIds(db);
+    if (wikiIds.length === 0) return;
     const processedWikiIds = new Set(games.map(game => game.wiki_page_id));
     const placeholders = wikiIds.map(() => '?').join(',');
     const rows = await dbAll(db, `SELECT * FROM games WHERE wiki_page_id IN (${placeholders})`, wikiIds);
@@ -134,12 +139,16 @@ async function getGameDataFromDB({ ignoreUninstalled = false, wikiId = null }) {
                 const isInstalled = findInstallPath(row, gameInstallPaths);
 
                 if (!isInstalled) {
-                    if (ignoreUninstalled || !getSettings().saveUninstalledGames) {
-                        return { games, errors };
-                    }
-                    const uninstalledWikiIds = (getSettings().uninstalledGames || []).map(String);
-                    if (!uninstalledWikiIds.includes(row.wiki_page_id)) {
-                        return { games, errors };
+                    const isXboxCandidate = (await getXboxCandidateWikiIds(db))
+                        .some(candidateId => String(candidateId) === row.wiki_page_id);
+                    if (!isXboxCandidate) {
+                        if (ignoreUninstalled || !getSettings().saveUninstalledGames) {
+                            return { games, errors };
+                        }
+                        const uninstalledWikiIds = getSettings().uninstalledGames || [];
+                        if (!uninstalledWikiIds.some(id => String(id) === row.wiki_page_id)) {
+                            return { games, errors };
+                        }
                     }
                 }
 
@@ -235,12 +244,13 @@ async function getAllGameDataFromDB() {
     const db = await openDb(getContext().dbPath, { readonly: true, fileMustExist: true });
 
     try {
-        const rows = await dbAll(db, 'SELECT * FROM games');
-        const totalRows = rows.length;
+        const totalRows = (await dbGet(db, 'SELECT COUNT(*) AS count FROM games')).count;
         let processedRows = 0;
         let lastReportedProgress = -1;
 
-        for (const row of rows) {
+        // Iterate native rows so a full scan does not retain the complete raw
+        // catalog alongside parsed, resolved game data.
+        for (const row of db.prepare('SELECT * FROM games').iterate()) {
             try {
                 parseDbRow(row);
                 await processAndPushGame(row, games);

@@ -217,3 +217,24 @@ test('startup restoration persists its final auto-backup snapshot only once', as
     assert.equal(Object.keys(service.getAutoBackupState()).length, 2);
     await service.stopAllAutoBackups();
 });
+
+test('starting a watcher reuses the initial save-path scan', async () => {
+    let lookupCount = 0;
+    const { service, watchers } = loadAutoBackup({
+        backupGame: async () => null,
+        getGameDataFromDB: async () => {
+            lookupCount += 1;
+            return { games: [{ wiki_page_id: '123', resolved_paths: [{ resolved: __dirname }] }] };
+        }
+    });
+    try {
+        await service.startAutoBackup('123', 'watcher', null);
+        assert.equal(lookupCount, 1);
+        assert.equal(watchers.length, 1);
+        await service.refreshAutoBackupWatchers();
+        assert.equal(lookupCount, 2);
+        assert.equal(watchers[0].closed, true);
+    } finally {
+        await service.stopAllAutoBackups();
+    }
+});
