@@ -5,7 +5,7 @@
     "url": "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml",
     "license": "MIT",
     "license_url": "https://github.com/mtkennerly/ludusavi-manifest/blob/master/LICENSE",
-    "sha256": "4a2375b58429589a0f4c7c4e9bceaf48ad195292ac501af56c0e810ca09174fc"
+    "sha256": "bf3b615e7fa9157a673695ae2e9bb8b7ec674579b0d52ac968d3af907100f337"
   },
   "mode": "merge-existing-games-only"
 }
