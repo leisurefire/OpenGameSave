@@ -41,6 +41,7 @@ The app is designed around recoverable snapshots: keep a rolling history, preser
 
 - **Windows is the only platform with official installers.** The application contains some guarded cross-platform code, but macOS and Linux builds are not currently published or supported.
 - Windows 11 provides the full Mica visual effect. The repository does not declare a specific minimum Windows release.
+- Microsoft Edge WebView2 Runtime is required to display the application.
 - Git is optional and is required only for GitHub synchronization.
 - WebDAV synchronization requires an HTTPS endpoint. Plain HTTP is rejected outside explicitly enabled loopback development tests.
 - Allow enough free space for both the original saves and the backup history you choose to retain.
@@ -48,15 +49,15 @@ The app is designed around recoverable snapshots: keep a rolling history, preser
 ## Installation
 
 1. Open the [latest release](https://github.com/leisurefire/OpenGameSave/releases/latest).
-2. Download `OpenGameSave-Setup-<version>.exe` and run the installer.
-3. Open **Options**, confirm the backup storage folder, and review the detected game installation roots.
+2. Download `OpenGameSave_<version>_x64-setup.exe` and run the installer.
+3. Confirm the backup storage folder in **Sync**, then review the detected game installation roots in **Settings**.
 4. Open **Saves**, select the games you want to protect, and create the first backup.
 
 Official releases are produced by the Windows release workflow, which requires a signed installer and validated update metadata. Installed builds can check for updates at startup; when an update is available, use the download button beside **Options**. Pre-release updates remain opt-in.
 
 ## Quick start
 
-1. **Choose storage.** The default Windows backup folder is `%APPDATA%\OGS Backups`; it can be changed in Settings. Moving it later uses the built-in migration flow.
+1. **Choose storage.** The default Windows backup folder is `%APPDATA%\OGS Backups`; it can be changed in **Sync**. Moving it later uses the built-in migration flow.
 2. **Find games.** Open **Library** to scan supported launchers. In Settings, auto-detect or add installation roots for save matching; enable the full database scan if you also need saves from uninstalled games.
 3. **Create snapshots.** In **Saves → Backup**, select one or more games and run a backup. Use **Manage Backups** to name, preserve, or remove snapshots.
 4. **Restore carefully.** In **Saves → Restore**, choose a snapshot. If the computer contains newer save data, OpenGameSave asks whether to skip or replace it.
@@ -71,7 +72,7 @@ Cloud synchronization is available now, but it is explicit rather than an automa
 | Provider | Setup | Behavior | Credentials |
 | --- | --- | --- | --- |
 | GitHub repository | Install Git and set the backup folder to the root of a local clone whose `origin` points to the target GitHub repository. | Pulls `origin/main` when it exists, applies retention, then commits and pushes local backups. Download uses a fast-forward-only pull and validates imported backup metadata. | Managed entirely by the local Git configuration or credential helper; OpenGameSave does not read Git credentials. |
-| WebDAV | Enter an HTTPS server URL, optional username and password, and a remote folder. | Uploads changed content, verifies remote objects, merges downloads transactionally, and preserves both versions of multi-device conflicts. | The password is encrypted with Electron `safeStorage` for the current operating-system account; after it is saved, it is never returned to the renderer. |
+| WebDAV | Enter an HTTPS server URL, optional username and password, and a remote folder. | Uploads changed content, verifies remote objects, merges downloads transactionally, and preserves both versions of multi-device conflicts. | The password is encrypted with Windows Credential Manager / DPAPI for the current operating-system account; after it is saved, it is never returned to the renderer. |
 
 OpenGameSave does not encrypt the backup payload itself. Use a private GitHub repository or a trusted WebDAV service, and prefer an app-specific WebDAV password.
 
@@ -87,13 +88,13 @@ Switching editions installs a validated complete database; same-edition updates 
 ## Data and privacy
 
 - Backup, scan, export, import, and restore operations run locally. Backup folders and `.gsmr` archives may contain save files, Registry exports, account-related game data, and metadata; they are **not encrypted by OpenGameSave**.
-- Settings are stored below Electron's user-data directory in `OGS Settings/settings.json`. The updatable database is stored in `OGS Database/database.db`, and fatal error logs are written below `logs/`.
+- Settings are stored below OpenGameSave's user-data directory in `OGS Settings/settings.json`. The updatable database is stored in `OGS Database/database.db`, and error logs are written below `logs/`.
 - This repository does not include an analytics or telemetry integration.
 - The application may connect to GitHub for application or database updates, and may retrieve missing library artwork from size-limited, allowlisted official Steam, Epic, GOG, or Blizzard resources. Guide and project links open in the system browser.
 - GitHub and WebDAV receive backup content only when you configure the provider and invoke a synchronization action. Git credentials remain with Git; WebDAV passwords use operating-system-backed encryption. Other processes running as the same operating-system user remain within the same trust boundary.
 - Error logs can contain technical details or local paths. Review logs and archives before sharing them publicly.
 
-The renderer runs with Node.js integration disabled, context isolation and sandboxing enabled, a restrictive Content Security Policy, and a role-scoped default-deny IPC bridge. Filesystem, Registry, archive, URL, and sync inputs are validated in the main process.
+The interface runs in WebView2 without Node.js. Tauri and Rust enforce a restrictive Content Security Policy and a default-deny command boundary for each window role. Filesystem, Registry, archive, URL, and sync inputs are validated in Rust.
 
 ## Database and attribution
 
@@ -103,54 +104,46 @@ Read [database/SOURCES.md](database/SOURCES.md) for provenance, update workflows
 
 ## Development
 
-The CI and release workflows use **Node.js 24** and npm. Windows is recommended for running the complete application because Registry handling, launcher detection, notifications, and the official packaging flow are Windows-oriented.
+The desktop runtime is **Tauri 2 with a Rust core**. JavaScript, HTML and CSS remain in the web frontend; Node.js 24 and npm are build/test/database-maintenance tools. The application ships without Electron or a Node sidecar.
 
-Run commands from the repository root:
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/): Rust stable (minimum 1.93, declared in `src-tauri/Cargo.toml`), Visual Studio C++ Build Tools and WebView2 on Windows. The repository selects the stable toolchain in `rust-toolchain.toml`. Windows is the supported release/test platform.
 
 ```powershell
 npm ci
-
-# Tailwind and Webpack watchers plus Electron
-npm run dev
-
-# Lint, checkJs type-checking, coverage tests, and a production build
-npm run check
-
-# Individual checks
-npm run lint
-npm run typecheck
-npm run test
-npm run test:coverage
-
-# Build or launch
-npm run build
-npm start
-
-# Package locally
-npm run app:dir
-npm run app:dist
+npm run dev                 # Build the frontend and launch Tauri
+npm run check               # JS checks/tests, Rust Clippy/tests and frontend build
+npm run build               # Build the native application without bundling
+npm run app:dist            # Build a local unsigned Windows NSIS installer
+npm run rust:test           # Isolated file, database, registry and WebDAV tests
+npm run frontend:build      # Build only the web frontend
 ```
 
-`npm run build` writes production bundles to `dist/out`. `npm start` runs the production build and rebuilds Electron native dependencies before launching. `npm run app:dir` creates an unpacked application for local verification; `npm run app:dist` creates local distributables, while official signed releases are produced only by the release workflow. Use `npm run styles:build` to compile shared Tailwind CSS without building the application.
+Frontend output is in dist/out/renderer, native binaries in src-tauri/target/release, and installers in src-tauri/target/release/bundle/nsis. After frontend changes, run npm run frontend:build and reload the window; the Tauri CLI watches Rust changes.
 
-Database maintainers should follow the preview/apply rules in [database/SOURCES.md](database/SOURCES.md) before using the `db:sync:*` scripts.
-
-## Architecture
+## Architecture and migration
 
 ```text
-src/main/       Electron lifecycle, IPC handlers, workers, backup/restore,
-                synchronization, database updates, and OS integration
-src/preload/    Role-scoped contextBridge API exposed to renderer pages
-src/shared/     Shared IPC policy and library virtualization code
-src/renderer/   Main, settings, about, modal, and menu pages, components, CSS
-src/locale/     English and Simplified Chinese translations
-src/data/       Reviewed guide catalog source
-database/       Tracked Standard SQLite database, source metadata, licenses
-scripts/        Build, release, database synchronization, and validation tools
-test/           Node test-runner suites
+src-tauri/src/           Tauri lifecycle, native windows, authorization, settings and application services
+src-tauri/src/saves/     SQLite, save discovery, backups, restore authorization, transactions, archives and database updates
+src-tauri/src/sync/      Git/WebDAV, OS credentials, validation, reconciliation and transaction recovery
+src-tauri/src/library/   Launcher/account discovery, artwork and guide matching
+src/renderer/           Web frontend and asynchronous Tauri bridge
+src/shared/             Shared window-role contract and virtual-list logic
+scripts/                Build, release and database-maintenance tools
+scripts/lib/            JavaScript validation used only by maintenance tools
 ```
 
-Webpack builds separate main, preload, and renderer targets. Backup/database work uses a bounded worker pool, and installed-library scanning runs in a separate worker so long-running operations do not block the interface.
+Rust checks each request against an immutable native window role and its exact local page, and targets events only to authorized windows. The frontend has no general filesystem, process, network or window-creation permission. Blocking disk/database/network work uses the blocking task pool. Backup, restore, sync and database mutations share an operation lock; shutdown waits for active operations.
+
+On Windows, settings continue to use %APPDATA%/opengamesave/OGS Settings/settings.json, with the database under OGS Database/database.db. The default backup directory remains %APPDATA%/OGS Backups. Existing backups are adopted in place. Minute/second timestamps, backup_info.json and legacy 7z .gsmr archives remain supported; validated ZIP .gsmr input is also accepted. Legacy DPAPI WebDAV credentials are migrated to Windows Credential Manager when possible; otherwise re-enter the password. Existing credential files are preserved.
+
+Install the first Tauri release manually when switching from Electron: the two update manifest formats differ. Subsequent Tauri releases use signed updates. Local builds without an updater public key open the release page for manual downloads.
+
+Signed releases use the `application-release` GitHub environment. Configure `WINDOWS_CSC_LINK` (base64 PFX or an HTTPS PFX URL), `WINDOWS_CSC_KEY_PASSWORD` and `WINDOWS_PUBLISHER_NAME` secrets for Windows Authenticode, plus `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets for Tauri updater signatures. Set the matching public key as the `TAURI_UPDATER_PUBLIC_KEY` repository/environment variable. These are separate signing identities; only the updater public key is embedded in the application.
+
+The workflow runs `npm run app:dist:release`, verifies the installer certificate and downloaded remote artifact hashes, then publishes. Local signed packaging uses the same command with `OGS_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY`, its optional password, and `OGS_CERTIFICATE_THUMBPRINT` for an imported Windows certificate. Ordinary `npm run app:dist` requires none of these credentials and produces an unsigned local installer. Current implementation and remaining native/installer validation are tracked in [MIGRATION.md](MIGRATION.md).
+
+Database maintainers should read [database/SOURCES.md](database/SOURCES.md) before running db:sync:* scripts.
 
 ## Contributing
 

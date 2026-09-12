@@ -41,6 +41,7 @@ OpenGameSave 是一款以本地操作为核心的桌面应用，用于查找、�
 
 - **当前只有 Windows 提供官方安装包。** 源码包含部分带平台保护的跨平台实现，但目前不发布或支持 macOS 与 Linux 版本。
 - Windows 11 可呈现完整的云母材质效果。仓库并未声明具体的最低 Windows 版本。
+- 应用界面需要 Microsoft Edge WebView2 Runtime。
 - Git 为可选依赖，仅在使用 GitHub 同步时需要。
 - WebDAV 同步必须使用 HTTPS 地址。除显式启用的回环地址开发测试外，应用会拒绝明文 HTTP。
 - 请为原始存档和计划保留的备份历史预留足够磁盘空间。
@@ -48,15 +49,15 @@ OpenGameSave 是一款以本地操作为核心的桌面应用，用于查找、�
 ## 安装
 
 1. 打开[最新发布页面](https://github.com/leisurefire/OpenGameSave/releases/latest)。
-2. 下载 `OpenGameSave-Setup-<version>.exe` 并运行安装程序。
-3. 打开“选项”，确认备份存储文件夹并检查已识别的游戏安装根目录。
+2. 下载 `OpenGameSave_<version>_x64-setup.exe` 并运行安装程序。
+3. 在“同步”中确认备份存储文件夹，再到“设置”检查已识别的游戏安装根目录。
 4. 打开“存档”，选择需要保护的游戏并创建第一份备份。
 
 官方版本由 Windows 发布工作流构建，该流程要求安装包具备有效签名和经过校验的更新元数据。已安装版本可在启动时检查更新；发现新版本后，使用“选项”旁的下载按钮。预发布版本更新默认不启用。
 
 ## 快速上手
 
-1. **选择存储位置。** Windows 默认备份目录为 `%APPDATA%\OGS Backups`，可在设置中修改。之后更改目录时会使用内置迁移流程。
+1. **选择存储位置。** Windows 默认备份目录为 `%APPDATA%\OGS Backups`，可在“同步”中修改。之后更改目录时会使用内置迁移流程。
 2. **查找游戏。** 打开“游戏库”扫描受支持的启动器。在设置中自动检测或添加用于匹配存档的安装根目录；如需查找已卸载游戏的残留存档，可启用完整数据库扫描。
 3. **创建快照。** 在“存档 → 备份”中选择一款或多款游戏并执行备份。通过“管理备份”为快照命名、永久保留或删除快照。
 4. **谨慎还原。** 在“存档 → 还原”中选择快照。如果电脑上的存档更新，OpenGameSave 会询问要跳过还是替换。
@@ -71,7 +72,7 @@ OpenGameSave 是一款以本地操作为核心的桌面应用，用于查找、�
 | 提供方 | 配置 | 行为 | 凭据 |
 | --- | --- | --- | --- |
 | GitHub 仓库 | 安装 Git，并将备份目录设为目标 GitHub 仓库本地克隆的根目录；其 `origin` 必须指向目标仓库。 | 远端 `origin/main` 存在时先拉取，应用保留策略后提交并推送本地备份。下载使用仅快进拉取，并校验导入的备份元数据。 | 完全由本机 Git 配置或凭据助手管理；OpenGameSave 不读取 Git 凭据。 |
-| WebDAV | 填写 HTTPS 服务器地址、可选的用户名和密码以及远端目录。 | 上传变化内容、校验远端对象、以事务方式合并下载，并在多设备冲突时保留双方版本。 | 密码通过 Electron `safeStorage` 绑定当前操作系统账户加密；保存后不会再返回渲染进程。 |
+| WebDAV | 填写 HTTPS 服务器地址、可选的用户名和密码以及远端目录。 | 上传变化内容、校验远端对象、以事务方式合并下载，并在多设备冲突时保留双方版本。 | 密码通过 Windows Credential Manager / DPAPI 绑定当前操作系统账户加密；保存后不会再返回渲染进程。 |
 
 OpenGameSave 本身不会加密备份内容。请使用私有 GitHub 仓库或可信的 WebDAV 服务，并优先使用 WebDAV 应用专用密码。
 
@@ -87,13 +88,13 @@ OpenGameSave 本身不会加密备份内容。请使用私有 GitHub 仓库或�
 ## 数据与隐私
 
 - 备份、扫描、导出、导入和还原均在本机执行。备份目录和 `.gsmr` 归档可能包含存档文件、注册表导出、与游戏账户相关的数据和元数据；这些内容**不会由 OpenGameSave 加密**。
-- 设置位于 Electron 用户数据目录下的 `OGS Settings/settings.json`；可更新数据库位于 `OGS Database/database.db`；致命错误日志写入 `logs/` 目录。
+- 设置位于 OpenGameSave 用户数据目录下的 `OGS Settings/settings.json`；可更新数据库位于 `OGS Database/database.db`；致命错误日志写入 `logs/` 目录。
 - 当前仓库未集成分析或遥测功能。
 - 应用可能连接 GitHub 以检查应用或数据库更新；缺少游戏库图片时，也可能从受大小限制和域名白名单保护的 Steam、Epic、GOG 或暴雪官方资源获取图片。攻略和项目链接会在系统浏览器中打开。
 - 只有在你配置提供方并主动执行同步操作后，GitHub 或 WebDAV 才会收到备份内容。Git 凭据始终由 Git 管理；WebDAV 密码使用操作系统支持的加密。同一操作系统账户下的其他进程仍属于相同信任边界。
 - 错误日志可能包含技术细节或本地路径。公开分享日志和归档前请先检查内容。
 
-渲染进程已禁用 Node.js 集成，并启用上下文隔离、沙箱、严格的内容安全策略以及按页面角色划分的默认拒绝 IPC 桥。文件系统、注册表、归档、URL 和同步输入均在主进程中校验。
+界面运行在 WebView2 中，不包含 Node.js。严格的内容安全策略和按窗口角色划分的默认拒绝命令边界由 Tauri 与 Rust 宿主执行。文件系统、注册表、归档、URL 和同步输入均在 Rust 中校验。
 
 ## 数据库与来源
 
@@ -103,54 +104,46 @@ OpenGameSave 本身不会加密备份内容。请使用私有 GitHub 仓库或�
 
 ## 开发
 
-CI 和发布工作流使用 **Node.js 24** 与 npm。建议在 Windows 上运行完整应用，因为注册表处理、启动器检测、通知和官方打包流程均以 Windows 为主。
+桌面运行时已迁移至 **Tauri 2 + Rust**，前端使用原有 JavaScript、HTML、CSS 和 Webpack。运行应用无需 Electron、Node.js 或 JavaScript 后台进程。Node.js 24 与 npm 用于前端构建、测试和数据库维护工具。
 
-请在仓库根目录运行：
+Windows 开发需要 [Tauri 前置依赖](https://v2.tauri.app/start/prerequisites/)：Rust stable（`src-tauri/Cargo.toml` 声明最低 1.93）、Visual Studio C++ Build Tools 和 WebView2。仓库的 `rust-toolchain.toml` 选择 stable 工具链；完整发行测试以 Windows 为准。
 
 ```powershell
 npm ci
-
-# Tailwind 与 Webpack 监视器，加上 Electron
-npm run dev
-
-# 代码检查、checkJs 类型检查、覆盖率测试与生产构建
-npm run check
-
-# 单独执行检查
-npm run lint
-npm run typecheck
-npm run test
-npm run test:coverage
-
-# 构建或启动
-npm run build
-npm start
-
-# 本地打包
-npm run app:dir
-npm run app:dist
+npm run dev                 # 构建前端并启动 Tauri 开发窗口
+npm run check               # JS 检查/测试、Rust Clippy/测试、前端构建
+npm run build               # 构建 Rust 桌面程序，不生成安装包
+npm run app:dist            # 构建本地未签名的 Windows NSIS 安装包
+npm run rust:test           # 临时文件/数据库/注册表与本地 WebDAV 测试
+npm run frontend:build      # 仅构建 Web 前端
 ```
 
-`npm run build` 将生产 bundle 写入 `dist/out`。`npm start` 会先执行生产构建并重新构建 Electron 原生依赖，再启动应用。`npm run app:dir` 创建用于本地验收的未打包应用；`npm run app:dist` 创建本地发行文件，官方签名版本仅由发布工作流生成。如只需编译共享 Tailwind CSS，可运行 `npm run styles:build`。
+前端输出位于 dist/out/renderer，桌面程序位于 src-tauri/target/release，安装包位于 src-tauri/target/release/bundle/nsis。开发时修改前端后运行 npm run frontend:build 并重新加载窗口；Rust 修改由 Tauri CLI 监视。
 
-数据库维护者在使用 `db:sync:*` 脚本前，应先阅读 [database/SOURCES.md](database/SOURCES.md) 中的预览与应用规则。
-
-## 架构
+## 架构与迁移
 
 ```text
-src/main/       Electron 生命周期、IPC 处理器、工作线程、备份/还原、
-                同步、数据库更新与操作系统集成
-src/preload/    按页面角色划分、通过 contextBridge 暴露的 API
-src/shared/     共享 IPC 策略与游戏库虚拟化代码
-src/renderer/   主界面、设置、关于、模态与菜单页面，组件和 CSS
-src/locale/     英文与简体中文翻译
-src/data/       经审核的攻略目录源文件
-database/       受版本控制的标准版 SQLite 数据库、来源元数据与许可
-scripts/        构建、发布、数据库同步与校验工具
-test/           Node 测试运行器测试套件
+src-tauri/src/           Tauri 生命周期、原生窗口、权限、设置和应用服务
+src-tauri/src/saves/     SQLite、存档扫描、备份、还原授权、事务、归档和数据库更新
+src-tauri/src/sync/      Git/WebDAV、操作系统凭据、校验、合并与事务恢复
+src-tauri/src/library/   启动器/账号发现、游戏库图片、攻略匹配
+src/renderer/           Web 前端与异步 Tauri 通信桥
+src/shared/             前后端共用的窗口角色权限契约和虚拟列表逻辑
+scripts/                前端/发行构建与数据库维护工具
+scripts/lib/            仅供维护脚本使用的 JavaScript 数据校验
 ```
 
-Webpack 分别构建主进程、预加载和渲染进程目标。备份与数据库工作使用受限工作线程池，已安装游戏库扫描则在独立工作线程中执行，避免长时间操作阻塞界面。
+Rust 按原生窗口注册的角色和精确页面校验每个命令，只向授权窗口发送事件。前端不具备通用文件系统、进程、网络或外部窗口创建权限。文件、数据库和网络工作通过阻塞任务池执行；修改备份、还原、同步与数据库的操作共用互斥锁，退出时等待在途操作完成。
+
+Windows 继续使用 %APPDATA%/opengamesave/OGS Settings/settings.json 和 OGS Database/database.db，默认备份目录仍为 %APPDATA%/OGS Backups。迁移不会移动现有备份；旧分钟/秒时间戳、backup_info.json 和 7z 格式 .gsmr 可继续读取，也接受受限校验后的 ZIP .gsmr。WebDAV 旧 DPAPI 密码会尝试导入 Windows 凭据管理器；无法解密时需要重新输入密码，旧凭据文件会保留。
+
+从 Electron 发行版首次切换时，请手动安装 Tauri 版本。旧版 Electron 更新元数据与 Tauri 签名清单不同。后续 Tauri 发行版使用签名更新；本地未嵌入更新公钥的构建会打开发布页面供下载。
+
+签名发布使用 GitHub 的 `application-release` 环境。Windows Authenticode 需要 `WINDOWS_CSC_LINK`（base64 PFX 或 HTTPS PFX 地址）、`WINDOWS_CSC_KEY_PASSWORD`、`WINDOWS_PUBLISHER_NAME` secrets；Tauri 更新签名需要 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets，并将配对公钥设为仓库或环境的公开变量 `TAURI_UPDATER_PUBLIC_KEY`。两者使用独立的签名身份，应用只嵌入更新公钥。
+
+工作流运行 `npm run app:dist:release`，验证安装包证书和下载回来的远端文件哈希后才发布。本地签名打包也使用此命令，需要 `OGS_UPDATER_PUBLIC_KEY`、`TAURI_SIGNING_PRIVATE_KEY`、私钥的可选密码及已导入 Windows 证书的 `OGS_CERTIFICATE_THUMBPRINT`。普通 `npm run app:dist` 不需要这些凭据，生成本地未签名安装包。已实现项目及剩余原生窗口和安装包验证状态见 [MIGRATION.md](MIGRATION.md)。
+
+数据库维护者在使用 db:sync:* 脚本前，应先阅读 [database/SOURCES.md](database/SOURCES.md)。
 
 ## 贡献
 
