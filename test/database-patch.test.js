@@ -200,7 +200,7 @@ test('database publication workflow runs automatically and targets a dedicated r
     assert.match(releaseBuilderSource, /getDatabaseAssetNames/);
     assert.doesNotMatch(workflowSource, /db_patch[^\n]*--clobber/);
 
-    const updaterSource = fs.readFileSync(path.join(PROJECT_ROOT, 'src', 'main', 'backup.js'), 'utf8');
+    const updaterSource = fs.readFileSync(path.join(PROJECT_ROOT, 'src-tauri', 'src', 'saves', 'update.rs'), 'utf8');
     assert.match(updaterSource, /releases\/tags\/database/);
     assert.doesNotMatch(updaterSource, /repos\/leisurefire\/OpenGameSave\/releases\/latest/);
 });

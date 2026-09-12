@@ -6,7 +6,7 @@ const {
     getExpectedAppAssetNames,
     normalizeAppVersion,
     selectLatestAppRelease
-} = require('../src/main/appUpdatePolicy');
+} = require('../scripts/lib/appUpdatePolicy');
 const { resolveNextReleaseVersion } = require('../scripts/resolve-release-version');
 
 function appRelease(version, { prerelease = version.includes('-'), assets = true } = {}) {

@@ -93,9 +93,9 @@ class ActionButton extends HTMLElement {
                     font-weight: 600;
                     font-family: var(--font-sans, "Segoe UI", sans-serif);
                     border-radius: var(--radius-control, 8px);
-                    border: 1px solid var(--color-control-border, rgba(255,255,255,0.045));
+                    border: 1px solid transparent;
                     cursor: pointer;
-                    transition: background-color 0.1s ease, border-color 0.1s ease;
+                    transition: background-color var(--motion-fast) var(--motion-ease);
                     white-space: nowrap;
                     user-select: none;
                 }
@@ -117,7 +117,6 @@ class ActionButton extends HTMLElement {
 
                 .btn-default:hover:not(:disabled) {
                     background: var(--color-control-surface-hover, rgba(255, 255, 255, 0.08));
-                    border-color: var(--color-control-border-hover, rgba(255,255,255,0.085));
                 }
 
                 .btn-default:active:not(:disabled) {

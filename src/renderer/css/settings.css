@@ -61,7 +61,7 @@
 .settings-card {
     width: 100%;
     background: var(--color-card-surface-raised);
-    border: 1px solid var(--color-card-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-card);
 }
 
@@ -236,8 +236,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     background: rgba(255, 255, 255, 0.035) !important;
-    border-color: rgba(255, 255, 255, 0.075) !important;
-    border-bottom-color: rgba(255, 255, 255, 0.11) !important;
+    border-color: transparent !important;
 }
 
 .settings-icon-button {
@@ -248,15 +247,15 @@
     padding: 0;
     color: rgba(255, 255, 255, 0.56);
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-control-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-control) !important;
-    transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
 .settings-icon-button:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.08);
-    border-color: var(--color-control-border-hover);
+    border-color: transparent;
 }
 
 .settings-icon-button.danger {
@@ -291,16 +290,16 @@
     color: rgba(255, 255, 255, 0.62);
     font-size: 12.5px;
     font-weight: 500;
-    background: transparent;
-    border: 1px dashed rgba(255, 255, 255, 0.09);
+    background: var(--color-card-surface);
+    border: 1px solid transparent;
     border-radius: var(--radius-control-lg) !important;
-    transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
 .settings-add-path:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.88);
     background: rgba(255, 255, 255, 0.03);
-    border-color: rgba(255, 255, 255, 0.14);
+    border-color: transparent;
 }
 
 .settings-add-path .lucide-icon {

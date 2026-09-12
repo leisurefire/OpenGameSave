@@ -5,6 +5,7 @@ import { showLoadingIndicator, hideLoadingIndicator, createBackupTableRow, getPl
 const backupTableDataMap = new Map();
 window.backupTableDataMap = backupTableDataMap;
 let backupTabInitialized = false;
+let backupInitialization = null;
 
 async function initializeBackupTab() {
     if (backupTabInitialized) {
@@ -15,9 +16,7 @@ async function initializeBackupTab() {
     setupBackupTabButtons();
 
     const settings = await window.api.invoke('get-settings');
-    if (settings.autoDbUpdate) {
-        await updateDatabase();
-    }
+    // Startup database updates are owned by Rust and notify this table when ready.
     await updateBackupTable(true);
 
     if (!settings.firstLaunchFullScanTipShown) {
@@ -30,14 +29,16 @@ async function initializeBackupTab() {
 }
 
 runWhenDomReady(() => {
-    initializeBackupTab().catch(console.error);
+    backupInitialization = initializeBackupTab();
+    backupInitialization.catch(console.error);
 });
 
 window.api.receive('update-backup-table', () => {
     void updateBackupTable(true).catch(console.error);
 });
 
-window.api.receive('run-scan-full', async () => {
+export async function runFullScan() {
+    await backupInitialization;
     const start = await operationStartCheck('scan-full');
     if (start) {
         const fullScanGameData = await window.api.invoke('start-scan-full');
@@ -52,7 +53,7 @@ window.api.receive('run-scan-full', async () => {
             await updateBackupTable(true);
         }
     }
-});
+}
 
 export function updateBackupTable(loader) {
     return queueFullTableUpdate('backup', loader, async (showLoader) => {
@@ -143,7 +144,7 @@ function setupBackupTabButtons() {
 async function performBackup() {
     const selectedWikiIds = getSelectedWikiIds('backup');
     const backupProgressId = 'backup-progress';
-    const backupProgressTitle = await window.api.invoke('translate', 'main.backup_in_progress');
+    const backupProgressTitle = await window.i18n.translate('main.backup_in_progress');
     const totalGames = selectedWikiIds.length;
 
     const start = await operationStartCheck('backup');
@@ -181,13 +182,5 @@ async function performBackup() {
         return true;
     } finally {
         updateProgress(backupProgressId, backupProgressTitle, 'end');
-    }
-}
-
-async function updateDatabase() {
-    const start = await operationStartCheck('update-db');
-    if (start) {
-        const result = await window.api.invoke('update-database');
-        if (result?.success) await updateBackupTable(true);
     }
 }

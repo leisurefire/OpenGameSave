@@ -14,11 +14,11 @@ function escapeHtml(value) {
 }
 
 function closeModalWindow() {
-    window.api.send('close-current-modal-window');
+    return window.api.send('close-current-modal-window');
 }
 
 function showMainAlert(type, message, detailContent) {
-    window.api.send('show-main-alert', type, message, detailContent);
+    return window.api.send('show-main-alert', type, message, detailContent);
 }
 
 async function getGameTitle(wikiId, settings) {
@@ -80,7 +80,7 @@ async function renderExportModal(root) {
                             <span class="modal-setting-title">${escapeHtml(exportCountLabel)}</span>
                         </label>
                         <div class="modal-setting-control">
-                            <input type="number" id="modal-export-count" value="1" min="1" max="${escapeHtml(settings?.maxBackups || 1000)}">
+                            <input type="number" id="modal-export-count" value="1" min="1" max="1000" step="1">
                         </div>
                     </div>
                     <div class="modal-setting-row">
@@ -113,11 +113,15 @@ async function renderExportModal(root) {
         const start = await operationStartCheck('export');
         if (!start) return;
 
-        const count = document.getElementById('modal-export-count').value;
+        const count = Number(document.getElementById('modal-export-count').value);
         const exportPath = document.getElementById('modal-export-path').value;
         const scope = document.querySelector('input[name="export-scope"]:checked').value;
         if (!exportPath.trim()) {
             await showAlert('warning', await window.i18n.translate('alert.empty_export_path'));
+            return;
+        }
+        if (!Number.isFinite(count) || !Number.isInteger(count) || count < 1 || count > 1000) {
+            await showAlert('warning', await window.i18n.translate('alert.invalid_export_count'));
             return;
         }
         let wikiIds = null;
@@ -130,9 +134,20 @@ async function renderExportModal(root) {
             }
         }
 
-        window.api.send('save-settings', 'exportPath', exportPath);
-        window.api.send('export-backups', count, exportPath, wikiIds);
-        closeModalWindow();
+        const button = document.getElementById('modal-export-confirm');
+        if (button.disabled) return;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        try {
+            await window.api.send('save-settings', 'exportPath', exportPath);
+            await window.api.send('export-backups', count, exportPath, wikiIds);
+            await closeModalWindow();
+        } catch (error) {
+            await showAlert('error', error?.message || String(error));
+        } finally {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
     });
 }
 
@@ -180,8 +195,19 @@ async function renderImportModal(root, initData) {
             await showAlert('warning', await window.i18n.translate('alert.empty_import_path'));
             return;
         }
-        window.api.send('import-backups', importPath);
-        closeModalWindow();
+        const button = document.getElementById('modal-import-confirm');
+        if (button.disabled) return;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        try {
+            await window.api.send('import-backups', importPath);
+            await closeModalWindow();
+        } catch (error) {
+            await showAlert('error', error?.message || String(error));
+        } finally {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
     });
 }
 
@@ -469,6 +495,7 @@ async function renderManageBackupsModal(root, initData) {
             if (!backupInstance) return;
             button.disabled = true;
             window.api.send('update-status', 'restoring', true);
+            let completed = false;
             try {
                 const { error } = await window.api.invoke(
                     'restore-game',
@@ -476,12 +503,12 @@ async function renderManageBackupsModal(root, initData) {
                     null
                 );
                 refreshMainTables();
-                closeModalWindow();
                 if (error) {
-                    showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
+                    await showMainAlert('modal', await window.i18n.translate('alert.restore_game_error', { game_name: gameTitle }), error);
                 } else {
-                    showMainAlert('success', await window.i18n.translate('main.restore_complete'));
+                    await showMainAlert('success', await window.i18n.translate('main.restore_complete'));
                 }
+                completed = true;
             } catch (error) {
                 showMainAlert(
                     'modal',
@@ -489,9 +516,10 @@ async function renderManageBackupsModal(root, initData) {
                     error.message || String(error)
                 );
             } finally {
-                window.api.send('update-status', 'restoring', false);
+                await window.api.send('update-status', 'restoring', false);
                 button.disabled = false;
             }
+            if (completed) await closeModalWindow();
         }
     });
 }
@@ -609,18 +637,18 @@ async function renderAutoBackupModal(root, initData) {
         try {
             if (isActive) {
                 const logs = await window.api.invoke('stop-auto-backup', wikiId);
-                closeModalWindow();
                 if (logs && logs.length > 0) {
                     const failedCount = logs.filter(log => !log.success).length;
                     const summaryMessage = await window.i18n.translate('main.auto_backup_summary', { total: logs.length, failed: failedCount });
                     if (failedCount > 0) {
-                        showMainAlert('modal', summaryMessage, logs.filter(log => !log.success).map(log => `[${log.timestamp}] ${log.error}`));
+                        await showMainAlert('modal', summaryMessage, logs.filter(log => !log.success).map(log => `[${log.timestamp}] ${log.error}`));
                     } else {
-                        showMainAlert('success', summaryMessage);
+                        await showMainAlert('success', summaryMessage);
                     }
                 } else {
-                    showMainAlert('info', await window.i18n.translate('main.auto_backup_disabled'));
+                    await showMainAlert('info', await window.i18n.translate('main.auto_backup_disabled'));
                 }
+                await closeModalWindow();
             } else {
                 const mode = root.querySelector('input[name="auto-backup-mode"]:checked').value;
                 const intervalMinutes = Number(document.getElementById('auto-backup-interval').value);
@@ -629,8 +657,8 @@ async function renderAutoBackupModal(root, initData) {
                     return;
                 }
                 await window.api.invoke('start-auto-backup', wikiId, mode, intervalMinutes);
-                closeModalWindow();
-                showMainAlert('success', await window.i18n.translate('main.auto_backup_enabled'));
+                await showMainAlert('success', await window.i18n.translate('main.auto_backup_enabled'));
+                await closeModalWindow();
             }
         } catch (error) {
             console.error('Failed to configure automatic backup:', error);
@@ -738,8 +766,8 @@ async function renderLocalSaveModal(root, initData) {
         if (success) {
             window.api.send('update-backup-table');
             window.api.send('update-restore-table');
-            showMainAlert('success', await window.i18n.translate('alert.local_save_deleted'));
-            closeModalWindow();
+            await showMainAlert('success', await window.i18n.translate('alert.local_save_deleted'));
+            await closeModalWindow();
         }
     });
 }
@@ -770,8 +798,8 @@ async function renderScanFullModal(root) {
     document.getElementById('modal-scan-full-confirm').addEventListener('click', async () => {
         const start = await operationStartCheck('scan-full');
         if (!start) return;
-        window.api.send('run-scan-full');
-        closeModalWindow();
+        await window.api.send('run-scan-full');
+        await closeModalWindow();
     });
 }
 
@@ -910,11 +938,17 @@ async function initModalWindowPage() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeModalPage() {
     initModalWindowPage().catch(async (error) => {
         console.error('Failed to initialize modal window:', error);
         const root = document.getElementById('modal-root');
         const message = await window.i18n.translate('alert.modal_load_failed').catch(() => 'Unable to load this window');
         root.innerHTML = `<div class="modal-loading-state" role="alert" data-i18n="alert.modal_load_failed">${escapeHtml(message)}</div>`;
     });
-});
+}
+
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    initializeModalPage();
+} else {
+    document.addEventListener('DOMContentLoaded', initializeModalPage, { once: true });
+}

@@ -103,7 +103,7 @@ class ToggleSwitch extends HTMLElement {
                     border: 0;
                     border-radius: var(--radius-pill, 999px);
                     cursor: pointer;
-                    transition: background-color 140ms ease, box-shadow 140ms ease;
+                    transition: background-color var(--motion-normal) var(--motion-ease), box-shadow var(--motion-normal) var(--motion-ease);
                 }
 
                 .toggle-button:hover:not(:disabled) {
@@ -134,7 +134,7 @@ class ToggleSwitch extends HTMLElement {
                     background: #ffffff;
                     border-radius: 50%;
                     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
-                    transition: transform 140ms cubic-bezier(0.2, 0, 0, 1);
+                    transition: transform var(--motion-normal) var(--motion-ease);
                 }
 
                 .toggle-button.checked .toggle-thumb {

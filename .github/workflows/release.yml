@@ -1,40 +1,30 @@
 name: Build and Release
-
 on:
   workflow_dispatch:
     inputs:
       release_channel:
-        description: '发布通道'
+        description: Release channel
         required: true
         default: stable
         type: choice
-        options:
-          - stable
-          - prerelease
+        options: [stable, prerelease]
       version_bump:
-        description: '版本提升：patch 0.7.1 -> 0.7.2；minor 0.7.1 -> 0.8.0'
+        description: Version increment
         required: true
-        default: patch
+        default: minor
         type: choice
-        options:
-          - patch
-          - minor
+        options: [patch, minor]
       prerelease_label:
-        description: '预发布标识（仅 prerelease 通道生效）'
+        description: Prerelease label
         required: true
         default: beta
         type: choice
-        options:
-          - beta
-          - rc
-
+        options: [beta, rc]
 concurrency:
   group: application-release
   cancel-in-progress: false
-
 permissions:
   contents: read
-
 jobs:
   release:
     permissions:
@@ -42,58 +32,28 @@ jobs:
     environment: application-release
     runs-on: windows-latest
     timeout-minutes: 60
-
+    env:
+      OGS_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
     steps:
-      - name: Checkout the exact main commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Require an up-to-date main dispatch
+      - name: Require the current main commit
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "Application releases can only be dispatched from main."
-            exit 1
-          fi
+          test "$GITHUB_REF" = refs/heads/main
           git fetch origin main --tags
-          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
-            echo "main advanced after this workflow was dispatched; start a new release run."
-            exit 1
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Rebuild native test dependency
-        run: npm rebuild better-sqlite3
-
-      - name: Install Electron runtime
-        run: node node_modules/electron/install.js
-
-      - name: Require Windows signing identity
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          WIN_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
-            throw 'WINDOWS_CSC_LINK must contain the Windows code-signing certificate.'
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WIN_PUBLISHER_NAME)) {
-            throw 'WINDOWS_PUBLISHER_NAME must contain the expected certificate subject.'
-          }
-
-      - name: Resolve next version and channel
+      - run: rustup show
+      - run: npm ci
+      - name: Resolve version
         id: version
         shell: bash
         env:
@@ -103,205 +63,114 @@ jobs:
           PRERELEASE_LABEL: ${{ inputs.prerelease_label }}
         run: |
           set -euo pipefail
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          RELEASES_JSON=$(gh release list --limit 200 --json tagName,isPrerelease)
-          export PACKAGE_VERSION RELEASES_JSON VERSION_BUMP RELEASE_CHANNEL PRERELEASE_LABEL
+          export PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          export RELEASES_JSON=$(gh release list --limit 200 --json tagName,isPrerelease)
           node scripts/resolve-release-version.js >> "$GITHUB_OUTPUT"
-
-      - name: Verify release identity is unused
+      - name: Verify unused release identity
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.TAG }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists."
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
-            exit 1
-          fi
-
-      - name: Apply package version
-        run: npm version "${{ steps.version.outputs.NEXT_VERSION }}" --no-git-tag-version
-
-      - name: Run checks
-        run: npm run check
-
-      - name: Rebuild Electron native dependencies
-        run: npm run rebuild:electron-native
-
-      - name: Package and sign distributables
-        env:
-          UPDATE_CHANNEL: ${{ steps.version.outputs.UPDATE_CHANNEL }}
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-          WIN_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
-        run: node node_modules/electron-builder/cli.js --config scripts/electron-builder.release.js --publish never
-
-      - name: Validate package and updater metadata
+          TAG='${{ steps.version.outputs.TAG }}'
+          if gh release view "$TAG" >/dev/null 2>&1; then exit 1; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then exit 1; fi
+      - name: Apply version
+        run: |
+          npm version '${{ steps.version.outputs.NEXT_VERSION }}' --no-git-tag-version
+          node scripts/prepare-tauri-release.cjs
+      - name: Import Windows signing certificate
         shell: pwsh
         env:
-          WIN_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
+          OGS_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          OGS_CSC_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          OGS_PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
         run: |
-          $version = '${{ steps.version.outputs.NEXT_VERSION }}'
-          node scripts/validate-app-release.js `
-            --dist dist `
-            --version $version `
-            --publisher $env:WIN_PUBLISHER_NAME `
-            --report dist/release-artifacts.json
-
-      - name: Create and atomically push release commit and annotated tag
-        id: release_commit
+          $ErrorActionPreference = 'Stop'
+          if (!$env:OGS_CSC_LINK -or !$env:OGS_PUBLISHER -or !$env:OGS_UPDATER_PUBLIC_KEY) { throw 'Windows signing identity and the Tauri updater public key are required.' }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'ogs-release.pfx'
+          if ($env:OGS_CSC_LINK.StartsWith('https://')) {
+            Invoke-WebRequest -Uri $env:OGS_CSC_LINK -OutFile $certificatePath
+          } else {
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:OGS_CSC_LINK))
+          }
+          try {
+            $password = if ($env:OGS_CSC_PASSWORD) { ConvertTo-SecureString $env:OGS_CSC_PASSWORD -AsPlainText -Force } else { [Security.SecureString]::new() }
+            $imported = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            $signingCertificates = @($imported | Where-Object { $_.HasPrivateKey })
+            if ($signingCertificates.Count -ne 1) { throw 'Expected exactly one certificate with a private key.' }
+            $certificate = $signingCertificates[0]
+            "OGS_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+            if ($certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -ne $env:OGS_PUBLISHER -and $certificate.Subject -ne $env:OGS_PUBLISHER) { throw 'Unexpected signing certificate publisher.' }
+          } finally {
+            Remove-Item -LiteralPath $certificatePath -Force
+          }
+      - name: Validate source
+        run: npm run check
+      - name: Build signed Tauri installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run app:dist:release
+      - name: Commit and tag the exact built version
+        id: commit
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.TAG }}"
-          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
-          UNEXPECTED=$(git status --porcelain --untracked-files=no | grep -Ev '^ M package(-lock)?\.json$' || true)
-          if [ -n "$UNEXPECTED" ]; then
-            echo "Build unexpectedly changed tracked files:"
-            printf '%s\n' "$UNEXPECTED"
-            exit 1
-          fi
+          TAG='${{ steps.version.outputs.TAG }}'
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          UNEXPECTED=$(git status --porcelain --untracked-files=no | grep -Ev '^ M (package(-lock)?\.json|src-tauri/Cargo\.(toml|lock))$' || true)
+          test -z "$UNEXPECTED"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add package.json package-lock.json
+          git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
           git commit -m "chore(release): $TAG"
-          RELEASE_COMMIT=$(git rev-parse HEAD)
-          git tag -a "$TAG" -m "OpenGameSave $VERSION" "$RELEASE_COMMIT"
-          TAG_VERSION=$(git show "$TAG:package.json" | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")
-          test "$TAG_VERSION" = "$VERSION"
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || {
-            echo "main advanced during the build; refusing to publish stale artifacts."
-            exit 1
-          }
+          git tag -a "$TAG" -m "OpenGameSave $TAG"
           gh auth setup-git
-          git push --atomic origin "HEAD:refs/heads/main" "refs/tags/$TAG"
-          echo "RELEASE_COMMIT=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
-
-      - name: Create draft release with verified tag
-        id: draft_release
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Upload draft release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.TAG }}"
-          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
-          CHANNEL="${{ steps.version.outputs.UPDATE_CHANNEL }}"
-          INSTALLER="dist/OpenGameSave-Setup-$VERSION.exe"
-          FILES=("$INSTALLER" "$INSTALLER.blockmap" "dist/$CHANNEL.yml")
-          FLAGS=(--draft --verify-tag --target "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
-          if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
-            FLAGS+=(--prerelease)
-          fi
-          NOTES=$(printf 'Version: %s\nChannel: %s\nBuild source: %s\n' "$VERSION" "${{ inputs.release_channel }}" "${{ steps.release_commit.outputs.RELEASE_COMMIT }}")
-          gh release create "$TAG" "${FLAGS[@]}" --title "$VERSION" --notes "$NOTES" "${FILES[@]}"
-          RELEASE_ID=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq ".[] | select(.draft == true and .tag_name == \"$TAG\") | .id" | head -n 1)
-          test -n "$RELEASE_ID" || {
-            echo "Draft release $TAG was created but could not be resolved by ID."
-            exit 1
+          FLAGS=(--draft --verify-tag --target '${{ steps.commit.outputs.sha }}')
+          if [ '${{ inputs.release_channel }}' = prerelease ]; then FLAGS+=(--prerelease); fi
+          gh release create '${{ steps.version.outputs.TAG }}' "${FLAGS[@]}" --title '${{ steps.version.outputs.NEXT_VERSION }}' --generate-notes dist/release/*
+      - name: Verify remote bytes before publication
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $destination = Join-Path $env:RUNNER_TEMP 'ogs-remote-release'
+          gh release download '${{ steps.version.outputs.TAG }}' --dir $destination
+          if ($LASTEXITCODE -ne 0) { throw 'Remote artifact download failed.' }
+          $downloadedChecksums = Join-Path $destination 'checksums.json'
+          if ((Get-FileHash -LiteralPath $downloadedChecksums -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath dist/release/checksums.json -Algorithm SHA256).Hash) { throw 'Remote checksum manifest differs from the validated local manifest.' }
+          $checksums = Get-Content -LiteralPath dist/release/checksums.json | ConvertFrom-Json
+          foreach ($artifact in $checksums) {
+            $file = Join-Path $destination $artifact.name
+            if ((Get-Item -LiteralPath $file).Length -ne $artifact.size -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw 'Remote release bytes differ from validated local artifacts.' }
           }
-          echo "RELEASE_ID=$RELEASE_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Verify remote assets
+      - name: Publish verified draft
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WIN_PUBLISHER_NAME: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.TAG }}"
-          VERSION="${{ steps.version.outputs.NEXT_VERSION }}"
-          RELEASE_ID="${{ steps.draft_release.outputs.RELEASE_ID }}"
-          VERIFIED=false
-          for attempt in 1 2 3 4 5 6; do
-            if gh api -H "Accept: application/vnd.github+json" \
-              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > dist/remote-release.json \
-              && node scripts/validate-app-release.js \
-                --dist dist \
-                --version "$VERSION" \
-                --publisher "$WIN_PUBLISHER_NAME" \
-                --remote-json dist/remote-release.json; then
-              VERIFIED=true
-              break
-            fi
-            if [ "$attempt" = 6 ]; then
-              echo "Draft release assets did not become verifiable in time."
-              exit 1
-            fi
-            sleep 10
-          done
-          test "$VERIFIED" = true
-          REMOTE_TAG_COMMIT=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
-          test "$REMOTE_TAG_COMMIT" = "${{ steps.release_commit.outputs.RELEASE_COMMIT }}" || {
-            echo "Remote annotated tag does not resolve to the built release commit."
-            exit 1
+          LATEST=true
+          if [ '${{ inputs.release_channel }}' = prerelease ]; then LATEST=false; fi
+          gh release edit '${{ steps.version.outputs.TAG }}' --draft=false --latest="$LATEST"
+      - name: Remove temporary signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:OGS_CERTIFICATE_THUMBPRINT -match '^[A-Fa-f0-9]{40}$') {
+            $certificatePath = "Cert:\CurrentUser\My\$env:OGS_CERTIFICATE_THUMBPRINT"
+            if (Test-Path -LiteralPath $certificatePath) { Remove-Item -LiteralPath $certificatePath }
           }
-
-      - name: Publish release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${{ steps.version.outputs.TAG }}"
-          RELEASE_ID="${{ steps.draft_release.outputs.RELEASE_ID }}"
-          if [ "${{ steps.version.outputs.IS_PRERELEASE }}" = "true" ]; then
-            PRERELEASE=true
-            MAKE_LATEST=false
-          else
-            PRERELEASE=false
-            MAKE_LATEST=true
-          fi
-          PUBLISHED=false
-          for attempt in 1 2 3 4 5 6; do
-            if gh api --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
-              -F draft=false \
-              -F prerelease="$PRERELEASE" \
-              -f make_latest="$MAKE_LATEST" >/dev/null; then
-              PUBLISHED=true
-              break
-            fi
-            if [ "$attempt" = 6 ]; then
-              echo "Draft release could not be published."
-              exit 1
-            fi
-            sleep 10
-          done
-          test "$PUBLISHED" = true
-          VISIBLE=false
-          for attempt in 1 2 3 4 5 6; do
-            if gh api -H "Accept: application/vnd.github+json" \
-              "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-              --jq "select(.draft == false and .prerelease == $PRERELEASE) | .tag_name" \
-              | grep -Fx "$TAG"; then
-              VISIBLE=true
-              break
-            fi
-            if [ "$attempt" = 6 ]; then
-              echo "Published release did not become publicly visible in time."
-              exit 1
-            fi
-            sleep 10
-          done
-          test "$VISIBLE" = true
-
-      - name: Add release summary
-        shell: bash
-        run: |
-          printf '## Application release\n\n- Tag: `%s`\n- Version: `%s`\n- Channel: `%s`\n- Commit: `%s`\n- Remote assets verified: yes\n' \
-            '${{ steps.version.outputs.TAG }}' \
-            '${{ steps.version.outputs.NEXT_VERSION }}' \
-            '${{ inputs.release_channel }}' \
-            '${{ steps.release_commit.outputs.RELEASE_COMMIT }}' \
-            >> "$GITHUB_STEP_SUMMARY"

@@ -53,36 +53,40 @@ function getTableUpdateState(tabName) {
 }
 
 async function processTableUpdates(tabName, state) {
-    window.api.send('update-status', `updating_${tabName}`, true);
-    try {
-        while (state.fullUpdatePending || state.rowActions.size > 0) {
-            if (state.fullUpdatePending) {
-                const loadTable = state.loadTable;
-                const loaderRequested = state.loaderRequested;
-                state.fullUpdatePending = false;
-                state.loaderRequested = false;
+    do {
+        await window.api.send('update-status', `updating_${tabName}`, true);
+        try {
+            while (state.fullUpdatePending || state.rowActions.size > 0) {
+                if (state.fullUpdatePending) {
+                    const loadTable = state.loadTable;
+                    const loaderRequested = state.loaderRequested;
+                    state.fullUpdatePending = false;
+                    state.loaderRequested = false;
 
-                // A full reload includes every row action queued before it.
-                // Actions arriving while the reload is in progress remain in
-                // the map and are applied to the freshly loaded table.
+                    // A full reload includes every row action queued before it.
+                    // Actions arriving while the reload is in progress remain in
+                    // the map and are applied to the freshly loaded table.
+                    state.rowActions.clear();
+                    if (loadTable) await loadTable(loaderRequested);
+                    continue;
+                }
+
+                const actions = [...state.rowActions.values()];
                 state.rowActions.clear();
-                if (loadTable) await loadTable(loaderRequested);
-                continue;
-            }
-
-            const actions = [...state.rowActions.values()];
-            state.rowActions.clear();
-            for (const action of actions) {
-                if (action.type === 'remove') {
-                    performRemoveTableRow(tabName, action.wikiId);
-                } else {
-                    await performAddOrUpdateTableRow(tabName, action.wikiId);
+                for (const action of actions) {
+                    if (action.type === 'remove') {
+                        performRemoveTableRow(tabName, action.wikiId);
+                    } else {
+                        await performAddOrUpdateTableRow(tabName, action.wikiId);
+                    }
                 }
             }
+        } finally {
+            await window.api.send('update-status', `updating_${tabName}`, false);
         }
-    } finally {
-        window.api.send('update-status', `updating_${tabName}`, false);
-    }
+        // Events can enqueue another refresh while the host acknowledges the
+        // status reset. Drain it before completing the shared update promise.
+    } while (state.fullUpdatePending || state.rowActions.size > 0);
 }
 
 function scheduleTableUpdates(tabName, state) {
@@ -658,8 +662,6 @@ export function removeTableRow(tabName, wikiId) {
 }
 
 window.api.receive('execute-menu-action', async (action, data) => {
-    window.activeMenuTrigger?.setAttribute('aria-expanded', 'false');
-    window.activeMenuTrigger = null;
     if (action === 'add-favorite') {
         const wikiId = data;
         const settings = await window.api.invoke('get-settings');

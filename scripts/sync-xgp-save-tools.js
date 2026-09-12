@@ -11,8 +11,8 @@ const {
     XGP_WIKI_IDS_METADATA_KEY,
     normalizeTitleKey,
     parseXgpGamesJson
-} = require('../src/main/xgpSourceFormat');
-const { DATABASE_VARIANT_METADATA_KEY } = require('../src/main/databaseManifest');
+} = require('./lib/xgpSourceFormat');
+const { DATABASE_VARIANT_METADATA_KEY } = require('./lib/databaseManifest');
 
 const DEFAULT_REGISTRY_URL = 'https://raw.githubusercontent.com/brodrigz/XgpSaveTools/master/XgpSaveTools/games.json';
 const XGP_PROJECT_URL = 'https://github.com/brodrigz/XgpSaveTools';

@@ -87,6 +87,10 @@
         "app_logo": "OpenGameSave 标志"
     },
     "main": {
+        "window_minimize": "最小化",
+        "window_maximize": "最大化",
+        "window_restore": "还原窗口",
+        "window_close": "关闭窗口",
         "title": "OpenGameSave",
         "options": "选项",
         "loading": "加载中…",
@@ -355,6 +359,7 @@
         "export_selected_backup": "备份列表中已选择的游戏",
         "export_selected_restore": "还原列表中已选择的游戏",
         "export_count": "每个游戏的导出数量（从新到旧排序）",
+        "invalid_export_count": "请输入每款游戏要导出的备份数量，范围为 1 至 1000 的整数",
         "export_path": "导出路径",
         "empty_export_path": "请选择导出路径",
         "exporting": "导出中…",

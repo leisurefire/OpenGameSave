@@ -11,7 +11,7 @@ window.api.receive('apply-language', async () => {
     }
 });
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializeAboutPage() {
     const latestVersionSpan = document.getElementById('latest-version');
     const currentVersionSpan = document.getElementById('current-version');
     const githubLink = document.getElementById('github-link');
@@ -98,4 +98,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('[data-external-url]').forEach(link => link.addEventListener('click', () => {
         window.api.invoke('open-url', link.dataset.externalUrl);
     }));
-});
+}
+
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    void initializeAboutPage();
+} else {
+    document.addEventListener('DOMContentLoaded', initializeAboutPage, { once: true });
+}

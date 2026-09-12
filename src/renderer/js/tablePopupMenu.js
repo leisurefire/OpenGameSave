@@ -2,10 +2,14 @@ import { ACTION_ICONS } from './icons.js';
 import { requestPopupMenu } from './utility.js';
 
 export function setDropDownAction() {
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('.dropdown-menu-button');
+    const openMenu = (event) => {
+        const contextMenu = event.type === 'contextmenu';
+        const button = contextMenu
+            ? event.target.closest('tr[data-wiki-id]')?.querySelector('.dropdown-menu-button')
+            : event.target.closest('.dropdown-menu-button');
 
         if (button) {
+            if (contextMenu) event.preventDefault();
             event.stopPropagation();
             void requestPopupMenu(button, async () => {
                 const row = button.closest('tr');
@@ -58,6 +62,9 @@ export function setDropDownAction() {
                 ].filter(item => item.visible !== false);
 
                 const rect = button.getBoundingClientRect();
+                if (contextMenu && (event.clientX || event.clientY)) {
+                    return { items: menuItems, x: event.clientX, y: event.clientY, direction: 'down' };
+                }
                 const menuGap = 4;
                 const estimatedMenuHeight = menuItems.length * 34 + 10;
                 const availableAbove = rect.top;
@@ -73,9 +80,11 @@ export function setDropDownAction() {
                     y: shouldOpenUp ? rect.top - menuGap : rect.bottom + menuGap,
                     direction: shouldOpenUp ? 'up' : 'down'
                 };
-            });
+            }, { toggle: !contextMenu });
         }
-    });
+    };
+    document.addEventListener('click', openMenu);
+    document.addEventListener('contextmenu', openMenu);
 
     // Close on scroll in either table
     ['#backup .table-container', '#restore .table-container'].forEach(selector => {

@@ -186,9 +186,24 @@ async function executeArtLoad({ gameId, artType, image, expectedGameId }) {
         let imageUrl;
         if (typeof asset === 'string') {
             imageUrl = asset;
-        } else if (/^image\/(?:jpeg|png|webp)$/.test(asset.mimeType)
-            && (asset.data instanceof Uint8Array || asset.data instanceof ArrayBuffer)) {
-            const bytes = asset.data instanceof Uint8Array ? asset.data : new Uint8Array(asset.data);
+        } else if (/^image\/(?:jpeg|png|webp)$/.test(asset.mimeType)) {
+            const limit = 8 * 1024 * 1024;
+            let bytes;
+            if (typeof asset.dataBase64 === 'string') {
+                if (asset.dataBase64.length > 4 * Math.ceil(limit / 3)) return;
+                const decoded = atob(asset.dataBase64);
+                if (decoded.length > limit) return;
+                bytes = new Uint8Array(decoded.length);
+                for (let index = 0; index < decoded.length; index++) bytes[index] = decoded.charCodeAt(index);
+            } else if (asset.data instanceof Uint8Array || asset.data instanceof ArrayBuffer) {
+                if (asset.data.byteLength > limit) return;
+                bytes = asset.data instanceof Uint8Array ? asset.data : new Uint8Array(asset.data);
+            } else if (Array.isArray(asset.data) && asset.data.length <= limit
+                && asset.data.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+                bytes = new Uint8Array(asset.data);
+            } else {
+                return;
+            }
             imageUrl = URL.createObjectURL(new Blob([bytes], { type: asset.mimeType }));
             createdObjectUrl = imageUrl;
         } else {
@@ -554,7 +569,7 @@ function selectGame(game) {
     else if (game.hasCover) void loadArt(game.id, 'cover', elements.heroImage, game.id);
 }
 
-async function refreshLibrary() {
+async function refreshLibrary(force = false) {
     const elements = getElements();
     document.getElementById('library')?.setAttribute('aria-busy', 'true');
     elements.loading.classList.remove('hidden');
@@ -566,7 +581,7 @@ async function refreshLibrary() {
     elements.refresh.querySelector('.lucide-icon')?.classList.add('is-spinning');
     try {
         const [libraryGames, platforms] = await Promise.all([
-            window.api.invoke('get-library-games'),
+            window.api.invoke('get-library-games', force ? { force: true } : {}),
             window.api.invoke('get-icon-map')
         ]);
         games = Array.isArray(libraryGames) ? libraryGames.map(game => ({
@@ -619,7 +634,7 @@ function initializeLibrary() {
             renderGames();
         });
     });
-    elements.refresh?.addEventListener('click', () => void refreshLibrary());
+    elements.refresh?.addEventListener('click', () => void refreshLibrary(true));
     document.querySelectorAll('[data-library-view]').forEach(button => button.addEventListener('click', () => {
         currentView = button.dataset.libraryView;
         document.querySelectorAll('[data-library-view]').forEach((option) => {

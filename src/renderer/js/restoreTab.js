@@ -104,7 +104,7 @@ function setupRestoreButton() {
 async function performRestore() {
     const selectedWikiIds = getSelectedWikiIds('restore');
     const restoreProgressId = 'restore-progress';
-    const restoreProgressTitle = await window.api.invoke('translate', 'main.restore_in_progress');
+    const restoreProgressTitle = await window.i18n.translate('main.restore_in_progress');
     const totalGames = selectedWikiIds.length;
 
     const start = await operationStartCheck('restore');

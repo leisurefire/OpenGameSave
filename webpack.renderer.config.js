@@ -3,6 +3,7 @@ const path = require('path');
 
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -17,7 +18,7 @@ const htmlMinifyOptions = isProduction ? {
 
 module.exports = {
     mode: isProduction ? 'production' : 'development',
-    target: 'electron-renderer',
+    target: 'web',
     devtool: isProduction ? false : 'source-map',
     entry: {
         index: './src/renderer/index.entry.js',
@@ -41,7 +42,9 @@ module.exports = {
                 use: {
                     loader: 'babel-loader',
                     options: {
-                        presets: ['@babel/preset-env']
+                        // The Windows distribution uses modern WebView2. Keep
+                        // native async functions instead of shipping ES5 helpers.
+                        presets: [['@babel/preset-env', { targets: { edge: '109' }, bugfixes: true }]]
                     }
                 }
             },
@@ -54,6 +57,7 @@ module.exports = {
     },
 
     plugins: [
+        new CopyWebpackPlugin({ patterns: [{ from: 'src/assets', to: 'assets' }] }),
         // --- Create a new HtmlWebpackPlugin for EACH of the pages ---
         new HtmlWebpackPlugin({
             template: './src/renderer/index.html', // Path to the source HTML

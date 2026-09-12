@@ -2,7 +2,7 @@
 @import './data-table.css';
 
 :root {
-    --app-chrome-background: rgba(8, 10, 14, 0.82);
+    --app-chrome-background: rgba(8, 10, 14, 0.28);
 }
 
 .app-titlebar {
@@ -11,13 +11,14 @@
     height: 46px;
     display: flex;
     align-items: center;
-    padding-right: 138px;
+    user-select: none;
     background: var(--app-chrome-background);
-    app-region: drag;
 }
 
 .titlebar-drag-region {
-    display: none;
+    flex: 1;
+    height: 100%;
+    min-width: 12px;
 }
 
 .titlebar-navigation {
@@ -25,7 +26,6 @@
     align-items: center;
     gap: 2px;
     padding-left: 6px;
-    app-region: no-drag;
 }
 
 .titlebar-menu-strip {
@@ -42,7 +42,6 @@
     background: transparent;
     border: 0;
     font-size: 11px;
-    app-region: no-drag;
 }
 
 .titlebar-menu-button:hover {
@@ -59,8 +58,7 @@
     color: rgba(255, 255, 255, 0.66);
     background: transparent;
     border: 0;
-    transition: color 120ms ease, background-color 120ms ease;
-    app-region: no-drag;
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
 .titlebar-button:hover:not(:disabled) {
@@ -75,6 +73,54 @@
 .titlebar-button .lucide-icon {
     width: 15px;
     height: 15px;
+}
+
+.window-controls {
+    align-self: stretch;
+    display: flex;
+    flex-shrink: 0;
+}
+
+.window-control {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    padding: 0;
+    border: 0;
+    color: rgba(255, 255, 255, 0.86);
+    background: transparent;
+}
+
+.window-control:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.window-control:focus-visible {
+    outline: 2px solid var(--system-accent);
+    outline-offset: -3px;
+}
+
+.window-close:hover {
+    color: white;
+    background: #c42b1c;
+}
+
+.window-control svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 1;
+    fill: none;
+    pointer-events: none;
+}
+
+.window-control .window-restore-icon,
+.window-control[data-maximized="true"] .window-maximize-icon {
+    display: none;
+}
+
+.window-control[data-maximized="true"] .window-restore-icon {
+    display: block;
 }
 
 .sidebar-expand-icon,
@@ -99,7 +145,7 @@
     height: calc(100vh - 46px);
     min-height: 0;
     background: var(--app-chrome-background);
-    transition: grid-template-columns 180ms cubic-bezier(0.2, 0, 0, 1);
+    transition: grid-template-columns var(--motion-slow) var(--motion-ease);
 }
 
 .app-sidebar {
@@ -254,9 +300,14 @@
     padding: 0 18px 16px;
     overflow: hidden;
     background: rgba(20, 20, 20, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid transparent;
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Animate only route entry; virtualized rows stay still while scrolling. */
+.app-content > section:not(.hidden) {
+    animation: surface-enter var(--motion-normal) var(--motion-ease) backwards;
 }
 
 .app-content > section {
@@ -327,7 +378,7 @@
     gap: 3px;
     padding: 3px;
     background: rgba(255, 255, 255, 0.045);
-    border: 1px solid rgba(255, 255, 255, 0.065);
+    border: 1px solid transparent;
     border-radius: 8px;
 }
 
@@ -339,7 +390,7 @@
     background: transparent;
     border: 0;
     font-size: 12px;
-    transition: color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .save-view-button:hover {
@@ -405,7 +456,7 @@ input.search-input {
     appearance: none;
     color: var(--color-text-primary);
     background: rgba(255, 255, 255, 0.035) !important;
-    border: 1px solid var(--color-control-border) !important;
+    border: 1px solid transparent !important;
     border-radius: var(--radius-control) !important;
     outline: none;
     line-height: 20px;
@@ -419,8 +470,8 @@ input.search-input:focus {
     border-width: 1px !important;
     padding-bottom: 6px;
     background: rgba(255, 255, 255, 0.06) !important;
-    border-color: color-mix(in srgb, var(--system-accent) 66%, rgba(255, 255, 255, 0.24)) !important;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--system-accent) 28%, transparent);
+    border-bottom-color: var(--color-theme-accent-bright) !important;
+    box-shadow: inset 0 -1px var(--color-theme-accent-bright);
     outline: none;
 }
 
@@ -449,7 +500,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     width: var(--control-height);
     height: var(--control-height);
     flex: 0 0 var(--control-height);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid transparent;
     border-radius: var(--radius-control);
 }
 
@@ -502,7 +553,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     background:
         radial-gradient(circle at 75% 20%, color-mix(in srgb, var(--library-accent) 38%, transparent), transparent 48%),
         linear-gradient(118deg, color-mix(in srgb, var(--library-accent) 26%, #12151c), #0f1117 58%, #090b0f);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid transparent;
     border-radius: 15px;
     box-shadow: 0 18px 52px rgba(0, 0, 0, 0.27);
 }
@@ -561,7 +612,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 0;
     color: rgba(255, 255, 255, 0.74);
     background: rgba(7, 9, 13, 0.46);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid transparent;
     border-radius: 999px;
     backdrop-filter: blur(12px);
     font-size: 10px;
@@ -615,7 +666,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     justify-content: center;
     gap: 8px;
     border: 0;
-    transition: transform 120ms ease, filter 120ms ease, background-color 120ms ease;
+    transition: transform var(--motion-fast) var(--motion-ease), filter var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
 .library-play-button {
@@ -688,7 +739,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .library-filter-button.active {
     color: #fff;
     background: rgba(255, 255, 255, 0.085);
-    border-color: rgba(255, 255, 255, 0.075);
+    border-color: transparent;
 }
 
 .library-view-options {
@@ -736,22 +787,20 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     background:
         radial-gradient(circle at 72% 16%, color-mix(in srgb, var(--library-accent) 55%, transparent), transparent 40%),
         linear-gradient(148deg, color-mix(in srgb, var(--library-accent) 24%, #20242d), #101218 70%);
-    border: 1px solid rgba(255, 255, 255, 0.095);
+    border: 1px solid transparent;
     border-radius: 11px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-    transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), border-color 160ms ease, box-shadow 160ms ease;
+    transition: transform var(--motion-normal) var(--motion-ease), box-shadow var(--motion-normal) var(--motion-ease);
 }
 
 .library-card:hover .library-card-art,
 .library-card:focus-visible .library-card-art {
-    border-color: color-mix(in srgb, var(--library-accent) 46%, rgba(255, 255, 255, 0.2));
     box-shadow: 0 13px 32px rgba(0, 0, 0, 0.38);
-    transform: translateY(-4px);
+    transform: translateY(-2px);
 }
 
 .library-card.selected .library-card-art {
-    border-color: color-mix(in srgb, var(--library-accent) 62%, white);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--library-accent) 40%, transparent), 0 13px 32px rgba(0, 0, 0, 0.38);
+    box-shadow: 0 3px 0 var(--color-accent-emphasis), 0 10px 28px rgba(0, 0, 0, 0.32);
 }
 
 .library-cover-image {
@@ -761,7 +810,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 260ms ease, opacity 180ms ease;
+    transition: transform var(--motion-slow) var(--motion-ease), opacity var(--motion-normal) var(--motion-ease);
 }
 
 .library-cover-image.is-pending {
@@ -769,7 +818,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 }
 
 .library-card:hover .library-cover-image {
-    transform: scale(1.025);
+    transform: scale(1.015);
 }
 
 .library-card-monogram {
@@ -792,7 +841,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     place-items: center;
     background: linear-gradient(0deg, rgba(6, 8, 12, 0.65), transparent 62%);
     opacity: 0;
-    transition: opacity 140ms ease;
+    transition: opacity var(--motion-normal) var(--motion-ease);
 }
 
 .library-card:hover .library-card-overlay,
@@ -811,8 +860,8 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     border: 0;
     border-radius: 50% !important;
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
-    transform: translateY(6px) scale(0.9);
-    transition: transform 140ms ease, background-color 140ms ease;
+    transform: translateY(4px) scale(0.96);
+    transition: transform var(--motion-normal) var(--motion-ease), background-color var(--motion-normal) var(--motion-ease);
 }
 
 .library-card:hover .library-card-play,
@@ -830,7 +879,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     display: grid;
     place-items: center;
     background: rgba(7, 9, 13, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid transparent;
     border-radius: 7px;
     backdrop-filter: blur(12px);
 }
@@ -846,10 +895,10 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 0;
     color: color-mix(in srgb, var(--system-accent) 72%, white);
     background: rgba(7, 9, 13, 0.76);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid transparent;
     border-radius: 7px;
     backdrop-filter: blur(12px);
-    transition: color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
 }
 
 .library-card-guide {
@@ -921,7 +970,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .library-list .library-card:hover,
 .library-list .library-card.selected {
     background: rgba(255, 255, 255, 0.045);
-    border-color: rgba(255, 255, 255, 0.055);
+    border-color: transparent;
 }
 
 .library-list .library-card-art {
@@ -1019,10 +1068,9 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 5px;
     overflow-y: auto;
     background: rgba(17, 20, 27, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid transparent;
     border-radius: 10px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
-    backdrop-filter: blur(24px);
 }
 
 .guide-game-results.hidden {
@@ -1106,7 +1154,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
         radial-gradient(circle at 78% 34%, color-mix(in srgb, var(--system-accent) 22%, transparent), transparent 28%),
         radial-gradient(circle at 68% 12%, color-mix(in srgb, var(--system-accent) 13%, transparent), transparent 42%),
         linear-gradient(118deg, #161b24, #10131a 62%, #0a0c11);
-    border: 1px solid rgba(255, 255, 255, 0.095);
+    border: 1px solid transparent;
     border-radius: 15px;
     box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
 }
@@ -1139,7 +1187,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 0 9px;
     color: color-mix(in srgb, var(--system-accent) 72%, white);
     background: rgba(7, 9, 13, 0.46);
-    border: 1px solid color-mix(in srgb, var(--system-accent) 22%, rgba(255, 255, 255, 0.08));
+    border: 1px solid transparent;
     border-radius: 999px;
     backdrop-filter: blur(12px);
     font-size: 10px;
@@ -1199,7 +1247,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     margin-top: 10px;
     padding: 11px 12px;
     background: color-mix(in srgb, var(--system-accent) 5%, rgba(255, 255, 255, 0.025));
-    border: 1px solid color-mix(in srgb, var(--system-accent) 14%, rgba(255, 255, 255, 0.07));
+    border: 1px solid transparent;
     border-radius: 10px;
 }
 
@@ -1240,7 +1288,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 0 10px;
     color: rgba(255, 255, 255, 0.68);
     background: rgba(255, 255, 255, 0.055);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid transparent;
     border-radius: 7px;
     font-size: 10px;
     white-space: nowrap;
@@ -1292,6 +1340,16 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     gap: 10px;
 }
 
+.library-card:focus-visible .library-card-art,
+.guide-source-card:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+}
+
+.library-list .library-card.selected {
+    background: color-mix(in srgb, var(--system-accent) 10%, transparent);
+}
+
 .guide-source-card {
     min-height: 166px;
     display: flex;
@@ -1299,16 +1357,16 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 16px;
     outline: 0;
     background: rgba(255, 255, 255, 0.032);
-    border: 1px solid rgba(255, 255, 255, 0.075);
+    border: 1px solid transparent;
     border-radius: 11px;
     cursor: pointer;
-    transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+    transition: background-color var(--motion-normal) var(--motion-ease), transform var(--motion-normal) var(--motion-ease);
 }
 
 .guide-source-card:hover,
 .guide-source-card:focus-visible {
     background: rgba(255, 255, 255, 0.052);
-    border-color: rgba(255, 255, 255, 0.14);
+    border-color: transparent;
     transform: translateY(-2px);
 }
 
@@ -1621,7 +1679,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     min-height: 0;
     flex: 1 1 auto;
     background: var(--color-card-surface);
-    border: 1px solid var(--color-card-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-card);
 }
 
@@ -1634,7 +1692,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .table-container {
     overflow: auto !important;
     background: var(--color-card-surface);
-    border: 1px solid var(--color-card-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-card);
     box-shadow: none;
     scrollbar-gutter: stable;
@@ -1686,7 +1744,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 
 .table-container table tbody tr {
     background: transparent;
-    box-shadow: inset 0 -1px var(--color-win-border);
+    box-shadow: none;
 }
 
 .table-container table tbody tr:last-child {
@@ -1826,7 +1884,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     gap: 6px;
     padding: 4px;
     background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.075);
+    border: 1px solid transparent;
     border-radius: 12px;
 }
 
@@ -1853,7 +1911,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .sync-provider-option[aria-checked="true"] {
     color: rgba(255, 255, 255, 0.94);
     background: rgba(255, 255, 255, 0.075);
-    border-color: rgba(255, 255, 255, 0.095);
+    border-color: transparent;
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15);
 }
 
@@ -1870,7 +1928,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .sync-transfer-list {
     overflow: hidden;
     background: var(--color-card-surface-raised);
-    border: 1px solid var(--color-card-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-card);
 }
 
@@ -1911,7 +1969,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     font-family: var(--font-mono);
     font-size: 11.5px;
     background: rgba(0, 0, 0, 0.13);
-    border: 1px solid var(--color-control-border);
+    border: 1px solid transparent;
     border-radius: 8px;
     outline: none;
 }
@@ -2014,14 +2072,14 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     padding: 0;
     color: rgba(255, 255, 255, 0.58);
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-control-border);
+    border: 1px solid transparent;
     border-radius: 9px !important;
 }
 
 .sync-icon-button:hover:not(:disabled) {
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.08);
-    border-color: var(--color-control-border-hover);
+    border-color: transparent;
 }
 
 .sync-icon-button .lucide-icon {
@@ -2111,7 +2169,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     text-align: left;
     background: transparent;
     border-radius: 0 !important;
-    transition: background-color 120ms ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .sync-transfer-action + .sync-transfer-action {
@@ -2172,8 +2230,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 .modal-container {
     overflow: hidden;
     background: var(--color-win-bg);
-    backdrop-filter: blur(45px);
-    border: 1px solid var(--color-win-border-bright);
+    border: 1px solid transparent;
     border-radius: var(--radius-win);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
 }
@@ -2192,15 +2249,23 @@ input[type="search"].search-input::-webkit-search-cancel-button {
     opacity: 1 !important;
 }
 
-.tab-active::before {
+#main-tab button::before {
     position: absolute;
     top: 8px;
     bottom: 8px;
     left: 2px;
     width: 2px;
+    opacity: 0;
+    transform: scaleY(0.5);
+    transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-normal) var(--motion-ease);
     content: '';
     background-color: var(--color-theme-accent-bright);
     border-radius: 4px;
+}
+
+#main-tab .tab-active::before {
+    opacity: 1;
+    transform: scaleY(1);
 }
 
 .tab-active > [data-lucide-icon] {
@@ -2210,6 +2275,7 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 #main-tab button {
     position: relative;
     border: 1px solid transparent;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
 }
 
 #main-tab button:hover:not(.tab-active) {
@@ -2416,6 +2482,15 @@ input[type="search"].search-input::-webkit-search-cancel-button {
 @media (max-width: 640px) {
     .sync-config-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .library-card .library-card-art,
+    .library-card .library-cover-image,
+    .library-card .library-card-play,
+    .guide-source-card {
+        transform: none !important;
     }
 }
 

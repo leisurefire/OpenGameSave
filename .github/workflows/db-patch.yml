@@ -8,8 +8,8 @@ name: Publish Database Editions
       - scripts/generate-db-patch.js
       - scripts/build-db-release.js
       - scripts/sync-xgp-save-tools.js
-      - src/main/databaseManifest.js
-      - src/main/xgpSourceFormat.js
+      - scripts/lib/databaseManifest.js
+      - scripts/lib/xgpSourceFormat.js
       - .github/workflows/db-patch.yml
   schedule:
     - cron: '47 4 * * 3'
@@ -140,7 +140,7 @@ jobs:
               local manifest database
               manifest=$(node - "$previous/$pointer" "$variant" <<'NODE'
           const fs = require('fs');
-          const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('./src/main/databaseManifest');
+          const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('./scripts/lib/databaseManifest');
           const pointer = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
           const variant = normalizeDatabaseVariant(process.argv[3]);
           if (normalizeDatabaseVariant(pointer.variant ?? 'standard') !== variant
@@ -152,7 +152,7 @@ jobs:
               gh release download "$DATABASE_TAG" --pattern "$manifest" --dir "$previous"
               database=$(node - "$previous/$manifest" "$variant" <<'NODE'
           const fs = require('fs');
-          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const { validateDatabaseManifest } = require('./scripts/lib/databaseManifest');
           const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), process.argv[3]);
           process.stdout.write(manifest.database.name);
           NODE
@@ -160,7 +160,7 @@ jobs:
               gh release download "$DATABASE_TAG" --pattern "$database" --dir "$previous"
               node - "$previous/$manifest" "$variant" <<'NODE' > "$previous/patch-names.txt"
           const fs = require('fs');
-          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const { validateDatabaseManifest } = require('./scripts/lib/databaseManifest');
           const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), process.argv[3]);
           for (const patch of manifest.patches) console.log(patch.name);
           NODE
@@ -175,7 +175,7 @@ jobs:
           const fs = require('fs');
           const path = require('path');
           const Database = require('better-sqlite3');
-          const { validateDatabaseManifest } = require('./src/main/databaseManifest');
+          const { validateDatabaseManifest } = require('./scripts/lib/databaseManifest');
           const manifest = validateDatabaseManifest(JSON.parse(fs.readFileSync(process.env.MANIFEST_PATH, 'utf8')), process.env.VARIANT);
           const verify = descriptor => {
             const file = path.join(path.dirname(process.env.MANIFEST_PATH), descriptor.name);
@@ -256,7 +256,7 @@ jobs:
 
           STANDARD_SOURCE="$GITHUB_SHA"
           XBOX_SOURCE=$(sha256sum database/database.db dist/upstream/games.json dist/upstream/LICENSE \
-            scripts/sync-xgp-save-tools.js src/main/xgpSourceFormat.js \
+            scripts/sync-xgp-save-tools.js scripts/lib/xgpSourceFormat.js \
             | sha256sum | awk '{print $1}')
           printf '## Database publication\n\n- XgpSaveTools commit: `%s`\n' "$UPSTREAM_SHA" >> "$GITHUB_STEP_SUMMARY"
           publish_variant standard database/database.db "$STANDARD_SOURCE"

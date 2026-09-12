@@ -30,7 +30,7 @@ table thead th {
 /* ── Row ── */
 data-table .dt-row,
 table tr {
-    transition: background-color 0.1s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 data-table tr[data-virtual-spacer],
@@ -42,7 +42,7 @@ data-table .dt-row {
     display: grid;
     grid-template-columns: var(--dt-columns, repeat(3, minmax(0, 1fr)));
     border-bottom: 1px solid var(--color-divider);
-    transition: background-color 0.1s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
     border-radius: 0;
     margin: 0;
 }

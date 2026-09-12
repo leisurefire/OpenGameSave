@@ -1,6 +1,6 @@
 function normalizeDialogContent(content) {
     if (typeof content === 'function') {
-        throw new Error('Function-based in-page dialog content is no longer supported. Use a dedicated BrowserWindow dialog helper.');
+        throw new Error('Function-based in-page dialog content is no longer supported. Use a dedicated window dialog helper.');
     }
 
     return content;
@@ -90,4 +90,3 @@ export async function showRestoreConflictDialog(prompt) {
         doForAll: !!response?.checked
     };
 }
-

@@ -10,7 +10,7 @@ const {
     getDatabaseAssetNames,
     normalizeDatabaseVariant,
     validateDatabaseManifest
-} = require('../src/main/databaseManifest');
+} = require('./lib/databaseManifest');
 
 function parseArgs(argv) {
     const result = {};

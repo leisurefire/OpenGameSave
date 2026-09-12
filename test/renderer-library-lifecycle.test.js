@@ -144,3 +144,52 @@ test('rapid hero selections retain only the latest pending image request', async
     await completion;
     assert.equal(vm.runInContext('pendingArtLoads.length', context), 0);
 });
+
+test('artwork accepts bounded JSON byte arrays returned by Tauri and rejects invalid bytes', async () => {
+    for (const [data, valid] of [[[137, 80, 78, 71, 13, 10, 26, 10], true], [[-1, 0, 256], false]]) {
+        const blobs = [];
+        const image = {
+            isConnected: true, dataset: {},
+            classList: { remove() {}, add() {} },
+            closest: () => null
+        };
+        const context = loadLibrary({
+            image,
+            Uint8Array, ArrayBuffer, Blob,
+            URL: { createObjectURL: blob => { blobs.push(blob); return 'blob:tauri-art'; }, revokeObjectURL() {} },
+            window: { api: { invoke: async () => ({ data, mimeType: 'image/png' }) } }
+        });
+        await vm.runInContext("executeArtLoad({ gameId: '1', artType: 'cover', image });", context);
+        assert.equal(blobs.length, valid ? 1 : 0);
+        if (valid) {
+            assert.equal(image.src, 'blob:tauri-art');
+            assert.equal(blobs[0].size, 8);
+        }
+    }
+});
+
+test('base64 artwork is decoded only for bounded supported images and its URL is released', async () => {
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64');
+    for (const [asset, valid] of [
+        [{ dataBase64: png, mimeType: 'image/png' }, true],
+        [{ dataBase64: png, mimeType: 'image/svg+xml' }, false],
+        [{ dataBase64: 'invalid!', mimeType: 'image/png' }, false],
+        [{ dataBase64: 'A'.repeat(4 * Math.ceil(8 * 1024 * 1024 / 3) + 4), mimeType: 'image/png' }, false]
+    ]) {
+        const blobs = [], released = [];
+        const image = { isConnected: true, dataset: {}, classList: { remove() {}, add() {} }, closest: () => null };
+        const context = loadLibrary({
+            image, Uint8Array, ArrayBuffer, Blob, atob,
+            console: { warn() {} },
+            URL: { createObjectURL: blob => { blobs.push(blob); return 'blob:base64-art'; }, revokeObjectURL: url => released.push(url) },
+            window: { api: { invoke: async () => asset } }
+        });
+        await vm.runInContext("executeArtLoad({ gameId: '1', artType: 'cover', image });", context);
+        assert.equal(blobs.length, valid ? 1 : 0);
+        if (valid) {
+            assert.equal(blobs[0].size, 8);
+            image.onload();
+            assert.deepEqual(released, ['blob:base64-art']);
+        }
+    }
+});

@@ -56,8 +56,22 @@ export async function showToast(type, message, detailContent) {
 }
 
 function dismissToast(toastElement) {
+    if (toastElement.classList.contains('animate-fadeOut')) return;
+    toastElement.style.pointerEvents = 'none';
+    const remove = () => {
+        clearTimeout(fallback);
+        toastElement.removeEventListener('animationend', onAnimationEnd);
+        toastElement.removeEventListener('animationcancel', onAnimationEnd);
+        toastElement.remove();
+    };
+    const onAnimationEnd = (event) => {
+        if (event.target === toastElement && event.animationName === 'fadeOut') remove();
+    };
+    // Also clean up when animations are disabled or the document is hidden.
+    const fallback = setTimeout(remove, 200);
+    toastElement.addEventListener('animationend', onAnimationEnd);
+    toastElement.addEventListener('animationcancel', onAnimationEnd);
     toastElement.classList.replace('animate-fadeInShift', 'animate-fadeOut');
-    setTimeout(() => toastElement.remove(), 300);
 }
 
 export const showAlert = showToast;

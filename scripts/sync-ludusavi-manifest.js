@@ -8,7 +8,7 @@ const path = require('path');
 
 const yaml = require('js-yaml');
 
-const { normalizeRegistryKeyPath } = require('../src/main/validation');
+const { normalizeRegistryKeyPath } = require('./lib/registryValidation');
 
 const DEFAULT_MANIFEST_URL = 'https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml';
 const LUDUSAVI_LICENSE_URL = 'https://github.com/mtkennerly/ludusavi-manifest/blob/master/LICENSE';

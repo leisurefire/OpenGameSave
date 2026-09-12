@@ -87,6 +87,10 @@
         "app_logo": "OpenGameSave logo"
     },
     "main": {
+        "window_minimize": "Minimize",
+        "window_maximize": "Maximize",
+        "window_restore": "Restore window",
+        "window_close": "Close window",
         "title": "OpenGameSave",
         "options": "Options",
         "loading": "Loading…",
@@ -355,6 +359,7 @@
         "export_selected_backup": "Selected games from backup table",
         "export_selected_restore": "Selected games from restore table",
         "export_count": "Number of exports per game (ordered from newest to oldest)",
+        "invalid_export_count": "Enter a whole number from 1 to 1000 backups per game",
         "export_path": "Export path",
         "empty_export_path": "Please select an export path",
         "exporting": "Exporting…",

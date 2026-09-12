@@ -4,7 +4,7 @@ const {
     compareAppVersions,
     normalizeAppVersion,
     parseAppVersion
-} = require('../src/main/appUpdatePolicy');
+} = require('./lib/appUpdatePolicy');
 
 const FLOOR_VERSION = '0.6.22';
 const PRERELEASE_LABEL_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;

@@ -2,84 +2,32 @@
   "name": "opengamesave",
   "version": "0.7.3",
   "description": "Easily backup and restore your game saves anytime",
-  "main": "dist/out/main/main.js",
   "scripts": {
     "clean": "rimraf dist/out",
-    "predev": "npm run rebuild:electron-native",
-    "dev": "npm run clean && npm run styles:build && concurrently -k -s first -n \"STYLES,RENDERER,MAIN,ELECTRON\" \"npm:styles:watch\" \"webpack --watch --config webpack.renderer.config.js --mode development\" \"webpack --watch --config webpack.main.config.js --config webpack.preload.config.js --mode development\" \"wait-on dist/out/main/main.js dist/out/renderer/index.html dist/out/renderer/modal.html && electron .\"",
-    "build": "npm run clean && cross-env NODE_ENV=production npm run styles:build && cross-env NODE_ENV=production webpack --config webpack.main.config.js --config webpack.preload.config.js --config webpack.renderer.config.js --mode production",
-    "prestart": "npm run build && npm run rebuild:electron-native",
-    "start": "electron .",
+    "dev": "npm run tauri -- dev",
+    "build": "npm run tauri -- build --no-bundle",
+    "start": "npm run tauri -- dev",
     "styles:build": "tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --minify",
     "styles:watch": "tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --watch",
-    "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/main/validation.js --test-coverage-include=src/main/fileSystemUtils.js --test-coverage-include=src/main/databaseUpdateFiles.js --test-coverage-include=src/main/databaseManifest.js --test-coverage-include=src/main/xgpSourceFormat.js --test-coverage-include=src/main/webdavManifest.js --test-coverage-include=src/main/steamAccount.js --test-coverage-include=src/main/services/platformService.js --test-coverage-include=src/main/services/backupWorkerGameProcessor.js --test-coverage-lines=70 --test-coverage-functions=80 --test-coverage-branches=65",
+    "test": "node --test test/*.test.js",
+    "smoke:desktop": "node scripts/smoke-tauri.cjs",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "typecheck": "tsc -p jsconfig.check.json",
-    "check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build",
-    "rebuild:electron-native": "node scripts/rebuild-electron-native.js",
-    "app:dir": "npm run build && npm run rebuild:electron-native && electron-builder --dir",
-    "app:dist": "npm run build && npm run rebuild:electron-native && electron-builder",
-    "app:dist:release": "npm run build && npm run rebuild:electron-native && electron-builder --config scripts/electron-builder.release.js --publish never",
+    "check": "npm run lint && npm run typecheck && npm test && npm run frontend:build && npm run rust:lint && npm run rust:test",
+    "app:dir": "npm run tauri -- build --no-bundle",
+    "app:dist": "npm run tauri -- build",
+    "app:dist:release": "node scripts/prepare-tauri-release.cjs --release && npm run tauri -- build --config dist/tauri-release.json && node scripts/tauri-release-artifacts.cjs",
     "db:sync:ludusavi": "node scripts/sync-ludusavi-manifest.js --report dist/ludusavi-sync-report.json",
     "db:sync:ludusavi:apply": "node scripts/sync-ludusavi-manifest.js --apply --report dist/ludusavi-sync-report.json",
     "db:sync:guides": "node scripts/sync-guide-catalog.js",
     "db:sync:xgp": "node scripts/sync-xgp-save-tools.js --report dist/xgp-save-tools-sync-report.json",
-    "postinstall": "electron-builder install-app-deps"
-  },
-  "build": {
-    "extends": null,
-    "icon": "./src/assets/logo.ico",
-    "appId": "com.leisurefire.opengamesave",
-    "productName": "OpenGameSave",
-    "artifactName": "${productName}-Setup-${version}.${ext}",
-    "copyright": "Copyright © 2024-2026 leisurefire. Original work Copyright © 2024-2026 Yongcan Yang",
-    "publish": {
-      "provider": "github",
-      "owner": "leisurefire",
-      "repo": "OpenGameSave"
-    },
-    "electronLanguages": [
-      "en-US",
-      "zh-CN"
-    ],
-    "files": [
-      "dist/out/**/*",
-      "!node_modules/7zip-bin/linux/**/*",
-      "!node_modules/7zip-bin/mac/**/*",
-      "!node_modules/7zip-bin/win/arm64/**/*",
-      "!node_modules/7zip-bin/win/ia32/**/*",
-      "!node_modules/better-sqlite3/bin/**/*",
-      "!node_modules/better-sqlite3/deps/**/*",
-      "!node_modules/better-sqlite3/src/**/*",
-      "!node_modules/better-sqlite3/build/Release/obj/**/*",
-      "!node_modules/better-sqlite3/build/Release/*.{exp,iobj,ipdb,lib,pdb}",
-      "!node_modules/better-sqlite3/build/Release/test_extension.node"
-    ],
-    "asarUnpack": [
-      "**/*.node"
-    ],
-    "extraResources": [
-      {
-        "from": "./src/assets_export",
-        "to": "assets_export"
-      }
-    ],
-    "extraFiles": [
-      {
-        "from": "./database/database.db",
-        "to": "./database/database.db"
-      },
-      {
-        "from": "./database/licenses",
-        "to": "./database/licenses"
-      },
-      {
-        "from": "./THIRD_PARTY_NOTICES.md",
-        "to": "./THIRD_PARTY_NOTICES.md"
-      }
-    ]
+    "frontend:build": "npm run styles:build && cross-env NODE_ENV=production webpack --config webpack.renderer.config.js --mode production",
+    "tauri": "node scripts/tauri.cjs",
+    "rust:check": "node scripts/cargo.cjs check --manifest-path src-tauri/Cargo.toml",
+    "rust:test": "node scripts/cargo.cjs test --manifest-path src-tauri/Cargo.toml",
+    "rust:lint": "node scripts/cargo.cjs clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
   },
   "author": "leisurefire",
   "license": "GPL-3.0-only",
@@ -87,36 +35,19 @@
     "shell-quote": ">=1.8.4"
   },
   "dependencies": {
-    "7zip-bin": "^5.2.0",
-    "axios": "^1.19.0",
-    "better-sqlite3": "^12.11.1",
-    "chokidar": "^4.0.1",
-    "date-fns": "^4.1.0",
-    "electron-updater": "^6.8.9",
-    "fs-extra": "^11.2.0",
-    "glob": "^13.0.6",
-    "i18next": "^25.3.2",
-    "i18next-fs-backend": "^2.6.7",
-    "js-yaml": "^4.3.1",
-    "node-7z": "^3.0.0",
-    "vdf-parser": "^1.2.1",
-    "webdav": "^5.10.0",
-    "winreg": "^1.2.5"
+    "@tauri-apps/api": "^2.11.1"
   },
   "devDependencies": {
     "@babel/core": "^7.27.4",
     "@babel/preset-env": "^7.27.2",
-    "@electron/rebuild": "^4.0.4",
     "@lucide/icons": "^1.31.0",
     "@tailwindcss/cli": "^4.1.8",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.13.3",
     "babel-loader": "^10.0.0",
-    "concurrently": "^9.1.2",
     "copy-webpack-plugin": "^14.0.0",
     "cross-env": "^7.0.3",
     "css-loader": "^7.1.2",
-    "electron": "^42.8.1",
-    "electron-builder": "^26.11.1",
     "eslint": "^9.39.5",
     "globals": "^16.5.0",
     "html-webpack-plugin": "^5.6.3",
@@ -124,16 +55,9 @@
     "rimraf": "^6.0.1",
     "tailwind-scrollbar": "^4.0.2",
     "typescript": "^5.9.3",
-    "wait-on": "^8.0.3",
     "webpack": "^5.99.9",
     "webpack-cli": "^6.0.1",
-    "webpack-node-externals": "^3.0.0"
-  },
-  "allowScripts": {
-    "electron@42.8.1": true,
-    "better-sqlite3@12.11.1": true,
-    "@parcel/watcher@2.5.1": true,
-    "@tailwindcss/oxide@4.1.8": true,
-    "electron-winstaller@5.4.0": false
+    "better-sqlite3": "^12.11.1",
+    "js-yaml": "^4.3.1"
   }
 }

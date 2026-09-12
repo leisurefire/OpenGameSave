@@ -20,7 +20,7 @@ function createElement() {
     };
 }
 
-async function loadAbout({ latestVersion = '2.0.0', updateResult = { status: 'up-to-date' } } = {}) {
+async function loadAbout({ latestVersion = '2.0.0', updateResult = { status: 'up-to-date' }, readyState = 'loading' } = {}) {
     const ids = ['latest-version', 'current-version', 'github-link', 'author-link', 'update-button', 'app-license-link', 'notices-toggle', 'about-notices'];
     const elements = Object.fromEntries(ids.map(id => [id, createElement()]));
     elements['latest-version'].dataset.i18n = 'main.loading';
@@ -29,6 +29,7 @@ async function loadAbout({ latestVersion = '2.0.0', updateResult = { status: 'up
     let applyLanguage;
     const alerts = [];
     const document = {
+        readyState,
         body: { style: { visibility: 'hidden' } },
         getElementById: id => elements[id],
         querySelectorAll: () => [],
@@ -60,7 +61,7 @@ async function loadAbout({ latestVersion = '2.0.0', updateResult = { status: 'up
     });
     const source = fs.readFileSync(path.join(__dirname, '../src/renderer/js/aboutPage.js'), 'utf8').replace(/^import .*;\r?\n/gm, '');
     vm.runInContext(source, context);
-    await ready();
+    if (ready) await ready();
     await new Promise(resolve => { setImmediate(resolve); });
     return { elements, alerts, document, changeLanguage: async () => { language = 'zh'; await applyLanguage(); } };
 }
@@ -72,6 +73,14 @@ test('about version values survive language changes and available updates are no
     await changeLanguage();
     assert.equal(elements['latest-version'].innerText, '2.0.0');
     assert.equal(document.body.style.visibility, 'visible');
+});
+
+test('about initializes when the Tauri bridge loads after DOMContentLoaded', async () => {
+    const { elements, document } = await loadAbout({ readyState: 'complete' });
+    assert.equal(elements['current-version'].innerText, '1.0.0');
+    assert.equal(elements['latest-version'].innerText, '2.0.0');
+    assert.equal(document.body.style.visibility, 'visible');
+    assert.equal(typeof elements['github-link'].listeners.click, 'function');
 });
 
 test('about version lookup errors replace loading state with a translatable failure', async () => {

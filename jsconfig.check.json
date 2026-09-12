@@ -2,29 +2,30 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
     "skipLibCheck": true,
     "target": "ES2022",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
-    "src/main/databaseManifest.js",
-    "src/main/steamAccount.js",
-    "src/main/validation.js",
-    "src/main/webdavManifest.js",
-    "src/main/webdavMerge.js",
-    "src/main/webdavSyncState.js",
-    "src/main/xgpSourceFormat.js",
-    "src/main/services/backupWorkerContext.js",
-    "src/main/services/backupWorkerGameProcessor.js",
-    "src/main/services/platformService.js",
-    "src/main/services/statusService.js",
     "src/renderer/js/tabNavigation.js",
     "src/renderer/js/tableDisplay.js",
-    "src/renderer/js/tableRows.js"
+    "src/renderer/js/tableRows.js",
+    "scripts/lib/databaseManifest.js",
+    "scripts/lib/xgpSourceFormat.js"
   ],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src-tauri/target"
+  ]
 }

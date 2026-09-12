@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('../src/main/databaseManifest');
+const { getDatabaseAssetNames, normalizeDatabaseVariant } = require('./lib/databaseManifest');
 
 const SUPPORTED_TABLES = ['games', 'metadata'];
 

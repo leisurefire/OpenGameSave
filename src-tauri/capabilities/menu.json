@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "menu-visibility",
+  "description": "Reusable menu windows may inspect their native visibility.",
+  "windows": ["menu-*"],
+  "permissions": ["core:window:allow-is-visible"]
+}

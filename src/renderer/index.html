@@ -5,13 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost">
     <title class="text-content" data-i18n="main.title">OpenGameSave</title>
 </head>
 
 <body class="mica-effect h-screen overflow-hidden">
-    <header class="app-titlebar">
-        <div class="titlebar-drag-region" aria-hidden="true"></div>
+    <header class="app-titlebar" data-tauri-drag-region>
         <div class="titlebar-navigation">
             <button id="sidebar-toggle" class="titlebar-button" type="button" data-i18n-title="main.collapse_sidebar" data-i18n-aria-label="main.collapse_sidebar">
                 <span class="sidebar-collapse-icon" data-lucide-icon="panel-left-close"></span>
@@ -30,6 +29,19 @@
                 <button class="titlebar-menu-button" type="button" data-titlebar-menu="help" data-i18n="main.menu_help">Help</button>
             </div>
         </div>
+        <div class="titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+        <div class="window-controls">
+            <button id="window-minimize" class="window-control" type="button" title="Minimize" aria-label="Minimize" data-i18n-title="main.window_minimize" data-i18n-aria-label="main.window_minimize">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6.5h10" /></svg>
+            </button>
+            <button id="window-maximize" class="window-control" type="button" title="Maximize" aria-label="Maximize" data-i18n-title="main.window_maximize" data-i18n-aria-label="main.window_maximize">
+                <svg class="window-maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 1.5h9v9h-9z" /></svg>
+                <svg class="window-restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5v-2h7v7h-2m-7-5h7v7h-7z" /></svg>
+            </button>
+            <button id="window-close" class="window-control window-close" type="button" title="Close window" aria-label="Close window" data-i18n-title="main.window_close" data-i18n-aria-label="main.window_close">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m1.5 1.5 9 9m0-9-9 9" /></svg>
+            </button>
+        </div>
     </header>
 
     <!-- Top right alerts and progresses -->
@@ -41,7 +53,7 @@
     <div class="app-shell">
         <aside class="app-sidebar">
             <div class="sidebar-brand">
-                <img src="../assets/logo.png" alt="">
+                <img src="assets/logo.svg" alt="">
                 <span class="text-content">OpenGameSave</span>
             </div>
             <nav class="sidebar-nav" id="main-tab" aria-label="Primary navigation" data-i18n-aria-label="main.primary_navigation">

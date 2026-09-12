@@ -13,8 +13,8 @@ const {
     createNewDatabasePath,
     recoverDatabaseFiles,
     verifyFileDescriptor
-} = require('../src/main/databaseUpdateFiles');
-const { validateDatabaseManifest } = require('../src/main/databaseManifest');
+} = require('../scripts/lib/databaseUpdateFiles');
+const { validateDatabaseManifest } = require('../scripts/lib/databaseManifest');
 
 function createDb(filePath, version, title = `v${version}`) {
     const db = new Database(filePath);

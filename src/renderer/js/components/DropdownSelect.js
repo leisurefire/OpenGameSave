@@ -131,16 +131,15 @@ class DropdownSelect extends HTMLElement {
                     font: inherit;
                     text-align: left;
                     background: var(--color-control-surface, rgba(255, 255, 255, 0.05));
-                    border: 1px solid var(--color-control-border, rgba(255, 255, 255, 0.045));
+                    border: 1px solid transparent;
                     border-radius: var(--radius-control-lg, 10px);
                     cursor: pointer;
-                    transition: background-color 120ms ease, border-color 120ms ease;
+                    transition: background-color var(--motion-fast) var(--motion-ease);
                 }
 
                 .select-trigger:hover:not(:disabled),
                 .select-trigger[aria-expanded="true"] {
                     background: var(--color-control-surface-hover, rgba(255, 255, 255, 0.08));
-                    border-color: var(--color-control-border-hover, rgba(255, 255, 255, 0.085));
                 }
 
                 .select-trigger:focus-visible {
@@ -159,7 +158,7 @@ class DropdownSelect extends HTMLElement {
                     display: inline-flex;
                     flex: 0 0 auto;
                     color: var(--color-text-tertiary, rgba(255, 255, 255, 0.55));
-                    transition: transform 120ms ease;
+                    transition: transform var(--motion-fast) var(--motion-ease);
                 }
 
                 .select-trigger[aria-expanded="true"] .chevron {
@@ -178,11 +177,11 @@ class DropdownSelect extends HTMLElement {
                     overscroll-behavior: contain;
                     padding: 4px;
                     background: var(--color-win-surface-bright, rgba(36, 36, 36, 0.98));
-                    border: 1px solid var(--color-card-border, rgba(255, 255, 255, 0.085));
+                    border: 1px solid transparent;
                     border-radius: var(--radius-win, 12px);
                     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
                     transform-origin: top right;
-                    animation: menu-in 120ms cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: menu-in var(--motion-normal, 180ms) var(--motion-ease, ease-out) backwards;
                 }
 
                 .select-menu.open-up {
@@ -243,8 +242,8 @@ class DropdownSelect extends HTMLElement {
                 }
 
                 @keyframes menu-in {
-                    from { opacity: 0; transform: scale(0.98) translateY(-2px); }
-                    to { opacity: 1; transform: scale(1) translateY(0); }
+                    from { opacity: 0; transform: scale(0.98); }
+                    to { opacity: 1; transform: scale(1); }
                 }
 
                 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenGameSave",
+  "version": "../package.json",
+  "identifier": "com.leisurefire.opengamesave",
+  "build": {
+    "beforeDevCommand": "npm run frontend:build",
+    "beforeBuildCommand": "npm run frontend:build",
+    "frontendDist": "../dist/out/renderer"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
+  },
+  "plugins": {"updater": {"pubkey": ""}},
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["../src/assets/logo.ico", "../src/assets/logo.png"],
+    "resources": {
+      "../database/database.db": "database/database.db",
+      "../database/licenses/": "database/licenses/",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    },
+    "fileAssociations": [{"ext": ["gsmr"], "name": "OpenGameSave Archive", "role": "Editor"}],
+    "windows": {"minimumWebview2Version": "109.0.1518.78", "nsis": {"installMode": "currentUser", "displayLanguageSelector": true, "languages": ["English", "SimpChinese"]}}
+  }
+}

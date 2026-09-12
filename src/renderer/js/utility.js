@@ -45,11 +45,17 @@ receiveIfAllowed('collect-selected-wiki-ids', (requestId, tableId) => {
     window.api.send('selected-wiki-ids-response', requestId, wikiIds);
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeShell() {
     setupHomeActions();
     setupTitlebarMenus();
     setupAppUpdateButton();
-});
+}
+
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    initializeShell();
+} else {
+    document.addEventListener('DOMContentLoaded', initializeShell, { once: true });
+}
 
 async function getTitlebarMenuItems(menuName) {
     const item = async (key, icon, action, data) => ({
@@ -97,9 +103,9 @@ function setupTitlebarMenus() {
     });
 }
 
-export async function requestPopupMenu(button, createPayload) {
+export async function requestPopupMenu(button, createPayload, { toggle = true } = {}) {
     const requestId = ++activePopupMenuRequestId;
-    if (button === window.activeMenuTrigger) {
+    if (toggle && button === window.activeMenuTrigger) {
         button.setAttribute('aria-expanded', 'false');
         window.activeMenuTrigger = null;
         window.api.send('hide-popup-menu');
@@ -116,7 +122,7 @@ export async function requestPopupMenu(button, createPayload) {
             return;
         }
         button.setAttribute('aria-expanded', 'true');
-        window.api.send('show-popup-menu', { ...payload, rendererRequestId: requestId });
+        await window.api.send('show-popup-menu', { ...payload, rendererRequestId: requestId });
     } catch (error) {
         if (!isCurrent()) return;
         button.setAttribute('aria-expanded', 'false');

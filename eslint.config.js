@@ -77,10 +77,10 @@ const styleRules = {
 
 module.exports = [
     {
-        ignores: ['dist/**', 'node_modules/**', 'src/renderer/tailwind-output.css']
+        ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/gen/**', 'src/renderer/tailwind-output.css']
     },
     {
-        files: ['**/*.js'],
+        files: ['**/*.js', '**/*.cjs'],
         languageOptions: {
             ecmaVersion: 2022,
             globals: { ...globals.node, ...globals.es2022 },

@@ -36,10 +36,10 @@
     --color-text-muted: rgba(255, 255, 255, 0.42);
     --color-text-faint: rgba(255, 255, 255, 0.38);
     --color-card-surface-subtle: rgba(255, 255, 255, 0.035);
-    --color-card-surface: rgba(255, 255, 255, 0.04);
-    --color-card-surface-raised: rgba(255, 255, 255, 0.045);
+    --color-card-surface: rgba(255, 255, 255, 0.045);
+    --color-card-surface-raised: rgba(255, 255, 255, 0.055);
     --color-card-surface-hover: rgba(255, 255, 255, 0.065);
-    --color-control-surface: rgba(255, 255, 255, 0.05);
+    --color-control-surface: rgba(255, 255, 255, 0.06);
     --color-control-surface-hover: rgba(255, 255, 255, 0.08);
     --color-card-border-soft: rgba(255, 255, 255, 0.075);
     --color-card-border: rgba(255, 255, 255, 0.085);
@@ -63,7 +63,7 @@
     --color-danger-foreground: #ffffff;
     
     /* Fluent Typography */
-    --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     
     /* Fluent Corner Radius */
     --radius-win: 12px;
@@ -79,13 +79,18 @@
     --control-height: 34px;
     --control-height-field: 36px;
 
-    --animate-fadeIn: fadeIn 0.1s ease-out forwards;
-    --animate-fadeOut: fadeOut 0.1s ease-in forwards;
-    --animate-fadeInShift: fadeIn 0.1s ease-out forwards;
+    --animate-fadeIn: fadeIn var(--motion-normal) var(--motion-ease) backwards;
+    --animate-fadeOut: fadeOut var(--motion-fast) var(--motion-exit) forwards;
+    --animate-fadeInShift: fadeInShift var(--motion-normal) var(--motion-ease) backwards;
 
     @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
+    }
+
+    @keyframes fadeInShift {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
     @keyframes fadeOut {

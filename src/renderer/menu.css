@@ -1,14 +1,15 @@
+@import './css/motion.css';
+
 * {
     box-sizing: border-box;
-    -webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: auto;
 }
 
 :root {
     color-scheme: dark;
-    --font-sans: "Segoe UI Variable Text", "Segoe UI Variable Small", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     --color-text-primary: rgba(255, 255, 255, 0.9);
     --color-menu-surface: rgba(43, 43, 43, 0.99);
-    --color-menu-border: rgba(255, 255, 255, 0.12);
     --color-menu-hover: rgba(255, 255, 255, 0.08);
     --color-menu-active: rgba(255, 255, 255, 0.03);
     --color-focus-ring: color-mix(in srgb, var(--system-accent, #16c60c) 72%, white);
@@ -28,9 +29,9 @@ html {
 body {
     margin: 0;
     /*
-     * The popup lives in its own transparent BrowserWindow.  This inset is a
+     * The popup lives in its own transparent window. This inset is a
      * painting gutter for the shadow, not part of the menu's visual position.
-     * menu.entry.js reports it to the main process so the content edge remains
+     * menu.entry.js reports it to the host so the content edge remains
      * anchored to the invoking button.
      */
     padding: 16px;
@@ -38,7 +39,6 @@ body {
     overflow: hidden;
     background: transparent;
     user-select: none;
-    -webkit-app-region: no-drag;
     font-family: var(--font-sans);
     line-height: 1.4;
 }
@@ -51,42 +51,17 @@ body {
     flex-direction: column;
     overflow: hidden auto;
     background: var(--color-menu-surface);
-    backdrop-filter: blur(32px) saturate(110%);
-    border: 1px solid var(--color-menu-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-menu);
     box-shadow:
         0 6px 18px rgba(0, 0, 0, 0.3),
         0 1px 3px rgba(0, 0, 0, 0.24);
     padding: 4px;
-    animation: menuExpandDown 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    transform-origin: top;
+    transform-origin: top center;
 }
 
 .menu-container[data-direction="up"] {
-    animation-name: menuExpandUp;
-    transform-origin: bottom;
-}
-
-@keyframes menuExpandDown {
-    from {
-        opacity: 0;
-        transform: scale(0.98) translateY(-2px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-@keyframes menuExpandUp {
-    from {
-        opacity: 0;
-        transform: scale(0.98) translateY(2px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
+    transform-origin: bottom center;
 }
 
 #menu-content-wrapper {
@@ -115,7 +90,7 @@ body {
     text-align: left;
     cursor: pointer;
     border-radius: var(--radius-control);
-    transition: background-color 0.1s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .menu-item:hover:not(:disabled) {

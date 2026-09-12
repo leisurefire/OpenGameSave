@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
     normalizeXgpEntries,
     parseXgpGamesJson
-} = require('../src/main/xgpSourceFormat');
+} = require('../scripts/lib/xgpSourceFormat');
 const { buildSyncPlan, validateMitLicense } = require('../scripts/sync-xgp-save-tools');
 
 test('XgpSaveTools JSON-with-comments is parsed into bounded WGS and PGS paths', () => {

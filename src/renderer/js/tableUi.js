@@ -29,10 +29,6 @@ export async function showLoadingIndicator(tabName) {
 
     if (contentContainer && window.getComputedStyle(contentContainer).display !== 'none') {
         contentContainer.classList.remove('animate-fadeInShift');
-        contentContainer.classList.add('animate-fadeOut');
-        await new Promise((resolve) => {
-            setTimeout(resolve, 300);
-        });
         contentContainer.classList.add('hidden');
     }
     if (loadingContainer) {

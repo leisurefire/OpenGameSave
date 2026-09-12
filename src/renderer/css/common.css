@@ -1,3 +1,5 @@
+@import './motion.css';
+
 /* Shared window styles used by the main window and auxiliary modal windows. */
 body,
 html {
@@ -9,8 +11,8 @@ html {
     height: 100vh;
     font-size: 14px;
     line-height: 1.4;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
+    text-rendering: auto;
+    -webkit-font-smoothing: auto;
     color-scheme: dark;
 }
 
@@ -72,17 +74,15 @@ html {
 }
 
 .surface-effect {
-    backdrop-filter: blur(24px) saturate(110%);
     background-color: var(--color-win-surface);
-    border: 1px solid var(--color-win-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-win);
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition: background-color var(--motion-normal) var(--motion-ease);
 }
 
 .floating-surface {
-    backdrop-filter: blur(32px) saturate(115%);
     background-color: var(--color-win-surface-bright);
-    border: 1px solid var(--color-win-border-bright);
+    border: 1px solid transparent;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
     border-radius: var(--radius-win);
 }
@@ -139,6 +139,8 @@ textarea:disabled,
 }
 
 button {
+    transition: background-color var(--motion-fast) var(--motion-ease),
+        color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
     border-radius: var(--radius-win-sm) !important;
     font: inherit;
 }
@@ -150,16 +152,16 @@ textarea {
 }
 
 .home-action-button {
-    background: var(--color-win-surface);
-    border: 1px solid var(--color-control-border);
+    background: var(--color-control-surface);
+    border: 1px solid transparent;
     color: var(--color-text-primary);
-    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
     border-radius: var(--radius-win-sm);
 }
 
 .home-action-button:hover:not(:disabled) {
-    background: var(--color-win-surface-hover);
-    border-color: var(--color-control-border-hover);
+    background: var(--color-control-surface-hover);
+    border-color: transparent;
 }
 
 .home-action-button:active:not(:disabled) {
@@ -191,7 +193,7 @@ textarea {
     font-weight: 600;
     border-radius: var(--radius-win-sm);
     border: 1px solid transparent;
-    transition: background-color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .primary-button:hover:not(:disabled) {
@@ -209,14 +211,13 @@ input[type="url"],
 input[type="email"],
 input[type="search"],
 select {
-    background: rgba(255, 255, 255, 0.045) !important;
-    border: 1px solid var(--color-control-border) !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
+    background: var(--color-control-surface) !important;
+    border: 1px solid transparent !important;
     border-radius: var(--radius-control) !important;
     color: var(--color-text-primary) !important;
     min-height: var(--control-height-field);
     padding: 7px 11px;
-    transition: background-color 0.12s ease, border-color 0.12s ease;
+    transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 select {
@@ -324,8 +325,7 @@ textarea:focus-visible,
     padding: 9px 10px 9px 12px;
     color: var(--color-text-primary);
     background: rgba(43, 43, 43, 0.97);
-    backdrop-filter: blur(32px) saturate(115%);
-    border: 1px solid var(--color-win-border-bright);
+    border: 1px solid transparent;
     border-radius: 12px;
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
     pointer-events: auto;
@@ -417,7 +417,7 @@ textarea:focus-visible,
     font-size: 12px;
     font-weight: 500;
     background: rgba(255, 255, 255, 0.055);
-    border: 1px solid var(--color-control-border);
+    border: 1px solid transparent;
     border-radius: 8px !important;
 }
 
@@ -455,7 +455,7 @@ textarea:focus-visible,
     height: 100%;
     background: var(--system-accent);
     border-radius: inherit;
-    transition: width 180ms ease;
+    transition: width var(--motion-normal) var(--motion-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -466,5 +466,12 @@ textarea:focus-visible,
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
+    }
+}
+
+/* Restore control boundaries when the OS replaces surface colors. */
+@media (forced-colors: active) {
+    button, input[type], select, textarea, .floating-surface, .app-toast {
+        border: 1px solid ButtonText !important;
     }
 }

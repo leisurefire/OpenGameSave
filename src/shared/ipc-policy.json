@@ -1,0 +1,315 @@
+{
+  "files": {
+    "main": "index.html",
+    "settings": "settings.html",
+    "about": "about.html",
+    "menu": "menu.html",
+    "export": "modal.html",
+    "import": "modal.html",
+    "account": "modal.html",
+    "auto-backup": "modal.html",
+    "manage-backups": "modal.html",
+    "local-save": "modal.html",
+    "scan-full": "modal.html",
+    "confirm": "modal.html",
+    "dialog": "modal.html"
+  },
+  "roles": {
+    "main": {
+      "send": [
+        "hide-popup-menu",
+        "show-popup-menu",
+        "save-settings",
+        "update-status",
+        "open-settings-window",
+        "open-about-window",
+        "open-modal-window",
+        "view-account-ids",
+        "scan-full",
+        "selected-wiki-ids-response",
+        "update-backup-table",
+        "update-restore-table"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "save-settings",
+        "get-settings",
+        "open-url",
+        "open-backup-dialog",
+        "open-directory",
+        "get-icon-map",
+        "get-library-games",
+        "get-library-game-art",
+        "get-game-guide-catalog",
+        "search-game-guides",
+        "get-game-guide",
+        "launch-library-game",
+        "open-library-game-directory",
+        "get-table-view-model",
+        "fetch-backup-table-data",
+        "backup-game",
+        "fetch-restore-table-data",
+        "restore-game",
+        "get-status",
+        "get-app-update-state",
+        "download-app-update",
+        "update-database",
+        "sync-provider-list",
+        "sync-provider-config",
+        "sync-provider-save-config",
+        "sync-provider-status",
+        "sync-provider-run",
+        "start-scan-full",
+        "get-auto-backup-state",
+        "migrate-backups",
+        "show-dialog-modal-window"
+      ],
+      "receive": [
+        "accent-color-changed",
+        "menu-hidden",
+        "execute-menu-action",
+        "open-import-modal",
+        "show-alert",
+        "run-scan-full",
+        "update-backup-table",
+        "update-restore-table",
+        "collect-selected-wiki-ids",
+        "update-progress",
+        "apply-language",
+        "sidebar-visibility-changed",
+        "auto-backup-started",
+        "auto-backup-stopped",
+        "auto-backup-performed",
+        "app-update-state"
+      ]
+    },
+    "settings": {
+      "send": [
+        "apply-accent-color-setting",
+        "update-backup-table",
+        "update-restore-table"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "change-language",
+        "save-settings",
+        "get-settings",
+        "get-detected-game-paths",
+        "open-dialog",
+        "get-status",
+        "update-database",
+        "show-dialog-modal-window"
+      ],
+      "receive": [
+        "accent-color-changed",
+        "apply-language",
+        "show-alert",
+        "update-progress"
+      ]
+    },
+    "about": {
+      "send": [],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "open-url",
+        "get-current-version",
+        "download-app-update",
+        "get-repository-url",
+        "get-latest-version",
+        "is-newer-version"
+      ],
+      "receive": [
+        "accent-color-changed",
+        "apply-language"
+      ]
+    },
+    "menu": {
+      "send": [
+        "resize-and-show-menu",
+        "menu-item-click"
+      ],
+      "invoke": [
+        "get-window-accent-color"
+      ],
+      "receive": [
+        "accent-color-changed",
+        "set-menu-items"
+      ]
+    },
+    "export": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "save-settings",
+        "export-backups"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-settings",
+        "select-path",
+        "get-main-selected-wiki-ids",
+        "get-status"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "import": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "import-backups"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "select-path",
+        "get-status"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "account": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "show-main-alert",
+        "update-backup-table"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-account-data",
+        "get-settings",
+        "save-settings"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "auto-backup": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "show-main-alert"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-settings",
+        "fetch-backup-table-data",
+        "fetch-restore-table-data",
+        "get-auto-backup-state",
+        "start-auto-backup",
+        "stop-auto-backup"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "manage-backups": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "show-main-alert",
+        "update-backup-table",
+        "update-restore-table",
+        "open-backup-folder",
+        "update-status"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-settings",
+        "fetch-backup-table-data",
+        "fetch-restore-table-data",
+        "delete-backup",
+        "update-backup-info",
+        "restore-game",
+        "get-status",
+        "show-confirm-modal-window"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "local-save": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "show-main-alert",
+        "update-backup-table",
+        "update-restore-table",
+        "browse-local-save"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-settings",
+        "get-local-save-data",
+        "delete-local-save",
+        "show-confirm-modal-window"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "scan-full": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "run-scan-full"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data",
+        "get-status"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "confirm": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "modal-window-confirm-response"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    },
+    "dialog": {
+      "send": [
+        "close-current-modal-window",
+        "resize-current-modal-window",
+        "modal-window-dialog-response"
+      ],
+      "invoke": [
+        "get-window-accent-color",
+        "translate",
+        "get-modal-window-data"
+      ],
+      "receive": [
+        "accent-color-changed"
+      ]
+    }
+  }
+}

@@ -130,7 +130,7 @@ async function loadInitialSettingsPage(controls, addGameInstallPath) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeSettingsPage() {
     const languageSelect = document.getElementById('language');
     const maxBackupsInput = document.getElementById('max-backups');
     const launchAtStartupCheckbox = document.getElementById('launch-at-startup');
@@ -384,4 +384,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         return isDuplicate;
     }
-});
+}
+
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    initializeSettingsPage();
+} else {
+    document.addEventListener('DOMContentLoaded', initializeSettingsPage, { once: true });
+}
