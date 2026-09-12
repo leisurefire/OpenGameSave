@@ -25,6 +25,6 @@
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
     "fileAssociations": [{"ext": ["gsmr"], "name": "OpenGameSave Archive", "role": "Editor"}],
-    "windows": {"minimumWebview2Version": "109.0.1518.78", "nsis": {"installMode": "currentUser", "displayLanguageSelector": true, "languages": ["English", "SimpChinese"]}}
+    "windows": {"minimumWebview2Version": "109.0.1518.78", "nsis": {"installMode": "currentUser", "installerHooks": "windows/installer-hooks.nsh", "displayLanguageSelector": true, "languages": ["English", "SimpChinese"], "customLanguageFiles": {"English": "windows/languages/English.nsh", "SimpChinese": "windows/languages/SimpChinese.nsh"}}}
   }
 }

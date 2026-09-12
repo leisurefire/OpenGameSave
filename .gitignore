@@ -12,10 +12,13 @@ __pycache__
 !/scripts/tauri.cjs
 !/scripts/cargo.cjs
 !/scripts/smoke-tauri.cjs
+!/scripts/verify-windows-installer.cjs
 !/scripts/prepare-tauri-release.cjs
 !/scripts/tauri-release-artifacts.cjs
 !/scripts/lib/
 *.ps1
+!/scripts/verify-windows-isolated.ps1
+!/scripts/verify-uninstall-dialog.ps1
 secret_config.js
 tailwind-output.css
 /src-tauri/target

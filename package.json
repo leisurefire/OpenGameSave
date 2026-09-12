@@ -11,6 +11,8 @@
     "styles:watch": "tailwindcss -i ./src/renderer/styles.css -o ./src/renderer/tailwind-output.css --watch",
     "test": "node --test test/*.test.js",
     "smoke:desktop": "node scripts/smoke-tauri.cjs",
+    "verify:installer": "node scripts/verify-windows-installer.cjs",
+    "verify:installer:isolated": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-isolated.ps1",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
