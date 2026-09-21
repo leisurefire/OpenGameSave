@@ -64,7 +64,22 @@ jobs:
 
       - name: Add the sync summary
         run: |
-          node -e "const r=require('./dist/ludusavi-sync-report.json'); const s=r.summary; process.stdout.write(['## Ludusavi database sync','', '- Source SHA-256: `'+r.source.sha256+'`','- Matched games: '+s.matchedGames,'- Updated games: '+s.updatedGames,'- Added paths: '+s.addedPaths,'- Normalized Xbox PGS paths: '+s.normalizedXboxPgsPaths,'- Unsupported paths skipped: '+s.unsupportedPaths,'- Match conflicts: '+r.conflicts.length,''].join('\n'))" >> "$GITHUB_STEP_SUMMARY"
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r = require('./dist/ludusavi-sync-report.json');
+          const s = r.summary;
+          process.stdout.write([
+            '## Ludusavi database sync',
+            '',
+            '- Source SHA-256: `' + r.source.sha256 + '`',
+            '- Matched games: ' + s.matchedGames,
+            '- Updated games: ' + s.updatedGames,
+            '- Added paths: ' + s.addedPaths,
+            '- Normalized Xbox PGS paths: ' + s.normalizedXboxPgsPaths,
+            '- Unsupported paths skipped: ' + s.unsupportedPaths,
+            '- Match conflicts: ' + r.conflicts.length,
+            '',
+          ].join('\n'));
+          NODE
 
       - name: Upload the detailed sync report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
