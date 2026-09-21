@@ -1,6 +1,10 @@
 name: Sync Ludusavi Database
 
 'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ludusavi-sync.yml
   schedule:
     - cron: '23 3 * * 1'
   workflow_dispatch:
