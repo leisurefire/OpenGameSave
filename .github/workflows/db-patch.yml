@@ -45,7 +45,7 @@ jobs:
 
       - name: Install database tooling
         run: |
-          npm ci --omit=dev --ignore-scripts
+          npm ci --include=dev --ignore-scripts
           npm rebuild better-sqlite3
 
       - name: Resolve the licensed upstream revision
